@@ -175,18 +175,19 @@ impl AudioPipeline {
             return Ok(());
         }
 
+        // Save raw dry frame with hardware NaN/Inf sanitization
+        for (i, &s) in frame.iter().enumerate() {
+            let clean = if s.is_finite() { s.clamp(-1.0, 1.0) } else { 0.0 };
+            self.dry_buffer[i] = clean;
+            self.wet_buffer[i] = clean;
+        }
+
         // If hard bypass requested, forward directly with safety limiting
         if self.bypass {
-            self.drift_compensator.adjust_frame(frame, &mut self.drift_buffer, buffer_fill_samples);
+            self.drift_compensator.adjust_frame(&self.dry_buffer, &mut self.drift_buffer, buffer_fill_samples);
             self.output_resampler.process(&self.drift_buffer, output_mono)?;
             return Ok(());
         }
-
-        // Save raw dry frame
-        self.dry_buffer.copy_from_slice(frame);
-
-        // Step 2: High-Pass Filter (80 Hz Butterworth) to eliminate sub-bass rumble
-        self.wet_buffer.copy_from_slice(frame);
         self.hpf.process_slice(&mut self.wet_buffer);
 
         // Step 3: AEC (subtract room loudspeaker echo if enabled)
@@ -240,6 +241,13 @@ impl AudioPipeline {
         // Step 8: Soft Peak Limiter (prevent digital clipping)
         self.limiter.process_slice(&mut self.blended_buffer);
 
+        // Guarantee absolute finite stability (no NaNs or infinities can ever escape)
+        for s in self.blended_buffer.iter_mut() {
+            if !s.is_finite() {
+                *s = 0.0;
+            }
+        }
+
         // Step 9: Adaptive Clock Drift Compensation
         self.drift_compensator.adjust_frame(&self.blended_buffer, &mut self.drift_buffer, buffer_fill_samples);
 
@@ -247,5 +255,82 @@ impl AudioPipeline {
         self.output_resampler.process(&self.drift_buffer, output_mono)?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pipeline_no_reallocations_over_1000_frames() {
+        let mut pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline init failed");
+        pipeline.set_mode(EngineMode::Standard);
+        pipeline.set_strength(0.85);
+
+        let input_chunk = vec![0.05f32; AudioPipeline::FRAME_SAMPLES];
+        let mut output_chunk = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES + 10);
+        let initial_cap = output_chunk.capacity();
+
+        for frame_idx in 0..1000 {
+            let res = pipeline.process_frame_internal(&input_chunk, &mut output_chunk, 960);
+            assert!(res.is_ok(), "Frame {} processing failed", frame_idx);
+            assert_eq!(output_chunk.len(), AudioPipeline::FRAME_SAMPLES);
+            assert_eq!(output_chunk.capacity(), initial_cap, "Output chunk reallocated at frame {}", frame_idx);
+        }
+    }
+
+    #[test]
+    fn test_pipeline_nan_and_inf_safety() {
+        let mut pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline init failed");
+        let mut noisy_frame = vec![0.1f32; AudioPipeline::FRAME_SAMPLES];
+        noisy_frame[10] = f32::NAN;
+        noisy_frame[20] = f32::INFINITY;
+        noisy_frame[30] = -1e9;
+        noisy_frame[40] = 1e9;
+
+        let mut output_chunk = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES + 10);
+        let res = pipeline.process_frame_internal(&noisy_frame, &mut output_chunk, 960);
+        assert!(res.is_ok());
+
+        for &sample in &output_chunk {
+            assert!(!sample.is_nan(), "Output contains NaN");
+            assert!(sample.is_finite(), "Output contains non-finite sample");
+            assert!(sample.abs() <= 1.05, "Limiter failed to contain extreme spike: {}", sample);
+        }
+    }
+
+    #[test]
+    fn test_pipeline_mute_behavior() {
+        let mut pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline init failed");
+        pipeline.set_muted(true);
+
+        let input_chunk = vec![0.5f32; AudioPipeline::FRAME_SAMPLES];
+        let mut output_chunk = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES + 10);
+
+        let res = pipeline.process_frame_internal(&input_chunk, &mut output_chunk, 960);
+        assert!(res.is_ok());
+        for &s in &output_chunk {
+            assert_eq!(s, 0.0, "Muted pipeline must output pure digital silence");
+        }
+    }
+
+    #[test]
+    fn test_pipeline_bypass_pass_through() {
+        let mut pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline init failed");
+        pipeline.set_bypass(true);
+
+        let input_chunk: Vec<f32> = (0..AudioPipeline::FRAME_SAMPLES)
+            .map(|i| (i as f32 / 480.0) * 0.2)
+            .collect();
+        let mut output_chunk = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES + 10);
+
+        let res = pipeline.process_frame_internal(&input_chunk, &mut output_chunk, 960);
+        assert!(res.is_ok());
+        assert_eq!(output_chunk.len(), input_chunk.len());
+        // Verify signal matches closely
+        for (i, (&in_s, &out_s)) in input_chunk.iter().zip(&output_chunk).enumerate() {
+            assert!((in_s - out_s).abs() < 1e-3, "Mismatch at sample {}: in={}, out={}", i, in_s, out_s);
+        }
     }
 }

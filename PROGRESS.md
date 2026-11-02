@@ -29,6 +29,12 @@
 - Executed `cargo clippy --workspace -- -D warnings` (passed with 0 errors and 0 warnings).
 - Executed `cargo test --workspace` (13/13 unit tests passed, 0 failures).
 
+### Commit 3: Real-Time Memory Protection & Numerical Safety Tests
+- Implemented hardware driver NaN/Infinity sanitization at the audio pipeline ingress and egress.
+- Added automated tests verifying zero memory reallocations across 1,000 frames (10 seconds of streaming).
+- Added tests verifying NaN, Inf, and extreme voltage spike rejection without pipeline disruption.
+- Verified test suite: 17/17 tests passing cleanly.
+
 ---
 
 ## 3. Decisions & Rationale
