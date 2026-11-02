@@ -4,10 +4,48 @@ mod test_set;
 use hound::{WavSpec, WavWriter};
 use metrics::{AudioMetricsEvaluator, BenchmarkResult};
 use quietmic_core::engine::pipeline::{AudioPipeline, EngineMode};
+use std::alloc::{GlobalAlloc, Layout, System};
 use std::fs;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 use test_set::TestSetGenerator;
+
+struct CountingAllocator;
+static TOTAL_ALLOCS: AtomicUsize = AtomicUsize::new(0);
+
+unsafe impl GlobalAlloc for CountingAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        TOTAL_ALLOCS.fetch_add(1, Ordering::Relaxed);
+        System.alloc(layout)
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        System.dealloc(ptr, layout)
+    }
+}
+
+#[global_allocator]
+static GLOBAL: CountingAllocator = CountingAllocator;
+
+#[cfg(windows)]
+fn get_peak_ram_mb() -> f32 {
+    use windows::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
+    use windows::Win32::System::Threading::GetCurrentProcess;
+    unsafe {
+        let mut counters = PROCESS_MEMORY_COUNTERS::default();
+        let cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+        if K32GetProcessMemoryInfo(GetCurrentProcess(), &mut counters, cb).as_bool() {
+            counters.PeakWorkingSetSize as f32 / (1024.0 * 1024.0)
+        } else {
+            0.0
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn get_peak_ram_mb() -> f32 {
+    0.0
+}
 
 fn write_wav(path: &Path, samples: &[f32], sample_rate: u32) -> Result<(), String> {
     let spec = WavSpec {
@@ -35,6 +73,7 @@ fn write_wav(path: &Path, samples: &[f32], sample_rate: u32) -> Result<(), Strin
 fn benchmark_pipeline(
     scenario_name: &str,
     mode: EngineMode,
+    aec_enabled: bool,
     clean: &[f32],
     noisy: &[f32],
     sample_rate: u32,
@@ -43,6 +82,7 @@ fn benchmark_pipeline(
     let mut pipeline = AudioPipeline::new(sample_rate, sample_rate).expect("Pipeline init failed");
     pipeline.set_mode(mode);
     pipeline.set_strength(1.0);
+    pipeline.set_aec_enabled(aec_enabled);
 
     // If VoiceIsolation mode, enroll using first 1 second of clean speech
     if mode == EngineMode::VoiceIsolation {
@@ -51,19 +91,31 @@ fn benchmark_pipeline(
 
     let mut cleaned_audio = Vec::with_capacity(noisy.len());
     let mut frame_times_us = Vec::new();
-    let mut scratch_out = Vec::new();
+    let mut scratch_out = Vec::with_capacity(490);
+    let mut total_frame_allocs = 0;
 
     let frame_size = 480;
     let mut offset = 0;
+    let aec_ref_chunk = vec![0.02f32; frame_size];
 
     let t_start_total = Instant::now();
 
     while offset + frame_size <= noisy.len() {
         let in_frame = &noisy[offset..offset + frame_size];
 
+        if aec_enabled {
+            pipeline.feed_aec_reference(&aec_ref_chunk);
+        }
+
+        let alloc_before = TOTAL_ALLOCS.load(Ordering::Relaxed);
         let t0 = Instant::now();
         let _ = pipeline.process_frame_internal(in_frame, &mut scratch_out, 960);
         let elapsed_us = t0.elapsed().as_micros() as f32;
+        let alloc_after = TOTAL_ALLOCS.load(Ordering::Relaxed);
+
+        if alloc_after > alloc_before {
+            total_frame_allocs += alloc_after - alloc_before;
+        }
 
         frame_times_us.push(elapsed_us);
         cleaned_audio.extend_from_slice(&scratch_out);
@@ -96,9 +148,14 @@ fn benchmark_pipeline(
         EngineMode::VoiceIsolation => "Voice Isolation",
     };
 
+    let peak_ram = get_peak_ram_mb();
+    let num_frames = frame_times_us.len().max(1);
+    let allocs_per_frame = total_frame_allocs / num_frames;
+
     BenchmarkResult {
         scenario: scenario_name.to_string(),
         mode: mode_str.to_string(),
+        aec_enabled,
         input_snr_db: in_snr,
         output_snr_db: out_snr,
         snr_improvement_db: delta_snr,
@@ -110,17 +167,21 @@ fn benchmark_pipeline(
         p99_frame_us: p99_us,
         max_frame_us: max_us,
         real_time_factor: rtf,
+        allocations_per_frame: allocs_per_frame,
+        peak_ram_mb: peak_ram,
     }
 }
 
 fn main() {
     println!("================================================================================");
     println!(" QuietMic DSP & ML Verification Harness");
-    println!(" Benchmarking Light, Standard, and Voice Isolation modes");
+    println!(" Benchmarking Light, Standard, and Voice Isolation (with & without AEC)");
     println!("================================================================================");
 
     let output_dir = Path::new("target/bench_output");
     let _ = fs::create_dir_all(output_dir);
+    let bench_dir = Path::new("benchmarks");
+    let _ = fs::create_dir_all(bench_dir);
 
     let scenarios = TestSetGenerator::create_test_suite();
     println!("Loaded {} test scenarios across 4 noise profiles & 4 SNR levels (-5dB to 10dB).", scenarios.len());
@@ -135,9 +196,9 @@ fn main() {
         "Background_Talker_+5dB_SNR",
     ];
 
-    println!("\n{:<28} | {:<24} | {:>8} | {:>8} | {:>6} | {:>6} | {:>6} | {:>8} | {:>6}",
-        "Scenario", "Mode", "In SNR", "Out SNR", "SIG", "BAK", "OVRL", "Avg (us)", "RTF");
-    println!("{:-<125}", "");
+    println!("\n{:<26} | {:<20} | {:<5} | {:>7} | {:>7} | {:>5} | {:>5} | {:>5} | {:>7} | {:>6} | {:>6} | {:>6}",
+        "Scenario", "Mode", "AEC", "In SNR", "Out SNR", "SIG", "BAK", "OVRL", "Avg(us)", "P99(us)", "RTF", "Allocs");
+    println!("{:-<135}", "");
 
     for sc in &scenarios {
         let is_key = key_scenarios.iter().any(|&k| sc.name == k);
@@ -149,51 +210,59 @@ fn main() {
         }
 
         // Test Unprocessed Baseline
-        let _baseline_si_sdr = AudioMetricsEvaluator::calculate_si_sdr(&sc.clean_speech, &sc.noisy_mixture);
         let (base_sig, base_bak, base_ovrl) = AudioMetricsEvaluator::evaluate_dnsmos(&sc.clean_speech, &sc.noisy_mixture);
 
         if is_key {
-            println!("{:<28} | {:<24} | {:>7.1}dB | {:>7.1}dB | {:>6.2} | {:>6.2} | {:>6.2} | {:>8} | {:>6}",
-                sc.name, "Unprocessed (Raw)", sc.target_snr_db, sc.target_snr_db, base_sig, base_bak, base_ovrl, "-", "-");
+            println!("{:<26} | {:<20} | {:<5} | {:>6.1}dB | {:>6.1}dB | {:>5.2} | {:>5.2} | {:>5.2} | {:>7} | {:>7} | {:>6} | {:>6}",
+                sc.name, "Unprocessed (Raw)", "N/A", sc.target_snr_db, sc.target_snr_db, base_sig, base_bak, base_ovrl, "-", "-", "-", "0");
         }
 
-        // Test Light Engine (RNNoise)
-        let light_wav = if is_key { Some(output_dir.join(format!("cleaned_light_{}.wav", sc.name))) } else { None };
-        let res_light = benchmark_pipeline(&sc.name, EngineMode::Light, &sc.clean_speech, &sc.noisy_mixture, sc.sample_rate, light_wav.as_deref());
-        if is_key {
-            println!("{:<28} | {:<24} | {:>7.1}dB | {:>7.1}dB | {:>6.2} | {:>6.2} | {:>6.2} | {:>7.1}us | {:>6.4}",
-                sc.name, res_light.mode, res_light.input_snr_db, res_light.output_snr_db,
-                res_light.dnsmos_sig, res_light.dnsmos_bak, res_light.dnsmos_ovrl,
-                res_light.mean_frame_us, res_light.real_time_factor);
-        }
-        all_results.push(res_light);
-
-        // Test Standard Engine (DeepFilterNet3)
-        let std_wav = if is_key { Some(output_dir.join(format!("cleaned_standard_{}.wav", sc.name))) } else { None };
-        let res_std = benchmark_pipeline(&sc.name, EngineMode::Standard, &sc.clean_speech, &sc.noisy_mixture, sc.sample_rate, std_wav.as_deref());
-        if is_key {
-            println!("{:<28} | {:<24} | {:>7.1}dB | {:>7.1}dB | {:>6.2} | {:>6.2} | {:>6.2} | {:>7.1}us | {:>6.4}",
-                sc.name, res_std.mode, res_std.input_snr_db, res_std.output_snr_db,
-                res_std.dnsmos_sig, res_std.dnsmos_bak, res_std.dnsmos_ovrl,
-                res_std.mean_frame_us, res_std.real_time_factor);
-        }
-        all_results.push(res_std);
-
-        // Test Voice Isolation Engine for background talker
-        if sc.name.contains("Background_Talker") {
-            let iso_wav = if is_key { Some(output_dir.join(format!("cleaned_voice_iso_{}.wav", sc.name))) } else { None };
-            let res_iso = benchmark_pipeline(&sc.name, EngineMode::VoiceIsolation, &sc.clean_speech, &sc.noisy_mixture, sc.sample_rate, iso_wav.as_deref());
+        // 1. Light Engine (No AEC and With AEC)
+        for &aec in &[false, true] {
+            let light_wav = if is_key && !aec { Some(output_dir.join(format!("cleaned_light_{}.wav", sc.name))) } else { None };
+            let res = benchmark_pipeline(&sc.name, EngineMode::Light, aec, &sc.clean_speech, &sc.noisy_mixture, sc.sample_rate, light_wav.as_deref());
             if is_key {
-                println!("{:<28} | {:<24} | {:>7.1}dB | {:>7.1}dB | {:>6.2} | {:>6.2} | {:>6.2} | {:>7.1}us | {:>6.4}",
-                    sc.name, res_iso.mode, res_iso.input_snr_db, res_iso.output_snr_db,
-                    res_iso.dnsmos_sig, res_iso.dnsmos_bak, res_iso.dnsmos_ovrl,
-                    res_iso.mean_frame_us, res_iso.real_time_factor);
+                let aec_str = if aec { "Yes" } else { "No" };
+                println!("{:<26} | {:<20} | {:<5} | {:>6.1}dB | {:>6.1}dB | {:>5.2} | {:>5.2} | {:>5.2} | {:>6.1}us | {:>6.1}us | {:>6.4} | {:>6}",
+                    sc.name, res.mode, aec_str, res.input_snr_db, res.output_snr_db,
+                    res.dnsmos_sig, res.dnsmos_bak, res.dnsmos_ovrl,
+                    res.mean_frame_us, res.p99_frame_us, res.real_time_factor, res.allocations_per_frame);
             }
-            all_results.push(res_iso);
+            all_results.push(res);
+        }
+
+        // 2. Standard Engine (No AEC and With AEC)
+        for &aec in &[false, true] {
+            let std_wav = if is_key && !aec { Some(output_dir.join(format!("cleaned_standard_{}.wav", sc.name))) } else { None };
+            let res = benchmark_pipeline(&sc.name, EngineMode::Standard, aec, &sc.clean_speech, &sc.noisy_mixture, sc.sample_rate, std_wav.as_deref());
+            if is_key {
+                let aec_str = if aec { "Yes" } else { "No" };
+                println!("{:<26} | {:<20} | {:<5} | {:>6.1}dB | {:>6.1}dB | {:>5.2} | {:>5.2} | {:>5.2} | {:>6.1}us | {:>6.1}us | {:>6.4} | {:>6}",
+                    sc.name, res.mode, aec_str, res.input_snr_db, res.output_snr_db,
+                    res.dnsmos_sig, res.dnsmos_bak, res.dnsmos_ovrl,
+                    res.mean_frame_us, res.p99_frame_us, res.real_time_factor, res.allocations_per_frame);
+            }
+            all_results.push(res);
+        }
+
+        // 3. Voice Isolation Engine (for background talker scenarios)
+        if sc.name.contains("Background_Talker") {
+            for &aec in &[false, true] {
+                let iso_wav = if is_key && !aec { Some(output_dir.join(format!("cleaned_voice_iso_{}.wav", sc.name))) } else { None };
+                let res = benchmark_pipeline(&sc.name, EngineMode::VoiceIsolation, aec, &sc.clean_speech, &sc.noisy_mixture, sc.sample_rate, iso_wav.as_deref());
+                if is_key {
+                    let aec_str = if aec { "Yes" } else { "No" };
+                    println!("{:<26} | {:<20} | {:<5} | {:>6.1}dB | {:>6.1}dB | {:>5.2} | {:>5.2} | {:>5.2} | {:>6.1}us | {:>6.1}us | {:>6.4} | {:>6}",
+                        sc.name, res.mode, aec_str, res.input_snr_db, res.output_snr_db,
+                        res.dnsmos_sig, res.dnsmos_bak, res.dnsmos_ovrl,
+                        res.mean_frame_us, res.p99_frame_us, res.real_time_factor, res.allocations_per_frame);
+                }
+                all_results.push(res);
+            }
         }
     }
 
-    println!("{:-<125}", "");
+    println!("{:-<135}", "");
 
     // Export full JSON report
     let report_path = output_dir.join("benchmark_report.json");
@@ -201,4 +270,65 @@ fn main() {
     let _ = fs::write(&report_path, json_str);
     println!("\nFull benchmark report written to: {:?}", report_path);
     println!("A/B comparison WAV files saved to: {:?}", output_dir);
+
+    // Generate benchmarks/baseline.md
+    generate_baseline_markdown(&all_results, &bench_dir.join("baseline.md"));
+}
+
+fn generate_baseline_markdown(results: &[BenchmarkResult], path: &Path) {
+    let mut md = String::new();
+    md.push_str("# QuietMic Baseline Performance Benchmark\n\n");
+    md.push_str("**Target Platform:** Windows 10/11 (x64)  \n");
+    md.push_str("**Pipeline Specifications:** 48 kHz mono, 10 ms frames (480 samples), 10.0 ms algorithmic latency  \n");
+    md.push_str("**Real-Time Budget:** 10,000 µs (10 ms) per frame  \n\n");
+
+    md.push_str("## 1. Executive Performance Summary\n\n");
+    md.push_str("| Mode | AEC Enabled | Mean Frame (µs) | P99 Frame (µs) | Max Frame (µs) | RTF | Heap Allocs/Frame | Peak RAM (MB) |\n");
+    md.push_str("| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n");
+
+    // Compute aggregate averages per mode
+    let modes = [
+        ("Light (RNNoise)", false),
+        ("Light (RNNoise)", true),
+        ("Standard (DeepFilterNet3)", false),
+        ("Standard (DeepFilterNet3)", true),
+        ("Voice Isolation", false),
+        ("Voice Isolation", true),
+    ];
+
+    for &(m, aec) in &modes {
+        let matching: Vec<&BenchmarkResult> = results.iter()
+            .filter(|r| r.mode == m && r.aec_enabled == aec)
+            .collect();
+        if matching.is_empty() { continue; }
+
+        let count = matching.len() as f32;
+        let mean: f32 = matching.iter().map(|r| r.mean_frame_us).sum::<f32>() / count;
+        let p99: f32 = matching.iter().map(|r| r.p99_frame_us).sum::<f32>() / count;
+        let max: f32 = matching.iter().map(|r| r.max_frame_us).fold(0.0f32, |a, b| a.max(b));
+        let rtf: f32 = matching.iter().map(|r| r.real_time_factor).sum::<f32>() / count;
+        let allocs: usize = matching.iter().map(|r| r.allocations_per_frame).sum::<usize>() / matching.len();
+        let ram: f32 = matching.iter().map(|r| r.peak_ram_mb).fold(0.0f32, |a, b| a.max(b));
+
+        md.push_str(&format!(
+            "| **{}** | {} | **{:.1} µs** | {:.1} µs | {:.1} µs | **{:.4}** | **{}** | {:.2} MB |\n",
+            m, if aec { "Yes" } else { "No" }, mean, p99, max, rtf, allocs, ram
+        ));
+    }
+
+    md.push_str("\n## 2. Objective Speech Quality & Noise Suppression Matrix\n\n");
+    md.push_str("| Scenario | Mode | AEC | Input SNR | Output SNR | ΔSNR | DNSMOS SIG | DNSMOS BAK | DNSMOS OVRL |\n");
+    md.push_str("| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n");
+
+    for r in results.iter().take(20) {
+        md.push_str(&format!(
+            "| {} | {} | {} | {:.1} dB | {:.1} dB | **{:.1} dB** | {:.2} | {:.2} | **{:.2}** |\n",
+            r.scenario, r.mode, if r.aec_enabled { "Yes" } else { "No" },
+            r.input_snr_db, r.output_snr_db, r.snr_improvement_db,
+            r.dnsmos_sig, r.dnsmos_bak, r.dnsmos_ovrl
+        ));
+    }
+
+    let _ = fs::write(path, md);
+    println!("Baseline report saved to: {:?}", path);
 }

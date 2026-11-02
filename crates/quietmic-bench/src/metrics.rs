@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct BenchmarkResult {
     pub scenario: String,
     pub mode: String,
+    pub aec_enabled: bool,
     pub input_snr_db: f32,
     pub output_snr_db: f32,
     pub snr_improvement_db: f32,
@@ -15,6 +16,8 @@ pub struct BenchmarkResult {
     pub p99_frame_us: f32,
     pub max_frame_us: f32,
     pub real_time_factor: f32,
+    pub allocations_per_frame: usize,
+    pub peak_ram_mb: f32,
 }
 
 pub struct AudioMetricsEvaluator;

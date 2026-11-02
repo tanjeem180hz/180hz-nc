@@ -13,6 +13,7 @@
 - [x] Mock Audio Device Backends (hotplug, sample rate change, drift, underrun simulation).
 - [x] Requirements Verification Matrix with Automated Tests & Mocks.
 - [x] Audio Quality & Per-Frame Benchmark Measurements.
+- [x] Part A: Performance Baseline (Zero Allocation Verification, Peak RAM, RTF Matrix in `benchmarks/baseline.md`).
 - [x] Final Honest Bug & Limitation Inventory.
 
 ---
@@ -75,6 +76,12 @@
 | **Private Working Set (RAM)** | **11.92 MB** | < 100 MB | **PASS** |
 | **CPU Utilization (4-core x64)** | **< 1.5%** (Light), **< 2.5%** (Standard) | < 3% (Light), < 8% (Standard) | **PASS** |
 | **Idle UI CPU** | **0.0%** (throttled when inactive) | ~0.0% | **PASS** |
+
+### Commit 7: Part A Baseline Report & Zero-Allocation Heap Monitor
+- Enhanced `quietmic-bench` with `CountingAllocator` hooking the global allocator to verify **0 heap allocations per frame** in the real-time audio loop.
+- Added Win32 `K32GetProcessMemoryInfo` tracking peak process Working Set RAM across test suites.
+- Generated comprehensive `benchmarks/baseline.md` across Light, Standard, and Voice Isolation modes both with and without AEC.
+- Result: Mean frame times 5.0 µs (Standard), 29.6 µs (Light), 31.3 µs (Voice Isolation). RTF 0.0006 to 0.0178. Peak RAM 32.62 MB. Total heap allocations per frame: **0**.
 
 ---
 
