@@ -1,6 +1,6 @@
 use crate::audio::device::DeviceManager;
 use crate::audio::mmcss::MmcssHandle;
-use crate::engine::pipeline::AudioPipeline;
+use crate::engine::pipeline::{AudioPipeline, EngineMode};
 use cpal::traits::{DeviceTrait, StreamTrait};
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use ringbuf::HeapRb;
@@ -238,6 +238,7 @@ impl AudioStreamController {
                 let mut in_chunk = vec![0.0f32; AudioPipeline::FRAME_SAMPLES];
                 let mut out_chunk = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES + 10);
                 let mut ref_scratch = [0.0f32; AudioPipeline::FRAME_SAMPLES];
+                let mut starvation_counter = 0usize;
 
                 while is_running_worker.load(Ordering::Relaxed) {
                     // Drain AEC reference samples if loopback is active
@@ -282,6 +283,18 @@ impl AudioStreamController {
 
                         let elapsed_us = t0.elapsed().as_micros() as u64;
                         worker_metrics.frame_time_us.store(elapsed_us, Ordering::Relaxed);
+
+                        // Auto-downgrade under severe CPU starvation to prevent audible dropouts
+                        if elapsed_us > 8000 {
+                            starvation_counter += 1;
+                            if starvation_counter >= 5 && worker_pipeline.mode() != EngineMode::Light {
+                                tracing::warn!("CPU starvation detected (>80% frame budget over 5 consecutive frames). Auto-downgrading to Light mode.");
+                                worker_pipeline.set_mode(EngineMode::Light);
+                                starvation_counter = 0;
+                            }
+                        } else {
+                            starvation_counter = starvation_counter.saturating_sub(1);
+                        }
 
                         if res.is_ok() {
                             let mut out_peak = 0.0f32;

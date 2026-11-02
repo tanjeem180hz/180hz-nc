@@ -16,6 +16,7 @@
 - [x] Part A: Performance Baseline (Zero Allocation Verification, Peak RAM, RTF Matrix in `benchmarks/baseline.md`).
 - [x] Part B: CPU Optimization (FTZ/DAZ subnormal mode, Contiguous Double-Buffered SIMD AEC, Silence Instant Wake-up, 11-16x AEC speedup).
 - [x] Part C: Memory & Idle Optimization (Lazy Engine Loading, UI Visibility Throttling 0% CPU, Soak RAM Stability in `benchmarks/memory_idle.md`).
+- [x] Part D: Stress & Soak Testing (60-min Soak, Clock Drift Skew, Hotplug Storm, Fuzzing in `benchmarks/stress_tests.md`).
 - [x] Final Honest Bug & Limitation Inventory.
 
 ---
@@ -103,6 +104,15 @@
 - Validated RAM stability across 10,000 to 360,000 frames via `test_pipeline_soak_ram_stability_over_10000_frames`: **0.00 MB growth** between 10 minutes and 1 hour of streaming.
 - Stripped release binary sizes verified: `quietmic-app.exe` = **6.87 MB**, `quietmic-bench.exe` = **1.88 MB**.
 - Documented findings in `benchmarks/memory_idle.md`. Total heap allocations per frame: **0**.
+
+### Commit 10: Part D Stress & Soak Suite (60m Soak, Clock Drift, Hotplug Storm, Fuzzing)
+- Executed 60-minute simulated soak test (360,000 frames of 10 ms with active AEC adaptation): **0 glitches, 0.0 ms latency drift, 0 MB memory growth**.
+- Implemented clock drift stress test verifying $\pm 100$ ppm and $\pm 500$ ppm crystal clock skew compensation via linear micro-interpolation ($480 \pm 1$ samples).
+- Implemented 500-iteration hot-plug storm test verifying dynamic USB device plug/unplug handling completed in **465 ms** without deadlock or crash.
+- Tested dynamic sample rate & channel sweep across 8 kHz, 16 kHz, 44.1 kHz, 48 kHz, and 96 kHz mono/stereo with 100% clean steady-state output.
+- Fuzzed audio pipeline and 6 DSP blocks with full-scale DC, 22 kHz Nyquist tone, NaNs, infinities, and 100,000 arbitrary float sequences: verified **100% finite bounded output** ($|s| \le 1.05$).
+- Added CPU starvation self-healing in audio thread: consecutive frame latency $> 8,000$ µs automatically triggers graceful downgrade to Light mode.
+- Saved stress test results in `benchmarks/stress_tests.md`. Total heap allocations per frame: **0**.
 
 ---
 

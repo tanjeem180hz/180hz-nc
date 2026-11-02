@@ -232,4 +232,223 @@ mod tests {
         assert!(harness.process_mock_frame(&normal_frame, &mut output, 960).is_ok());
         assert_eq!(output.len(), 480);
     }
+
+    #[test]
+    fn test_stress_hotplug_storm_500_iterations() {
+        let manager = MockDeviceManager::new();
+        let t0 = std::time::Instant::now();
+
+        for i in 0..500 {
+            let dev_name = format!("USB Interface {}", i % 10);
+            if i % 2 == 0 {
+                manager.plug_in_device(&dev_name, 48000, 2);
+            } else {
+                manager.unplug_device(&dev_name);
+            }
+            let _ = manager.list_devices();
+        }
+
+        let elapsed = t0.elapsed();
+        // Must complete 500 iterations without deadlock in under 2.0 seconds
+        assert!(elapsed.as_millis() < 2000, "Hotplug storm took too long: {:?}", elapsed);
+    }
+
+    #[test]
+    fn test_stress_clock_drift_ppm_skew() {
+        // Test +100 ppm, -100 ppm, +500 ppm, and -500 ppm clock skew
+        let skews_ppm = [100.0f32, -100.0f32, 500.0f32, -500.0f32];
+
+        for &skew in &skews_ppm {
+            let mut harness = MockStreamHarness::new(48000, 1, EngineMode::Standard);
+            let mut output = Vec::with_capacity(500);
+
+            // Target fill is 960 samples (20 ms).
+            // Skew causes buffer fill to deviate:
+            let simulated_fill = (960.0 * (1.0 + skew / 1000.0)) as usize;
+
+            for _ in 0..200 {
+                let in_frame = harness.generate_test_frame(480, 440.0);
+                assert!(harness.process_mock_frame(&in_frame, &mut output, simulated_fill).is_ok());
+                let diff = (output.len() as isize - 480).abs();
+                assert!(diff <= 1, "Output frame length deviates beyond drift bounds: {}", output.len());
+                for &s in &output {
+                    assert!(s.is_finite(), "Output sample must be finite under clock skew");
+                    assert!(s.abs() <= 1.05, "Output exceeded limiter bound");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_stress_sample_rate_and_channel_sweep() {
+        let configs = [
+            (8000, 1, 80),    // Narrowband 8 kHz mono: 10 ms = 80 samples
+            (16000, 1, 160),  // Wideband 16 kHz mono: 10 ms = 160 samples
+            (44100, 2, 441),  // CD 44.1 kHz stereo: 10 ms = 441 samples * 2
+            (48000, 2, 480),  // Broadcast 48 kHz stereo: 10 ms = 480 samples * 2
+            (96000, 2, 960),  // High-Res 96 kHz stereo: 10 ms = 960 samples * 2
+        ];
+
+        for (sr, channels, frame_samples) in configs {
+            let mut harness = MockStreamHarness::new(sr, channels, EngineMode::Standard);
+            let mut out = Vec::with_capacity(500);
+
+            // Warm up filter into steady-state
+            for _ in 0..10 {
+                let frame = harness.generate_test_frame(frame_samples, 500.0);
+                assert!(harness.process_mock_frame(&frame, &mut out, 960).is_ok());
+            }
+
+            assert_eq!(out.len(), 480, "Resampled output at {} kHz must be exactly 480 samples", sr);
+            for &s in &out {
+                assert!(s.is_finite());
+            }
+        }
+    }
+
+    #[test]
+    fn test_stress_extreme_inputs_fuzz() {
+        let mut pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline init failed");
+        pipeline.set_mode(EngineMode::Standard);
+        pipeline.set_strength(1.0);
+        pipeline.set_aec_enabled(true);
+
+        let mut out = Vec::with_capacity(500);
+        let aec_ref = vec![0.02f32; 480];
+
+        // 1. Full Scale DC (+1.0 and -1.0)
+        let dc_pos = vec![1.0f32; 480];
+        let dc_neg = vec![-1.0f32; 480];
+        for _ in 0..50 {
+            pipeline.feed_aec_reference(&aec_ref);
+            assert!(pipeline.process_frame_internal(&dc_pos, &mut out, 960).is_ok());
+            for &s in &out {
+                assert!(s.is_finite() && s.abs() <= 1.05);
+            }
+            assert!(pipeline.process_frame_internal(&dc_neg, &mut out, 960).is_ok());
+            for &s in &out {
+                assert!(s.is_finite() && s.abs() <= 1.05);
+            }
+        }
+
+        // 2. High Frequency Nyquist Tone (22 kHz)
+        let nyquist_tone: Vec<f32> = (0..480)
+            .map(|i| (2.0 * std::f32::consts::PI * 22000.0 * (i as f32) / 48000.0).sin())
+            .collect();
+        for _ in 0..50 {
+            assert!(pipeline.process_frame_internal(&nyquist_tone, &mut out, 960).is_ok());
+            for &s in &out {
+                assert!(s.is_finite() && s.abs() <= 1.05);
+            }
+        }
+
+        // 3. Extreme Spikes and NaNs / Infinities
+        let mut extreme_frame = vec![0.0f32; 480];
+        for i in 0..480 {
+            match i % 6 {
+                0 => extreme_frame[i] = f32::NAN,
+                1 => extreme_frame[i] = f32::INFINITY,
+                2 => extreme_frame[i] = f32::NEG_INFINITY,
+                3 => extreme_frame[i] = 1000.0, // Severe voltage spike
+                4 => extreme_frame[i] = -1000.0,
+                _ => extreme_frame[i] = 0.0,
+            }
+        }
+        for _ in 0..50 {
+            assert!(pipeline.process_frame_internal(&extreme_frame, &mut out, 960).is_ok());
+            for &s in &out {
+                assert!(s.is_finite(), "Sanitizer failed to eliminate non-finite sample");
+                assert!(s.abs() <= 1.05, "Limiter failed to contain spike");
+            }
+        }
+    }
+
+    #[test]
+    fn test_stress_dsp_property_fuzz() {
+        use crate::dsp::biquad::HighPassFilter;
+        use crate::dsp::gain_smoother::GainSmoother;
+        use crate::dsp::limiter::SoftLimiter;
+        use crate::dsp::comfort_noise::ComfortNoiseGenerator;
+        use crate::engine::aec::EchoCanceller;
+
+        let mut hpf = HighPassFilter::default_48k();
+        let mut smoother = GainSmoother::default_48k();
+        let limiter = SoftLimiter::default_preset();
+        let mut noise = ComfortNoiseGenerator::default_preset();
+        let mut aec = EchoCanceller::default_preset();
+        aec.set_enabled(true);
+
+        // Deterministic LCG pseudo-random generator
+        let mut seed = 0x12345678u64;
+        let mut next_f32 = || {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let val = ((seed >> 32) as i32) as f32 / 2147483648.0;
+            // Introduce special floats occasionally
+            match seed % 50 {
+                0 => 0.0f32,
+                1 => 1e-38f32, // Denormal
+                2 => -1e-38f32,
+                3 => 1.0f32,
+                4 => -1.0f32,
+                _ => val,
+            }
+        };
+
+        let mut buffer = vec![0.0f32; 480];
+        let mut ref_buf = vec![0.0f32; 480];
+
+        for _ in 0..100 {
+            for i in 0..480 {
+                buffer[i] = next_f32();
+                ref_buf[i] = next_f32();
+            }
+
+            hpf.process_slice(&mut buffer);
+            for &s in &buffer { assert!(s.is_finite()); }
+
+            aec.feed_reference(&ref_buf);
+            aec.process_mic_frame(&mut buffer);
+            for &s in &buffer { assert!(s.is_finite()); }
+
+            smoother.blend_frame(&ref_buf, &buffer, &mut buffer.clone());
+            noise.inject_into(&mut buffer);
+            limiter.process_slice(&mut buffer);
+
+            for &s in &buffer {
+                assert!(s.is_finite(), "DSP fuzz produced non-finite output");
+                assert!(s.abs() <= 1.05, "Limiter failed to bound output: {}", s);
+            }
+        }
+    }
+
+    #[test]
+    fn test_stress_60_minute_simulated_soak() {
+        let mut pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline init failed");
+        pipeline.set_mode(EngineMode::Standard);
+        pipeline.set_strength(1.0);
+        pipeline.set_aec_enabled(true);
+
+        let input_frame = vec![0.15f32; 480];
+        let mut output = Vec::with_capacity(500);
+        let aec_ref = vec![0.02f32; 480];
+
+        let target_frames = 360_000usize; // 60 minutes = 360,000 frames of 10 ms
+        let mut glitches = 0usize;
+        let init_cap = output.capacity();
+
+        for i in 0..target_frames {
+            if i % 10 == 0 {
+                pipeline.feed_aec_reference(&aec_ref);
+            }
+            if pipeline.process_frame_internal(&input_frame, &mut output, 960).is_err() {
+                glitches += 1;
+            }
+            if output.len() != 480 {
+                glitches += 1;
+            }
+        }
+
+        assert_eq!(glitches, 0, "Soak encountered glitches or dropouts!");
+        assert_eq!(output.capacity(), init_cap, "Memory grew during 60-minute soak!");
+    }
 }
