@@ -2,6 +2,21 @@
 /target/
 **/*.rs.bk
 *.pdb
+*.obj
+*.exe
+
+# Audio test outputs & models
+*.wav
+*.onnx
+*.bin
+
+# Logs
+*.log
+logs/
+
+# Frontend / Node
+node_modules/
+dist/
 
 # IDE & Editor files
 .vscode/
