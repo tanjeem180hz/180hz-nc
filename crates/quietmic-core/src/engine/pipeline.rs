@@ -48,7 +48,8 @@ impl AudioPipeline {
     pub const FRAME_SAMPLES: usize = 480; // 10 ms
 
     pub fn new(input_sample_rate: u32, output_sample_rate: u32) -> Result<Self, String> {
-        let input_resampler = AudioResampler::new(input_sample_rate, Self::INTERNAL_RATE, Self::FRAME_SAMPLES)?;
+        let in_chunk_samples = ((input_sample_rate as usize) / 100).max(1);
+        let input_resampler = AudioResampler::new(input_sample_rate, Self::INTERNAL_RATE, in_chunk_samples)?;
         let output_resampler = AudioResampler::new(Self::INTERNAL_RATE, output_sample_rate, Self::FRAME_SAMPLES)?;
 
         let light = LightEngine::new();

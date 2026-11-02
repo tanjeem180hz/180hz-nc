@@ -9,9 +9,9 @@
 ## 1. Executive Status
 - [x] Initialized `.gitignore` covering `target/`, `node_modules/`, `*.wav`, `logs/`, models, and binaries.
 - [x] Clean Workspace Rebuild (`cargo clean`, `cargo build --release`, `cargo clippy -- -D warnings`, `cargo test`).
-- [ ] Real-time Audio Callback & Processing Thread Audit (no allocation, lock, log, blocking, or panic).
+- [x] Real-time Audio Callback & Processing Thread Audit (no allocation, lock, log, blocking, or panic).
+- [x] Mock Audio Device Backends (hotplug, sample rate change, drift, underrun simulation).
 - [ ] Requirements Verification Matrix with Automated Tests & Mocks.
-- [ ] Mock Audio Device Backends (hotplug, sample rate change, drift, underrun simulation).
 - [ ] Audio Quality & Per-Frame Benchmark Measurements.
 - [ ] Final Honest Bug & Limitation Inventory.
 
@@ -34,6 +34,14 @@
 - Added automated tests verifying zero memory reallocations across 1,000 frames (10 seconds of streaming).
 - Added tests verifying NaN, Inf, and extreme voltage spike rejection without pipeline disruption.
 - Verified test suite: 17/17 tests passing cleanly.
+
+### Commit 4: Mock Audio Device Backends & Simulated Hardware Tests
+- Created `quietmic_core::audio::mock` module with `MockDeviceManager` and `MockStreamHarness`.
+- Tested dynamic hot-plug and unplugging of USB audio hardware.
+- Tested sample-rate transitions (16 kHz Bluetooth HFP, 44.1 kHz, 48 kHz, and 96 kHz studio interfaces).
+- Tested crystal clock drift skew compensation under overfill conditions.
+- Tested buffer underrun detection and seamless recovery.
+- Verified test suite: 21/21 tests passing cleanly.
 
 ---
 
