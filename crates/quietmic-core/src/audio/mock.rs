@@ -451,4 +451,49 @@ mod tests {
         assert_eq!(glitches, 0, "Soak encountered glitches or dropouts!");
         assert_eq!(output.capacity(), init_cap, "Memory grew during 60-minute soak!");
     }
+
+    #[test]
+    fn test_low_end_single_core_affinity_rtf() {
+        #[cfg(windows)]
+        {
+            use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessAffinityMask, SetProcessAffinityMask};
+            unsafe {
+                let mut proc_mask = 0usize;
+                let mut sys_mask = 0usize;
+                if GetProcessAffinityMask(GetCurrentProcess(), &mut proc_mask, &mut sys_mask).is_ok() {
+                    // Restrict process to single logical core (Core 0)
+                    let _ = SetProcessAffinityMask(GetCurrentProcess(), 1);
+
+                    let mut light_pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline init failed");
+                    light_pipeline.set_mode(EngineMode::Light);
+                    light_pipeline.set_strength(1.0);
+
+                    let test_frame = vec![0.2f32; 480];
+                    let mut out = Vec::with_capacity(500);
+
+                    // Warm up
+                    for _ in 0..100 {
+                        let _ = light_pipeline.process_frame_internal(&test_frame, &mut out, 960);
+                    }
+
+                    let t0 = std::time::Instant::now();
+                    let num_frames = 2000usize; // 20 seconds of audio
+                    for _ in 0..num_frames {
+                        let _ = light_pipeline.process_frame_internal(&test_frame, &mut out, 960);
+                    }
+                    let elapsed = t0.elapsed();
+                    let mean_frame_us = (elapsed.as_micros() as f32) / (num_frames as f32);
+                    let rtf = mean_frame_us / 10000.0; // 10,000 µs = 10 ms budget
+
+                    // Restore original process affinity mask
+                    let _ = SetProcessAffinityMask(GetCurrentProcess(), proc_mask);
+
+                    println!("\nSingle-core affinity Light mode: mean={:.1} µs, RTF={:.4}", mean_frame_us, rtf);
+                    // Light mode RTF target must be < 0.3 (< 30% of single core)
+                    assert!(rtf < 0.3, "Light mode RTF exceeded 0.3 on single core: rtf={}", rtf);
+                    assert!(mean_frame_us < 3000.0, "Mean frame time exceeded 3000 µs: {}", mean_frame_us);
+                }
+            }
+        }
+    }
 }

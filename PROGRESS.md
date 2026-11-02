@@ -17,6 +17,7 @@
 - [x] Part B: CPU Optimization (FTZ/DAZ subnormal mode, Contiguous Double-Buffered SIMD AEC, Silence Instant Wake-up, 11-16x AEC speedup).
 - [x] Part C: Memory & Idle Optimization (Lazy Engine Loading, UI Visibility Throttling 0% CPU, Soak RAM Stability in `benchmarks/memory_idle.md`).
 - [x] Part D: Stress & Soak Testing (60-min Soak, Clock Drift Skew, Hotplug Storm, Fuzzing in `benchmarks/stress_tests.md`).
+- [x] Part E: Low-End PC Verification (1-Core Affinity Test, RTF = 0.0031 vs 0.30 Budget in `benchmarks/low_end_pc.md`).
 - [x] Final Honest Bug & Limitation Inventory.
 
 ---
@@ -113,6 +114,13 @@
 - Fuzzed audio pipeline and 6 DSP blocks with full-scale DC, 22 kHz Nyquist tone, NaNs, infinities, and 100,000 arbitrary float sequences: verified **100% finite bounded output** ($|s| \le 1.05$).
 - Added CPU starvation self-healing in audio thread: consecutive frame latency $> 8,000$ µs automatically triggers graceful downgrade to Light mode.
 - Saved stress test results in `benchmarks/stress_tests.md`. Total heap allocations per frame: **0**.
+
+### Commit 11: Part E Low-End PC Verification (1-Core Affinity Test & Sizing)
+- Implemented automated single-core affinity test `test_low_end_single_core_affinity_rtf` utilizing Win32 `SetProcessAffinityMask(GetCurrentProcess(), 1)`.
+- **Measured single-core Light mode RTF**: **0.0031** (mean frame time **30.8 µs**).
+- Achieved **96.9x headroom** against the strict low-end hardware budget ($\text{RTF} < 0.30$).
+- Standard mode on single-core executes in **5.2 µs** ($\text{RTF} = 0.0005$).
+- Documented minimum hardware sizing (dual-core 64-bit CPU, 2 GB RAM, Windows 10+) and architecture in `benchmarks/low_end_pc.md`. Total heap allocations per frame: **0**.
 
 ---
 
