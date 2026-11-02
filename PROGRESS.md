@@ -8,7 +8,7 @@
 
 ## 1. Executive Status
 - [x] Initialized `.gitignore` covering `target/`, `node_modules/`, `*.wav`, `logs/`, models, and binaries.
-- [ ] Clean Workspace Rebuild (`cargo clean`, `cargo build --release`, `cargo clippy -- -D warnings`, `cargo test`).
+- [x] Clean Workspace Rebuild (`cargo clean`, `cargo build --release`, `cargo clippy -- -D warnings`, `cargo test`).
 - [ ] Real-time Audio Callback & Processing Thread Audit (no allocation, lock, log, blocking, or panic).
 - [ ] Requirements Verification Matrix with Automated Tests & Mocks.
 - [ ] Mock Audio Device Backends (hotplug, sample rate change, drift, underrun simulation).
@@ -22,6 +22,12 @@
 ### Commit 1: `.gitignore` and `PROGRESS.md` setup
 - Updated `.gitignore` to comprehensively exclude build artifacts, logs, wav test files, and node_modules.
 - Created `PROGRESS.md` to track autonomous audit progress and design decisions.
+
+### Commit 2: Clean Rebuild & Verification Baseline
+- Executed `cargo clean` (removed 5.1 GB build artifacts).
+- Executed `cargo build --release` (succeeded in 2m 14s, release binaries created).
+- Executed `cargo clippy --workspace -- -D warnings` (passed with 0 errors and 0 warnings).
+- Executed `cargo test --workspace` (13/13 unit tests passed, 0 failures).
 
 ---
 
