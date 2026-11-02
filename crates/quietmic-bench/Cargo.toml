@@ -1,0 +1,18 @@
+[package]
+name = "quietmic-bench"
+version = "0.1.0"
+edition = "2021"
+authors = ["QuietMic Engineering Team"]
+description = "Offline test harness, objective speech quality benchmarking (DNSMOS, SI-SDR, SNR), and A/B WAV generator"
+
+[dependencies]
+quietmic-core = { path = "../quietmic-core" }
+hound = "3.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[[bin]]
+name = "quietmic-bench"
+path = "src/main.rs"

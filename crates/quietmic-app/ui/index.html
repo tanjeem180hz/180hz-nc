@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuietMic - Real-Time AI Noise Suppression</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo-area">
+        <div class="logo-icon">🎙️</div>
+        <div>
+          <h1>QuietMic</h1>
+          <span class="subtitle">Real-Time DSP + ML Noise Cancellation</span>
+        </div>
+      </div>
+      <div class="header-status">
+        <span id="cpuIndicator" class="chip">CPU: 0.0% (0.0ms)</span>
+        <button id="bypassBtn" class="badge-btn active">ACTIVE</button>
+      </div>
+    </header>
+
+    <!-- VB-CABLE Guided Setup Banner (Conditional) -->
+    <div id="vbcableBanner" class="vbcable-card hidden">
+      <div class="card-icon">⚠️</div>
+      <div class="card-content">
+        <h3>Virtual Microphone Required</h3>
+        <p>To output cleaned audio into Zoom, Meet, Teams, Discord, and games, install the free VB-CABLE driver.</p>
+        <div class="card-actions">
+          <button id="downloadCableBtn" class="btn btn-primary">Download VB-CABLE</button>
+          <button id="recheckCableBtn" class="btn btn-secondary">Re-check Status</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mode Selector -->
+    <section class="section">
+      <label class="section-label">Engine Mode</label>
+      <div class="mode-selector">
+        <button class="mode-btn" data-mode="Light">
+          <div class="mode-title">Light</div>
+          <div class="mode-desc">RNNoise &bull; &lt;2% CPU</div>
+        </button>
+        <button class="mode-btn active" data-mode="Standard">
+          <div class="mode-title">Standard</div>
+          <div class="mode-desc">DeepFilterNet3 &bull; Natural Voice</div>
+        </button>
+        <button class="mode-btn" data-mode="VoiceIsolation">
+          <div class="mode-title">Voice Isolation</div>
+          <div class="mode-desc">Enrolled Speaker Filter</div>
+        </button>
+      </div>
+    </section>
+
+    <!-- Suppression Strength Slider -->
+    <section class="section">
+      <div class="slider-header">
+        <label for="strengthSlider" class="section-label">Suppression Strength</label>
+        <span id="strengthValue" class="slider-value">100%</span>
+      </div>
+      <input type="range" id="strengthSlider" min="0" max="100" value="100" class="slider">
+    </section>
+
+    <!-- Audio Device Selection -->
+    <section class="section">
+      <label for="micSelect" class="section-label">Microphone Input</label>
+      <select id="micSelect" class="select-dropdown">
+        <option value="">Default System Microphone</option>
+      </select>
+      <div class="device-hint">
+        Virtual Output: <span id="vbcableStatus" class="status-online">&bull; CABLE Output (Ready)</span>
+      </div>
+    </section>
+
+    <!-- Real-Time VU Meters (15-20 fps) -->
+    <section class="section">
+      <label class="section-label">Live Audio Levels</label>
+      <div class="meter-group">
+        <div class="meter-row">
+          <span class="meter-tag">MIC IN</span>
+          <div class="meter-track">
+            <div id="inputMeter" class="meter-fill" style="width: 0%;"></div>
+          </div>
+          <span id="inputPeakText" class="meter-db">-60 dB</span>
+        </div>
+        <div class="meter-row">
+          <span class="meter-tag">CLEAN</span>
+          <div class="meter-track">
+            <div id="outputMeter" class="meter-fill clean" style="width: 0%;"></div>
+          </div>
+          <span id="outputPeakText" class="meter-db">-60 dB</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Advanced Feature Toggles -->
+    <section class="section toggles-grid">
+      <label class="toggle-card">
+        <input type="checkbox" id="aecToggle">
+        <span class="toggle-slider"></span>
+        <div class="toggle-info">
+          <span class="toggle-title">Echo Cancellation (AEC)</span>
+          <span class="toggle-desc">Cancels loudspeaker acoustic feedback</span>
+        </div>
+      </label>
+
+      <label class="toggle-card">
+        <input type="checkbox" id="comfortNoiseToggle" checked>
+        <span class="toggle-slider"></span>
+        <div class="toggle-info">
+          <span class="toggle-title">Comfort Noise Floor</span>
+          <span class="toggle-desc">Subtle acoustic air to avoid dead silence</span>
+        </div>
+      </label>
+
+      <label class="toggle-card">
+        <input type="checkbox" id="speakerDenoiseToggle">
+        <span class="toggle-slider"></span>
+        <div class="toggle-info">
+          <span class="toggle-title">Speaker Denoise</span>
+          <span class="toggle-desc">Clean incoming call audio in headphones</span>
+        </div>
+      </label>
+
+      <label class="toggle-card">
+        <input type="checkbox" id="autostartToggle">
+        <span class="toggle-slider"></span>
+        <div class="toggle-info">
+          <span class="toggle-title">Start with Windows</span>
+          <span class="toggle-desc">Launch minimized to system tray</span>
+        </div>
+      </label>
+    </section>
+
+    <!-- Footer & Global Hotkey -->
+    <footer class="footer">
+      <span>Global Toggle: <kbd id="hotkeyText">Ctrl+Alt+N</kbd></span>
+      <span>QuietMic v1.0.0</span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

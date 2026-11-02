@@ -1,0 +1,33 @@
+[package]
+name = "quietmic-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["QuietMic Engineering Team"]
+description = "High-performance, ultra-low latency audio DSP & ML noise suppression engine for Windows"
+
+[dependencies]
+ringbuf = "0.4"
+rubato = "0.15"
+nnnoiseless = "0.5"
+cpal = "0.15"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+hound = "3.5"
+thiserror = "2.0"
+parking_lot = "0.12"
+crossbeam-channel = "0.5"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_System_Threading",
+    "Win32_System_Registry",
+    "Win32_UI_Input_KeyboardAndMouse"
+] }
+
+[dev-dependencies]
+approx = "0.5"

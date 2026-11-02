@@ -1,0 +1,19 @@
+[workspace]
+members = [
+    "crates/quietmic-core",
+    "crates/quietmic-bench",
+    "crates/quietmic-app",
+]
+resolver = "2"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.bench]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
