@@ -32,6 +32,56 @@ let currentConfig = {
   start_with_windows: false,
 };
 
+let metricsTimer = null;
+let deviceTimer = null;
+
+async function pollDevices() {
+  if (!invoke) return;
+  try {
+    const devices = await invoke('get_input_devices');
+    const prevVal = micSelect.value;
+    populateDeviceList(devices);
+    if (prevVal) micSelect.value = prevVal;
+
+    const virtualStatus = await invoke('get_virtual_status');
+    updateVirtualStatus(virtualStatus);
+  } catch (e) {}
+}
+
+function startPolling() {
+  if (!metricsTimer) {
+    metricsTimer = setInterval(updateMetrics, 66);
+  }
+  if (!deviceTimer) {
+    deviceTimer = setInterval(pollDevices, 3000);
+  }
+}
+
+function stopPolling() {
+  if (metricsTimer) {
+    clearInterval(metricsTimer);
+    metricsTimer = null;
+  }
+  if (deviceTimer) {
+    clearInterval(deviceTimer);
+    deviceTimer = null;
+  }
+}
+
+// Pause timers when UI window is minimized or hidden in system tray (0% idle CPU)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopPolling();
+  } else {
+    updateMetrics();
+    pollDevices();
+    startPolling();
+  }
+});
+
+window.addEventListener('pagehide', stopPolling);
+window.addEventListener('pageshow', startPolling);
+
 async function init() {
   if (!invoke) {
     console.log("Running in preview/browser mode without Tauri IPC");
@@ -50,21 +100,10 @@ async function init() {
     currentConfig = await invoke('get_config');
     applyConfigToUI(currentConfig);
 
-    // 2. Start polling metrics at ~15 fps (every 66ms)
-    setInterval(updateMetrics, 66);
-
-    // 3. Periodic audio device hot-plug & VB-CABLE status auto-refresh (every 2.5s)
-    setInterval(async () => {
-      try {
-        const devices = await invoke('get_input_devices');
-        const prevVal = micSelect.value;
-        populateDeviceList(devices);
-        if (prevVal) micSelect.value = prevVal;
-
-        const virtualStatus = await invoke('get_virtual_status');
-        updateVirtualStatus(virtualStatus);
-      } catch (e) {}
-    }, 2500);
+    // 2. Start polling only if window is currently visible
+    if (!document.hidden) {
+      startPolling();
+    }
   } catch (err) {
     console.error("Initialization error:", err);
   }

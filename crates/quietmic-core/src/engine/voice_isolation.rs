@@ -66,6 +66,14 @@ impl VoiceIsolationEngine {
         self.enrolled_embedding.is_some()
     }
 
+    pub fn enrolled_embedding(&self) -> Option<&[f32]> {
+        self.enrolled_embedding.as_deref()
+    }
+
+    pub fn set_enrolled_embedding(&mut self, embedding: Vec<f32>) {
+        self.enrolled_embedding = Some(embedding);
+    }
+
     /// Resets enrolled profile.
     pub fn clear_enrollment(&mut self) {
         self.enrolled_embedding = None;

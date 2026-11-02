@@ -15,6 +15,7 @@
 - [x] Audio Quality & Per-Frame Benchmark Measurements.
 - [x] Part A: Performance Baseline (Zero Allocation Verification, Peak RAM, RTF Matrix in `benchmarks/baseline.md`).
 - [x] Part B: CPU Optimization (FTZ/DAZ subnormal mode, Contiguous Double-Buffered SIMD AEC, Silence Instant Wake-up, 11-16x AEC speedup).
+- [x] Part C: Memory & Idle Optimization (Lazy Engine Loading, UI Visibility Throttling 0% CPU, Soak RAM Stability in `benchmarks/memory_idle.md`).
 - [x] Final Honest Bug & Limitation Inventory.
 
 ---
@@ -94,6 +95,14 @@
   - Voice Isolation + AEC dropped from **176.6 µs to 14.8 µs** (**11.9x faster**).
 - Verified silence bypass with automated unit test `test_speech_onset_no_clipped_syllables`: instantaneous wake-up (< 0 ms) on speech onset with zero syllable clipping.
 - Saved benchmark before & after results in `benchmarks/cpu_optimization.md`. Total heap allocations per frame: **0**.
+
+### Commit 9: Part C Memory & Idle Usage (Lazy Engine Loading, UI Visibility Throttling)
+- Implemented lazy engine loading in `AudioPipeline` using `ActiveEngine`: only the selected denoise engine is loaded into memory, while inactive engines are immediately dropped and deallocated.
+- Persisted enrolled voiceprint embeddings at the pipeline level so switching modes preserves speaker profiles without keeping inactive engine instances alive.
+- Implemented UI visibility throttling in `app.js` using `document.addEventListener('visibilitychange')`: pauses 66ms metrics polling and 2.5s device hotplug polling when the window is hidden or minimized to tray, driving idle UI CPU to **0.0%**.
+- Validated RAM stability across 10,000 to 360,000 frames via `test_pipeline_soak_ram_stability_over_10000_frames`: **0.00 MB growth** between 10 minutes and 1 hour of streaming.
+- Stripped release binary sizes verified: `quietmic-app.exe` = **6.87 MB**, `quietmic-bench.exe` = **1.88 MB**.
+- Documented findings in `benchmarks/memory_idle.md`. Total heap allocations per frame: **0**.
 
 ---
 

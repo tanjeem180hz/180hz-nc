@@ -15,13 +15,18 @@ pub enum EngineMode {
     VoiceIsolation,
 }
 
+pub enum ActiveEngine {
+    Light(LightEngine),
+    Standard(StandardEngine),
+    VoiceIsolation(VoiceIsolationEngine),
+}
+
 /// Master Audio Processing Pipeline.
 /// Operates on 10 ms frames at 48 kHz mono (480 samples).
 pub struct AudioPipeline {
     mode: EngineMode,
-    light_engine: LightEngine,
-    standard_engine: StandardEngine,
-    voice_iso_engine: VoiceIsolationEngine,
+    active_engine: ActiveEngine,
+    enrolled_voiceprint: Option<Vec<f32>>,
     hpf: HighPassFilter,
     aec: EchoCanceller,
     vad: SilenceDetector,
@@ -52,15 +57,13 @@ impl AudioPipeline {
         let input_resampler = AudioResampler::new(input_sample_rate, Self::INTERNAL_RATE, in_chunk_samples)?;
         let output_resampler = AudioResampler::new(Self::INTERNAL_RATE, output_sample_rate, Self::FRAME_SAMPLES)?;
 
-        let light = LightEngine::new();
-        let standard = StandardEngine::new();
-        let voice_iso = VoiceIsolationEngine::new(Box::new(LightEngine::new()));
+        let mut standard = StandardEngine::new();
+        standard.set_suppression(1.0);
 
         Ok(Self {
             mode: EngineMode::Standard,
-            light_engine: light,
-            standard_engine: standard,
-            voice_iso_engine: voice_iso,
+            active_engine: ActiveEngine::Standard(standard),
+            enrolled_voiceprint: None,
             hpf: HighPassFilter::default_48k(),
             aec: EchoCanceller::default_preset(),
             vad: SilenceDetector::default_48k(),
@@ -84,8 +87,26 @@ impl AudioPipeline {
     }
 
     /// Sets operating mode: Light (RNNoise), Standard (DeepFilterNet), or VoiceIsolation.
+    /// Lazy-loads the active engine and immediately frees memory of inactive engines.
     pub fn set_mode(&mut self, mode: EngineMode) {
-        self.mode = mode;
+        if self.mode != mode {
+            self.mode = mode;
+            self.active_engine = match mode {
+                EngineMode::Light => ActiveEngine::Light(LightEngine::new()),
+                EngineMode::Standard => {
+                    let mut s = StandardEngine::new();
+                    s.set_suppression(self.strength);
+                    ActiveEngine::Standard(s)
+                }
+                EngineMode::VoiceIsolation => {
+                    let mut v = VoiceIsolationEngine::new(Box::new(LightEngine::new()));
+                    if let Some(ref emb) = self.enrolled_voiceprint {
+                        v.set_enrolled_embedding(emb.clone());
+                    }
+                    ActiveEngine::VoiceIsolation(v)
+                }
+            };
+        }
     }
 
     pub fn mode(&self) -> EngineMode {
@@ -97,7 +118,9 @@ impl AudioPipeline {
         let s = strength.clamp(0.0, 1.0);
         self.strength = s;
         self.smoother.set_target(s);
-        self.standard_engine.set_suppression(s);
+        if let ActiveEngine::Standard(ref mut std_eng) = self.active_engine {
+            std_eng.set_suppression(s);
+        }
     }
 
     pub fn strength(&self) -> f32 {
@@ -142,7 +165,18 @@ impl AudioPipeline {
 
     /// Access Voice Isolation engine for speaker enrollment.
     pub fn voice_isolation_mut(&mut self) -> &mut VoiceIsolationEngine {
-        &mut self.voice_iso_engine
+        if !matches!(self.active_engine, ActiveEngine::VoiceIsolation(_)) {
+            let mut v = VoiceIsolationEngine::new(Box::new(LightEngine::new()));
+            if let Some(ref emb) = self.enrolled_voiceprint {
+                v.set_enrolled_embedding(emb.clone());
+            }
+            self.active_engine = ActiveEngine::VoiceIsolation(v);
+            self.mode = EngineMode::VoiceIsolation;
+        }
+        match &mut self.active_engine {
+            ActiveEngine::VoiceIsolation(v) => v,
+            _ => unreachable!(),
+        }
     }
 
     /// Processes an input audio chunk (from mic) and writes cleaned audio to `output` (for virtual mic).
@@ -204,23 +238,23 @@ impl AudioPipeline {
             self.comfort_noise.inject_into(&mut self.wet_buffer);
         } else {
             // Step 5: Active speech/noise -> invoke selected Denoise Engine
-            let engine_res = match self.mode {
-                EngineMode::Light => {
-                    let res = self.light_engine.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
+            let engine_res = match &mut self.active_engine {
+                ActiveEngine::Light(e) => {
+                    let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
                     if res.is_ok() {
                         self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
                     }
                     res
                 }
-                EngineMode::Standard => {
-                    let res = self.standard_engine.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
+                ActiveEngine::Standard(e) => {
+                    let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
                     if res.is_ok() {
                         self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
                     }
                     res
                 }
-                EngineMode::VoiceIsolation => {
-                    let res = self.voice_iso_engine.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
+                ActiveEngine::VoiceIsolation(e) => {
+                    let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
                     if res.is_ok() {
                         self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
                     }
@@ -394,5 +428,28 @@ mod tests {
             light_output_energy,
             input_energy
         );
+    }
+
+    #[test]
+    fn test_pipeline_soak_ram_stability_over_10000_frames() {
+        let mut pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline init failed");
+        pipeline.set_mode(EngineMode::Standard);
+        pipeline.set_aec_enabled(true);
+
+        let input_chunk: Vec<f32> = (0..AudioPipeline::FRAME_SAMPLES)
+            .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin() * 0.2)
+            .collect();
+        let mut output_chunk = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES + 10);
+        let aec_ref = vec![0.05f32; AudioPipeline::FRAME_SAMPLES];
+
+        let initial_cap = output_chunk.capacity();
+
+        for i in 0..10_000 {
+            if i % 10 == 0 {
+                pipeline.feed_aec_reference(&aec_ref);
+            }
+            assert!(pipeline.process_frame_internal(&input_chunk, &mut output_chunk, 960).is_ok());
+            assert_eq!(output_chunk.capacity(), initial_cap, "Output chunk reallocated during soak!");
+        }
     }
 }
