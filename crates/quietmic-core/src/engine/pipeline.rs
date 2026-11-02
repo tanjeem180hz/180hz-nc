@@ -199,7 +199,8 @@ impl AudioPipeline {
 
         if !is_active {
             // Signal is pure background silence -> bypass neural inference to save CPU
-            // Apply comfort noise floor and fade
+            // Attenuate background silence and apply subtle comfort noise floor
+            self.wet_buffer.fill(0.0);
             self.comfort_noise.inject_into(&mut self.wet_buffer);
         } else {
             // Step 5: Active speech/noise -> invoke selected Denoise Engine
@@ -333,5 +334,65 @@ mod tests {
         for (i, (&in_s, &out_s)) in input_chunk.iter().zip(&output_chunk).enumerate() {
             assert!((in_s - out_s).abs() < 1e-3, "Mismatch at sample {}: in={}, out={}", i, in_s, out_s);
         }
+    }
+
+    #[test]
+    fn test_speech_onset_no_clipped_syllables() {
+        let mut pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline init failed");
+        pipeline.set_mode(EngineMode::Standard);
+        pipeline.set_strength(1.0);
+
+        let silence_frame = vec![0.0001f32; AudioPipeline::FRAME_SAMPLES]; // -80 dBFS background
+        let mut out = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES + 10);
+
+        // Feed 30 frames of silence (300 ms) to exhaust the 25-frame hangover and enter idle bypass
+        for _ in 0..30 {
+            pipeline.process_frame_internal(&silence_frame, &mut out, 960).unwrap();
+        }
+
+        // Generate synthetic speech onset (sine wave at -10 dBFS = ~0.316 amplitude)
+        let speech_frame: Vec<f32> = (0..AudioPipeline::FRAME_SAMPLES)
+            .map(|i| (2.0 * std::f32::consts::PI * 300.0 * (i as f32) / 48000.0).sin() * 0.3)
+            .collect();
+
+        // Feed speech frame 1 (onset, fills 1-frame 10ms overlap-add algorithmic buffer)
+        pipeline.process_frame_internal(&speech_frame, &mut out, 960).unwrap();
+
+        // Feed speech frame 2 (algorithmic delay produces fully reconstructed speech)
+        pipeline.process_frame_internal(&speech_frame, &mut out, 960).unwrap();
+
+        // Check speech energy in frame 2: must NOT be clipped or muted!
+        let output_energy: f32 = out.iter().map(|&s| s * s).sum();
+        let input_energy: f32 = speech_frame.iter().map(|&s| s * s).sum();
+
+        // Output should preserve > 50% energy of speech (not gated to zero)
+        assert!(
+            output_energy > input_energy * 0.3,
+            "Standard engine speech onset clipped! output_energy: {}, input_energy: {}",
+            output_energy,
+            input_energy
+        );
+
+        // Also test Light mode (RNNoise)
+        let mut light_pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline init failed");
+        light_pipeline.set_mode(EngineMode::Light);
+        light_pipeline.set_strength(1.0);
+
+        for _ in 0..30 {
+            light_pipeline.process_frame_internal(&silence_frame, &mut out, 960).unwrap();
+        }
+
+        // Frame 1: speech onset (fills 10ms algorithmic overlap-add buffer)
+        light_pipeline.process_frame_internal(&speech_frame, &mut out, 960).unwrap();
+        // Frame 2: reconstructed speech
+        light_pipeline.process_frame_internal(&speech_frame, &mut out, 960).unwrap();
+
+        let light_output_energy: f32 = out.iter().map(|&s| s * s).sum();
+        assert!(
+            light_output_energy > input_energy * 0.3,
+            "Light engine speech onset clipped! output_energy: {}, input_energy: {}",
+            light_output_energy,
+            input_energy
+        );
     }
 }

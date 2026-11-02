@@ -1,11 +1,12 @@
 /// Acoustic Echo Cancellation (AEC) module.
 /// Cancels acoustic echo when the user listens through loudspeakers rather than headphones.
-/// Utilizes a sample-accurate NLMS (Normalized Least Mean Squares) adaptive filter.
+/// Utilizes a sample-accurate NLMS (Normalized Least Mean Squares) adaptive filter
+/// backed by a double-buffered contiguous delay line for zero-modulo, SIMD-vectorized execution.
 pub struct EchoCanceller {
     enabled: bool,
     filter_length: usize, // Typically 128 to 256 taps (~3 to 5 ms early reflections)
     weights: Vec<f32>,
-    ref_ring: Vec<f32>,
+    ref_ring: Vec<f32>,   // 2 * filter_length double buffer for contiguous windowing
     ring_idx: usize,
     step_size: f32,       // Adaptation learning rate mu
 }
@@ -21,7 +22,7 @@ impl EchoCanceller {
             enabled: false,
             filter_length,
             weights: vec![0.0f32; filter_length],
-            ref_ring: vec![0.0f32; filter_length],
+            ref_ring: vec![0.0f32; 2 * filter_length],
             ring_idx: 0,
             step_size: 0.1,
         }
@@ -46,10 +47,17 @@ impl EchoCanceller {
     }
 
     /// Feeds reference audio from the system/speaker render stream sample-by-sample.
+    /// Stores the sample symmetrically in both halves of the double buffer,
+    /// guaranteeing a contiguous window slice without modulo operations.
     #[inline(always)]
     pub fn feed_reference_sample(&mut self, sample: f32) {
+        let l = self.filter_length;
         self.ref_ring[self.ring_idx] = sample;
-        self.ring_idx = (self.ring_idx + 1) % self.filter_length;
+        self.ref_ring[self.ring_idx + l] = sample;
+        self.ring_idx += 1;
+        if self.ring_idx >= l {
+            self.ring_idx = 0;
+        }
     }
 
     /// Feeds a chunk of reference audio samples.
@@ -72,25 +80,24 @@ impl EchoCanceller {
         self.feed_reference_sample(ref_sample);
 
         let l = self.filter_length;
+        let x_window = &self.ref_ring[self.ring_idx..self.ring_idx + l];
         let mut echo_hat = 0.0f32;
         let mut energy = 1e-6f32;
 
-        // Compute predicted echo y_hat = sum_k (w[k] * x[n-k])
-        for k in 0..l {
-            let tap_idx = (self.ring_idx + l - 1 - k) % l;
-            let x = self.ref_ring[tap_idx];
-            echo_hat += self.weights[k] * x;
+        // Vectorized dot product and energy accumulator
+        for (w, &x) in self.weights.iter().zip(x_window) {
+            echo_hat += *w * x;
             energy += x * x;
         }
 
         let error = mic_sample - echo_hat;
 
         // NLMS weight update with near-end power constraint
-        let norm_mu = self.step_size / energy;
-        for k in 0..l {
-            let tap_idx = (self.ring_idx + l - 1 - k) % l;
-            let x = self.ref_ring[tap_idx];
-            self.weights[k] += norm_mu * error * x;
+        if energy > 1e-4 {
+            let norm_mu = self.step_size / energy;
+            for (w, &x) in self.weights.iter_mut().zip(x_window) {
+                *w += norm_mu * error * x;
+            }
         }
 
         error
@@ -103,27 +110,24 @@ impl EchoCanceller {
         }
 
         let l = self.filter_length;
+        let x_window = &self.ref_ring[self.ring_idx..self.ring_idx + l];
+        let mut echo_hat = 0.0f32;
+        let mut energy = 1e-6f32;
+
+        for (w, &x) in self.weights.iter().zip(x_window) {
+            echo_hat += *w * x;
+            energy += x * x;
+        }
+
         for sample in mic_frame.iter_mut() {
             let mic_val = *sample;
-            let mut echo_hat = 0.0f32;
-            let mut energy = 1e-6f32;
-
-            for k in 0..l {
-                let tap_idx = (self.ring_idx + l - 1 - k) % l;
-                let x = self.ref_ring[tap_idx];
-                echo_hat += self.weights[k] * x;
-                energy += x * x;
-            }
-
             let error = mic_val - echo_hat;
 
             // Only adapt when reference signal has significant power
             if energy > 1e-4 {
                 let norm_mu = self.step_size / energy;
-                for k in 0..l {
-                    let tap_idx = (self.ring_idx + l - 1 - k) % l;
-                    let x = self.ref_ring[tap_idx];
-                    self.weights[k] += norm_mu * error * x;
+                for (w, &x) in self.weights.iter_mut().zip(x_window) {
+                    *w += norm_mu * error * x;
                 }
             }
 
