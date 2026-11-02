@@ -77,8 +77,8 @@ impl VoiceIsolationEngine {
     }
 
     /// Fast, deterministic spectral feature extractor (32-bin normalized energy spectrum).
-    fn extract_timbre_features(frame: &[f32]) -> Vec<f32> {
-        let mut features = vec![0.0f32; Self::EMBEDDING_DIM];
+    fn extract_timbre_features(frame: &[f32]) -> [f32; Self::EMBEDDING_DIM] {
+        let mut features = [0.0f32; Self::EMBEDDING_DIM];
         let chunk_size = frame.len() / Self::EMBEDDING_DIM;
 
         for (i, bin) in features.iter_mut().enumerate() {

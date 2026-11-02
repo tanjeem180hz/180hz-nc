@@ -12,6 +12,7 @@ pub struct StandardEngine {
     analysis_window: Vec<f32>,// Hann window
     synthesis_window: Vec<f32>,
     history_in: Vec<f32>,
+    full_window: Vec<f32>,
     noise_estimate: Vec<f32>, // Per-band noise floor tracker
     vad_estimate: f32,
     suppression_factor: f32,
@@ -38,6 +39,7 @@ impl StandardEngine {
             analysis_window: window.clone(),
             synthesis_window: window,
             history_in: vec![0.0f32; frame_size],
+            full_window: vec![0.0f32; fft_size],
             noise_estimate: vec![0.001f32; Self::NUM_BANDS],
             vad_estimate: 0.0,
             suppression_factor: 1.0,
@@ -69,6 +71,7 @@ impl DenoiseEngine for StandardEngine {
     fn reset(&mut self) {
         self.overlap_buffer.fill(0.0);
         self.history_in.fill(0.0);
+        self.full_window.fill(0.0);
         self.noise_estimate.fill(0.001);
         self.vad_estimate = 0.0;
     }
@@ -82,13 +85,12 @@ impl DenoiseEngine for StandardEngine {
         let in_slice = &in_frame[..self.frame_size];
 
         // 1. Construct 960-sample analysis window (previous 480 + current 480)
-        let mut full_window = vec![0.0f32; self.fft_size];
-        full_window[..self.frame_size].copy_from_slice(&self.history_in);
-        full_window[self.frame_size..].copy_from_slice(in_slice);
+        self.full_window[..self.frame_size].copy_from_slice(&self.history_in);
+        self.full_window[self.frame_size..].copy_from_slice(in_slice);
         self.history_in.copy_from_slice(in_slice);
 
         // Apply analysis window
-        for (w, &win) in full_window.iter_mut().zip(&self.analysis_window) {
+        for (w, &win) in self.full_window.iter_mut().zip(&self.analysis_window) {
             *w *= win;
         }
 
@@ -100,7 +102,7 @@ impl DenoiseEngine for StandardEngine {
             let start = b * samples_per_band;
             let end = (start + samples_per_band).min(self.fft_size / 2);
             let mut sum_sq = 0.0f32;
-            for &s in &full_window[start..end] {
+            for &s in &self.full_window[start..end] {
                 sum_sq += s * s;
             }
             *energy_slot = (sum_sq / samples_per_band as f32).max(1e-8);
@@ -149,17 +151,17 @@ impl DenoiseEngine for StandardEngine {
             let start = b * samples_per_band;
             let end = (start + samples_per_band).min(self.fft_size / 2);
             for i in start..end {
-                full_window[i] *= gain * self.synthesis_window[i];
+                self.full_window[i] *= gain * self.synthesis_window[i];
                 // Mirror for symmetric second half
                 let mirror_idx = self.fft_size - 1 - i;
-                full_window[mirror_idx] *= gain * self.synthesis_window[mirror_idx];
+                self.full_window[mirror_idx] *= gain * self.synthesis_window[mirror_idx];
             }
         }
 
         // 4. 50% Overlap-Add to form the 480 output samples
-        for i in 0..self.frame_size {
-            out_frame[i] = full_window[i] + self.overlap_buffer[i];
-            self.overlap_buffer[i] = full_window[i + self.frame_size];
+        for (i, out_sample) in out_frame.iter_mut().enumerate().take(self.frame_size) {
+            *out_sample = self.full_window[i] + self.overlap_buffer[i];
+            self.overlap_buffer[i] = self.full_window[i + self.frame_size];
         }
 
         Ok(())

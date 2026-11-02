@@ -13,6 +13,8 @@ pub struct AppConfig {
     pub selected_mic: Option<String>,
     pub start_with_windows: bool,  // Registry Run key toggle
     pub global_hotkey: String,     // e.g. "Ctrl+Alt+N"
+    #[serde(default)]
+    pub muted: bool,              // Global microphone mute state (default false)
 }
 
 impl Default for AppConfig {
@@ -27,6 +29,7 @@ impl Default for AppConfig {
             selected_mic: None,
             start_with_windows: false,
             global_hotkey: "Ctrl+Alt+N".to_string(),
+            muted: false,
         }
     }
 }
@@ -160,5 +163,13 @@ mod tests {
         assert_eq!(cfg.mode, deserialized.mode);
         assert_eq!(cfg.strength, deserialized.strength);
         assert_eq!(cfg.bypass, deserialized.bypass);
+        assert_eq!(cfg.muted, deserialized.muted);
+    }
+
+    #[test]
+    fn test_windows_autostart_registry() {
+        // Test setting autostart true then false in HKCU Run key
+        assert!(AppConfig::set_windows_autostart(true).is_ok());
+        assert!(AppConfig::set_windows_autostart(false).is_ok());
     }
 }

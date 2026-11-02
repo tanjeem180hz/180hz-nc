@@ -11,6 +11,19 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, State};
 
+#[cfg(windows)]
+use windows::core::w;
+#[cfg(windows)]
+use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS, HWND};
+#[cfg(windows)]
+use windows::Win32::System::Threading::CreateMutexW;
+#[cfg(windows)]
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    RegisterHotKey, UnregisterHotKey, MOD_CONTROL, MOD_SHIFT, MOD_NOREPEAT,
+};
+#[cfg(windows)]
+use windows::Win32::UI::WindowsAndMessaging::{GetMessageW, MSG, WM_HOTKEY};
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MetricsDto {
     pub frame_time_us: u64,
@@ -105,7 +118,15 @@ fn set_speaker_denoise(enabled: bool, state: State<AppState>) -> Result<(), Stri
     let mut cfg = state.config.lock();
     cfg.speaker_denoise = enabled;
     let _ = cfg.save();
-    Ok(())
+    restart_audio_stream(&state, &cfg)
+}
+
+#[tauri::command]
+fn set_muted(muted: bool, state: State<AppState>) -> Result<(), String> {
+    let mut cfg = state.config.lock();
+    cfg.muted = muted;
+    let _ = cfg.save();
+    restart_audio_stream(&state, &cfg)
 }
 
 #[tauri::command]
@@ -164,10 +185,22 @@ fn restart_audio_stream(state: &AppState, cfg: &AppConfig) -> Result<(), String>
     pipeline.set_mode(mode);
     pipeline.set_strength(cfg.strength);
     pipeline.set_bypass(cfg.bypass);
+    pipeline.set_muted(cfg.muted);
     pipeline.set_aec_enabled(cfg.aec_enabled);
     pipeline.set_comfort_noise_enabled(cfg.comfort_noise);
 
-    match AudioStreamController::start(&state.device_manager, cfg.selected_mic.as_deref(), pipeline) {
+    // Optional Speaker Denoise pipeline
+    let speaker_pipe = if cfg.speaker_denoise {
+        let mut spk = AudioPipeline::new(48000, 48000)?;
+        spk.set_mode(mode);
+        spk.set_strength(cfg.strength);
+        spk.set_bypass(cfg.bypass);
+        Some(spk)
+    } else {
+        None
+    };
+
+    match AudioStreamController::start(&state.device_manager, cfg.selected_mic.as_deref(), pipeline, speaker_pipe) {
         Ok(ctrl) => {
             *stream_lock = Some(ctrl);
             Ok(())
@@ -184,6 +217,15 @@ fn restart_audio_stream(state: &AppState, cfg: &AppConfig) -> Result<(), String>
 // ----------------------------------------------------------------------------
 
 fn main() {
+    #[cfg(windows)]
+    unsafe {
+        let _mutex = CreateMutexW(None, true, w!("Global\\QuietMic_SingleInstance_Mutex"));
+        if GetLastError() == ERROR_ALREADY_EXISTS {
+            eprintln!("QuietMic is already running. Another instance cannot be started.");
+            return;
+        }
+    }
+
     let _log_guard = init_logging();
     tracing::info!("Starting QuietMic application");
 
@@ -200,10 +242,23 @@ fn main() {
     pipeline.set_mode(mode);
     pipeline.set_strength(config.strength);
     pipeline.set_bypass(config.bypass);
+    pipeline.set_muted(config.muted);
     pipeline.set_aec_enabled(config.aec_enabled);
     pipeline.set_comfort_noise_enabled(config.comfort_noise);
 
-    let initial_controller = match AudioStreamController::start(&device_manager, config.selected_mic.as_deref(), pipeline) {
+    let speaker_pipe = if config.speaker_denoise {
+        let mut spk = AudioPipeline::new(48000, 48000).ok();
+        if let Some(ref mut s) = spk {
+            s.set_mode(mode);
+            s.set_strength(config.strength);
+            s.set_bypass(config.bypass);
+        }
+        spk
+    } else {
+        None
+    };
+
+    let initial_controller = match AudioStreamController::start(&device_manager, config.selected_mic.as_deref(), pipeline, speaker_pipe) {
         Ok(ctrl) => Some(ctrl),
         Err(err) => {
             tracing::warn!("Standby mode: Audio device not ready on launch: {}", err);
@@ -220,8 +275,69 @@ fn main() {
     tauri::Builder::default()
         .manage(app_state)
         .setup(|app| {
+            // Spawn Windows Global Hotkey Listener (Ctrl+Shift+B for Bypass, Ctrl+Shift+M for Mute)
+            #[cfg(windows)]
+            {
+                let app_handle = app.handle().clone();
+                std::thread::Builder::new()
+                    .name("quietmic-hotkeys".to_string())
+                    .spawn(move || unsafe {
+                        let _ = RegisterHotKey(HWND::default(), 1, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x42);
+                        let _ = RegisterHotKey(HWND::default(), 2, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4D);
+
+                        let mut msg = MSG::default();
+                        while GetMessageW(&mut msg, HWND::default(), 0, 0).as_bool() {
+                            if msg.message == WM_HOTKEY {
+                                let hotkey_id = msg.wParam.0 as i32;
+                                let state = app_handle.state::<AppState>();
+                                if hotkey_id == 1 {
+                                    let mut cfg = state.config.lock();
+                                    cfg.bypass = !cfg.bypass;
+                                    let _ = cfg.save();
+                                    let _ = restart_audio_stream(&state, &cfg);
+                                    tracing::info!("Global Hotkey: Bypass toggled to {}", cfg.bypass);
+                                } else if hotkey_id == 2 {
+                                    let mut cfg = state.config.lock();
+                                    cfg.muted = !cfg.muted;
+                                    let _ = cfg.save();
+                                    let _ = restart_audio_stream(&state, &cfg);
+                                    tracing::info!("Global Hotkey: Mute toggled to {}", cfg.muted);
+                                }
+                            }
+                        }
+
+                        let _ = UnregisterHotKey(HWND::default(), 1);
+                        let _ = UnregisterHotKey(HWND::default(), 2);
+                    })
+                    .expect("Failed to spawn global hotkey thread");
+            }
+
+            // Spawn Audio Device Hot-plug Watcher
+            {
+                let app_handle = app.handle().clone();
+                std::thread::Builder::new()
+                    .name("quietmic-hotplug-watcher".to_string())
+                    .spawn(move || {
+                        let mut last_dev_count = 0usize;
+                        loop {
+                            std::thread::sleep(std::time::Duration::from_secs(2));
+                            let state = app_handle.state::<AppState>();
+                            if let Ok(devs) = state.device_manager.list_input_devices() {
+                                let count = devs.len();
+                                if last_dev_count != 0 && count != last_dev_count {
+                                    tracing::info!("Audio device hot-plug detected: count changed from {} to {}", last_dev_count, count);
+                                    let cfg = state.config.lock().clone();
+                                    let _ = restart_audio_stream(&state, &cfg);
+                                }
+                                last_dev_count = count;
+                            }
+                        }
+                    })
+                    .expect("Failed to spawn hot-plug watcher");
+            }
+
             // Build System Tray Menu
-            let toggle_item = MenuItem::with_id(app, "toggle_bypass", "Toggle Active/Bypass", true, None::<&str>)?;
+            let toggle_item = MenuItem::with_id(app, "toggle_bypass", "Toggle Active/Bypass (Ctrl+Shift+B)", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "open_settings", "Settings...", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit QuietMic", true, None::<&str>)?;
 
@@ -271,6 +387,7 @@ fn main() {
             set_mode,
             set_strength,
             set_bypass,
+            set_muted,
             set_input_device,
             set_aec,
             set_comfort_noise,

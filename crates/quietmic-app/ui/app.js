@@ -52,6 +52,19 @@ async function init() {
 
     // 2. Start polling metrics at ~15 fps (every 66ms)
     setInterval(updateMetrics, 66);
+
+    // 3. Periodic audio device hot-plug & VB-CABLE status auto-refresh (every 2.5s)
+    setInterval(async () => {
+      try {
+        const devices = await invoke('get_input_devices');
+        const prevVal = micSelect.value;
+        populateDeviceList(devices);
+        if (prevVal) micSelect.value = prevVal;
+
+        const virtualStatus = await invoke('get_virtual_status');
+        updateVirtualStatus(virtualStatus);
+      } catch (e) {}
+    }, 2500);
   } catch (err) {
     console.error("Initialization error:", err);
   }

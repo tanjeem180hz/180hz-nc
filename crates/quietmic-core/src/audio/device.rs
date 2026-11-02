@@ -139,6 +139,13 @@ impl DeviceManager {
 
         Err("VB-CABLE ('CABLE Input') not detected. Please install VB-CABLE virtual audio driver.".to_string())
     }
+
+    /// Finds the default output device (speakers or headphones) for AEC reference or Speaker Denoise.
+    pub fn get_default_output_device(&self) -> Result<cpal::Device, String> {
+        let host = cpal::default_host();
+        host.default_output_device()
+            .ok_or_else(|| "No default audio output device found".to_string())
+    }
 }
 
 

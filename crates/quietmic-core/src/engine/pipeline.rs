@@ -32,10 +32,13 @@ pub struct AudioPipeline {
     input_resampler: AudioResampler,
     output_resampler: AudioResampler,
     bypass: bool,
+    muted: bool,
     strength: f32, // 0.0 to 1.0
     frame_size: usize,
     dry_buffer: Vec<f32>,
     wet_buffer: Vec<f32>,
+    cleaned_buffer: Vec<f32>,
+    blended_buffer: Vec<f32>,
     drift_buffer: Vec<f32>,
     scratch_in: Vec<f32>,
 }
@@ -67,10 +70,13 @@ impl AudioPipeline {
             input_resampler,
             output_resampler,
             bypass: false,
+            muted: false,
             strength: 1.0,
             frame_size: Self::FRAME_SAMPLES,
             dry_buffer: vec![0.0f32; Self::FRAME_SAMPLES],
             wet_buffer: vec![0.0f32; Self::FRAME_SAMPLES],
+            cleaned_buffer: vec![0.0f32; Self::FRAME_SAMPLES],
+            blended_buffer: vec![0.0f32; Self::FRAME_SAMPLES],
             drift_buffer: Vec::with_capacity(Self::FRAME_SAMPLES + 10),
             scratch_in: Vec::with_capacity(Self::FRAME_SAMPLES * 2),
         })
@@ -104,6 +110,15 @@ impl AudioPipeline {
 
     pub fn is_bypassed(&self) -> bool {
         self.bypass
+    }
+
+    /// Master mute toggle (true = output digital silence).
+    pub fn set_muted(&mut self, muted: bool) {
+        self.muted = muted;
+    }
+
+    pub fn is_muted(&self) -> bool {
+        self.muted
     }
 
     /// Acoustic Echo Cancellation toggle.
@@ -153,6 +168,13 @@ impl AudioPipeline {
 
         let frame = &in_48k[..self.frame_size];
 
+        // If muted, output complete digital silence
+        if self.muted {
+            output_mono.clear();
+            output_mono.resize(self.frame_size, 0.0);
+            return Ok(());
+        }
+
         // If hard bypass requested, forward directly with safety limiting
         if self.bypass {
             self.drift_compensator.adjust_frame(frame, &mut self.drift_buffer, buffer_fill_samples);
@@ -181,26 +203,23 @@ impl AudioPipeline {
             // Step 5: Active speech/noise -> invoke selected Denoise Engine
             let engine_res = match self.mode {
                 EngineMode::Light => {
-                    let mut cleaned = vec![0.0f32; self.frame_size];
-                    let res = self.light_engine.process_frame(&self.wet_buffer, &mut cleaned);
+                    let res = self.light_engine.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
                     if res.is_ok() {
-                        self.wet_buffer.copy_from_slice(&cleaned);
+                        self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
                     }
                     res
                 }
                 EngineMode::Standard => {
-                    let mut cleaned = vec![0.0f32; self.frame_size];
-                    let res = self.standard_engine.process_frame(&self.wet_buffer, &mut cleaned);
+                    let res = self.standard_engine.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
                     if res.is_ok() {
-                        self.wet_buffer.copy_from_slice(&cleaned);
+                        self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
                     }
                     res
                 }
                 EngineMode::VoiceIsolation => {
-                    let mut cleaned = vec![0.0f32; self.frame_size];
-                    let res = self.voice_iso_engine.process_frame(&self.wet_buffer, &mut cleaned);
+                    let res = self.voice_iso_engine.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
                     if res.is_ok() {
-                        self.wet_buffer.copy_from_slice(&cleaned);
+                        self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
                     }
                     res
                 }
@@ -213,17 +232,16 @@ impl AudioPipeline {
         }
 
         // Step 6: Wet/Dry Linear Mix with Gain Smoother
-        let mut blended = vec![0.0f32; self.frame_size];
-        self.smoother.blend_frame(&self.dry_buffer, &self.wet_buffer, &mut blended);
+        self.smoother.blend_frame(&self.dry_buffer, &self.wet_buffer, &mut self.blended_buffer);
 
         // Step 7: Inject subtle comfort noise floor
-        self.comfort_noise.inject_into(&mut blended);
+        self.comfort_noise.inject_into(&mut self.blended_buffer);
 
         // Step 8: Soft Peak Limiter (prevent digital clipping)
-        self.limiter.process_slice(&mut blended);
+        self.limiter.process_slice(&mut self.blended_buffer);
 
         // Step 9: Adaptive Clock Drift Compensation
-        self.drift_compensator.adjust_frame(&blended, &mut self.drift_buffer, buffer_fill_samples);
+        self.drift_compensator.adjust_frame(&self.blended_buffer, &mut self.drift_buffer, buffer_fill_samples);
 
         // Step 10: Resample to output device sample rate
         self.output_resampler.process(&self.drift_buffer, output_mono)?;

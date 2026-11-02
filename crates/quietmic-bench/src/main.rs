@@ -129,10 +129,10 @@ fn main() {
 
     // Representative scenarios for detailed table
     let key_scenarios = [
-        "Keyboard_Clicks_0dB_SNR",
-        "Fan_AC_Hum_0dB_SNR",
-        "Cafe_Babble_5dB_SNR",
-        "Background_Talker_5dB_SNR",
+        "Keyboard_Clicks_+0dB_SNR",
+        "Fan_AC_Hum_+0dB_SNR",
+        "Cafe_Babble_+5dB_SNR",
+        "Background_Talker_+5dB_SNR",
     ];
 
     println!("\n{:<28} | {:<24} | {:>8} | {:>8} | {:>6} | {:>6} | {:>6} | {:>8} | {:>6}",
