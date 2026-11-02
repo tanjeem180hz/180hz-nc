@@ -18,6 +18,7 @@
 - [x] Part C: Memory & Idle Optimization (Lazy Engine Loading, UI Visibility Throttling 0% CPU, Soak RAM Stability in `benchmarks/memory_idle.md`).
 - [x] Part D: Stress & Soak Testing (60-min Soak, Clock Drift Skew, Hotplug Storm, Fuzzing in `benchmarks/stress_tests.md`).
 - [x] Part E: Low-End PC Verification (1-Core Affinity Test, RTF = 0.0031 vs 0.30 Budget in `benchmarks/low_end_pc.md`).
+- [x] Part F: Comprehensive Performance Report & Final Clean Rebuild (0 warnings, 31/31 unit tests, `PERFORMANCE.md`).
 - [x] Final Honest Bug & Limitation Inventory.
 
 ---
@@ -121,6 +122,13 @@
 - Achieved **96.9x headroom** against the strict low-end hardware budget ($\text{RTF} < 0.30$).
 - Standard mode on single-core executes in **5.2 µs** ($\text{RTF} = 0.0005$).
 - Documented minimum hardware sizing (dual-core 64-bit CPU, 2 GB RAM, Windows 10+) and architecture in `benchmarks/low_end_pc.md`. Total heap allocations per frame: **0**.
+
+### Commit 12: Part F Performance Final Report & Clean Workspace Verification
+- Authored comprehensive `PERFORMANCE.md` summarizing before/after comparison tables across all modes, resource metrics, what changed, what helped, what was discarded, and honest limitations.
+- Executed clean workspace rebuild from scratch: `cargo clean` (removed 5.6 GiB), `cargo build --release` (clean finish in 2m 20s).
+- Ran `cargo clippy --workspace -- -D warnings`: passed with **0 errors and 0 warnings**.
+- Ran `cargo test --workspace`: passed with **31/31 unit tests passing**, 0 failures.
+- Maintained **0 heap allocations per frame** in the real-time audio thread across all pipelines.
 
 ---
 
