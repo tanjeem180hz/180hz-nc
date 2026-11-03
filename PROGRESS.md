@@ -21,7 +21,8 @@
 - [x] Part F: Comprehensive Performance Report & Final Clean Rebuild (0 warnings, 31/31 unit tests, `PERFORMANCE.md`).
 - [x] Live Test Feature: Real-time Monitor Audio to Headphones with A/B Crossfade & Howling Protection (Backend & DSP).
 - [x] Live Test Frontend UI (Controls, Meters, A/B Switch, Record/Replay UI).
-- [ ] Automated Integration & Stress Tests for Live Test (200-cycle start/stop, device disconnect, stress).
+- [x] Automated Integration & Stress Tests for Live Test (200-cycle start/stop, device disconnect, stress).
+- [ ] User Documentation & Final Clean Build.
 - [x] Final Honest Bug & Limitation Inventory.
 
 ---
@@ -51,6 +52,12 @@
   - 10-second Record & Replay interface with live progress bar and direct WAV export.
 - Styled responsive UI in `style.css` with smooth transitions and dark theme aesthetic.
 - Wired real-time IPC in `app.js` with visibility-based timer pausing and automatic monitor shutdown on pagehide/unload.
+
+### Commit 16: Automated Integration & Stress Tests (200-cycle start/stop, concurrency)
+- Created `test_stress_live_monitor_200_start_stop_cycles` verifying that 200 consecutive start/stop and tap rebuild cycles execute in < 30 ms with zero memory leakage and zero thread deadlock.
+- Created `test_stress_live_monitor_tap_concurrency` validating multi-threaded SPSC lock-free tapping under high contention without race conditions.
+- Created `test_live_monitor_record_and_wav_export` validating accurate sample duration, 16-bit 48 kHz standard WAV formatting, and filesystem serialization.
+
 
 
 

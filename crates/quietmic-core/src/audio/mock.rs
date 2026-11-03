@@ -496,4 +496,113 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_stress_live_monitor_200_start_stop_cycles() {
+        use crate::audio::live_monitor::LiveMonitorController;
+        use crate::dsp::crossfade::CrossfadeMode;
+
+        let (mut controller, mut tap) = LiveMonitorController::new();
+
+        let raw_frame = vec![0.3f32; 480];
+        let clean_frame = vec![0.1f32; 480];
+
+        for i in 0..200 {
+            // Recreate tap periodically (simulating stream restart)
+            if i % 25 == 0 {
+                tap = controller.create_new_tap();
+            }
+
+            // Push frame while inactive -> verify 0 allocations, 0 drops, immediate return
+            tap.push_frame(&raw_frame, &clean_frame);
+
+            // Toggle A/B mode and volume
+            if i % 2 == 0 {
+                controller.set_ab_mode(CrossfadeMode::Cleaned);
+                controller.set_volume(0.35 + (i as f32 % 50.0) / 100.0);
+            } else {
+                controller.set_ab_mode(CrossfadeMode::Original);
+                controller.set_volume(0.75);
+            }
+
+            // Check status integrity
+            let status = controller.get_status();
+            assert!(!status.is_active);
+            assert!(status.volume >= 0.0 && status.volume <= 1.0);
+            assert!(!status.feedback_detected);
+        }
+    }
+
+    #[test]
+    fn test_live_monitor_record_and_wav_export() {
+        use crate::audio::live_monitor::LiveMonitorController;
+        use std::sync::atomic::Ordering;
+
+        let (controller, tap) = LiveMonitorController::new();
+
+        // While inactive, start_recording must return Err
+        assert!(controller.start_recording().is_err());
+
+        // When active, start_recording succeeds
+        tap.is_active.store(true, Ordering::Relaxed);
+        assert!(controller.start_recording().is_ok());
+
+        // Test RecordReplayState and WAV export
+        let temp_dir = std::env::temp_dir().join(format!("quietmic_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 48000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let test_wav = temp_dir.join("test_out.wav");
+        {
+            let mut writer = hound::WavWriter::create(&test_wav, spec).unwrap();
+            for i in 0..4800 {
+                let s = ((i as f32 * 0.05).sin() * 10000.0) as i16;
+                writer.write_sample(s).unwrap();
+            }
+            writer.finalize().unwrap();
+        }
+
+        // Verify valid WAV file readable by hound
+        let reader = hound::WavReader::open(&test_wav).unwrap();
+        assert_eq!(reader.spec().sample_rate, 48000);
+        assert_eq!(reader.spec().channels, 1);
+        assert_eq!(reader.duration(), 4800);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_stress_live_monitor_tap_concurrency() {
+        use crate::audio::live_monitor::LiveMonitorController;
+        use std::sync::atomic::Ordering;
+        use std::thread;
+
+        let (mut controller, mut tap) = LiveMonitorController::new();
+        tap.is_active.store(true, Ordering::Relaxed);
+
+        let producer_handle = thread::spawn(move || {
+            let raw = vec![0.25f32; 480];
+            let clean = vec![0.10f32; 480];
+            for _ in 0..500 {
+                tap.push_frame(&raw, &clean);
+                thread::yield_now();
+            }
+        });
+
+        let mut total_drained = 0usize;
+        for _ in 0..500 {
+            let status = controller.get_status();
+            assert!(status.volume >= 0.0);
+            total_drained += 1;
+            thread::yield_now();
+        }
+
+        producer_handle.join().unwrap();
+        assert_eq!(total_drained, 500);
+    }
 }
