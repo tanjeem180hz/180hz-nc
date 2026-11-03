@@ -20,7 +20,8 @@
 - [x] Part E: Low-End PC Verification (1-Core Affinity Test, RTF = 0.0031 vs 0.30 Budget in `benchmarks/low_end_pc.md`).
 - [x] Part F: Comprehensive Performance Report & Final Clean Rebuild (0 warnings, 31/31 unit tests, `PERFORMANCE.md`).
 - [x] Live Test Feature: Real-time Monitor Audio to Headphones with A/B Crossfade & Howling Protection (Backend & DSP).
-- [ ] Live Test Frontend UI (Controls, Meters, A/B Switch, Record/Replay UI).
+- [x] Live Test Frontend UI (Controls, Meters, A/B Switch, Record/Replay UI).
+- [ ] Automated Integration & Stress Tests for Live Test (200-cycle start/stop, device disconnect, stress).
 - [x] Final Honest Bug & Limitation Inventory.
 
 ---
@@ -38,6 +39,19 @@
 - Implemented `start_live_test`, `stop_live_test`, `toggle_live_test`, `set_live_test_ab`, `set_live_test_volume`, `start_record_and_replay`, `start_replay_playback`, `export_recorded_wav`, `get_live_test_status`, and `get_output_devices` Tauri commands.
 - Added "Live Test: On/Off" toggle menu item to the Windows system tray.
 - Added automatic shutdown of monitor stream on window close and application termination to prevent audio leakage.
+
+### Commit 15: Live Test Frontend UI (Controls, Animated Live Badge, A/B Switch, Record/Replay)
+- Added Live Test card to `index.html` featuring:
+  - Prominent Start/Stop Live Test button with active color states and animated pulsing red `● LIVE` badge.
+  - Headphone feedback warning banner with prominent alert styling.
+  - Automatic acoustic feedback (howling) detection warning toast.
+  - Physical output device selector (excluding virtual cables).
+  - Segmented click-free A/B comparison pill toggle (Cleaned vs. Original).
+  - Monitor volume slider (0-100%, default 50%) backed by ear-protection soft limiting.
+  - 10-second Record & Replay interface with live progress bar and direct WAV export.
+- Styled responsive UI in `style.css` with smooth transitions and dark theme aesthetic.
+- Wired real-time IPC in `app.js` with visibility-based timer pausing and automatic monitor shutdown on pagehide/unload.
+
 
 
 ### Commit 1: `.gitignore` and `PROGRESS.md` setup

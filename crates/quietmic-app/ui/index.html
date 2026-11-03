@@ -75,6 +75,75 @@
       </div>
     </section>
 
+    <!-- Real-Time Mic Monitor (Live Test) -->
+    <section class="section live-test-card">
+      <div class="live-test-header">
+        <div class="live-title-row">
+          <span class="live-title">🎧 Live Mic Monitor</span>
+          <span id="liveBadge" class="live-badge hidden"><span class="live-dot"></span>LIVE</span>
+        </div>
+        <p class="live-test-desc">Hear your microphone denoised in real time through your headphones.</p>
+      </div>
+
+      <!-- Headphone Warning Banner -->
+      <div class="live-warning-banner">
+        <span class="warning-icon">⚠️</span>
+        <span><strong>Use headphones!</strong> Using speakers with a live mic causes acoustic howling/feedback.</span>
+      </div>
+
+      <!-- Feedback Detected Alert Banner -->
+      <div id="feedbackAlert" class="feedback-alert hidden">
+        <span>🚨 <strong>Feedback Howling Detected!</strong> Monitor was auto-muted to protect your ears. Please use headphones.</span>
+      </div>
+
+      <!-- Output Device Selection -->
+      <div class="live-control-group">
+        <label for="monitorSelect" class="section-label">Monitor Headphones / Speakers</label>
+        <select id="monitorSelect" class="select-dropdown">
+          <option value="">Default System Headphones / Speakers</option>
+        </select>
+      </div>
+
+      <!-- Primary Action Buttons & A/B Switch -->
+      <div class="live-action-row">
+        <button id="liveTestToggleBtn" class="btn btn-live-test">
+          <span id="liveTestBtnIcon">▶</span> <span id="liveTestBtnText">Start Live Test</span>
+        </button>
+
+        <!-- A/B Switch Segmented Control -->
+        <div class="ab-switch-group">
+          <button id="abCleanedBtn" class="ab-btn active" title="Listen to AI Noise Cancelled Audio">Cleaned</button>
+          <button id="abOriginalBtn" class="ab-btn" title="Listen to Raw Unfiltered Microphone">Original</button>
+        </div>
+      </div>
+
+      <!-- Monitor Volume Slider -->
+      <div class="live-volume-section">
+        <div class="slider-header">
+          <label for="monitorVolumeSlider" class="section-label">Monitor Volume (Soft Limiter Protected)</label>
+          <span id="monitorVolumeValue" class="slider-value">50%</span>
+        </div>
+        <input type="range" id="monitorVolumeSlider" min="0" max="100" value="50" class="slider">
+      </div>
+
+      <!-- Record & Replay 10-Second Test -->
+      <div class="record-replay-card">
+        <div class="record-header">
+          <span class="record-title">🎙️ 10s Record & Replay (A/B)</span>
+          <span id="recordStatusLabel" class="record-status-label">Idle</span>
+        </div>
+        <div class="record-progress-track">
+          <div id="recordProgressBar" class="record-progress-fill" style="width: 0%;"></div>
+        </div>
+        <div class="record-actions">
+          <button id="startRecordBtn" class="btn btn-secondary">Record 10s Sample</button>
+          <button id="playReplayBtn" class="btn btn-secondary" disabled>Play Replay (A/B)</button>
+          <button id="exportWavBtn" class="btn btn-secondary" disabled>Export WAVs</button>
+        </div>
+        <div id="wavExportNotice" class="export-notice hidden"></div>
+      </div>
+    </section>
+
     <!-- Real-Time VU Meters (15-20 fps) -->
     <section class="section">
       <label class="section-label">Live Audio Levels</label>

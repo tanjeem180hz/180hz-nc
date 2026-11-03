@@ -21,6 +21,24 @@ const comfortNoiseToggle = document.getElementById('comfortNoiseToggle');
 const speakerDenoiseToggle = document.getElementById('speakerDenoiseToggle');
 const autostartToggle = document.getElementById('autostartToggle');
 
+// Live Test UI Elements
+const liveTestToggleBtn = document.getElementById('liveTestToggleBtn');
+const liveTestBtnIcon = document.getElementById('liveTestBtnIcon');
+const liveTestBtnText = document.getElementById('liveTestBtnText');
+const liveBadge = document.getElementById('liveBadge');
+const feedbackAlert = document.getElementById('feedbackAlert');
+const monitorSelect = document.getElementById('monitorSelect');
+const abCleanedBtn = document.getElementById('abCleanedBtn');
+const abOriginalBtn = document.getElementById('abOriginalBtn');
+const monitorVolumeSlider = document.getElementById('monitorVolumeSlider');
+const monitorVolumeValue = document.getElementById('monitorVolumeValue');
+const startRecordBtn = document.getElementById('startRecordBtn');
+const playReplayBtn = document.getElementById('playReplayBtn');
+const exportWavBtn = document.getElementById('exportWavBtn');
+const recordStatusLabel = document.getElementById('recordStatusLabel');
+const recordProgressBar = document.getElementById('recordProgressBar');
+const wavExportNotice = document.getElementById('wavExportNotice');
+
 let currentConfig = {
   mode: 'Standard',
   strength: 1.0,
@@ -38,10 +56,15 @@ let deviceTimer = null;
 async function pollDevices() {
   if (!invoke) return;
   try {
-    const devices = await invoke('get_input_devices');
-    const prevVal = micSelect.value;
-    populateDeviceList(devices);
-    if (prevVal) micSelect.value = prevVal;
+    const inputDevices = await invoke('get_input_devices');
+    const prevMic = micSelect.value;
+    populateInputDeviceList(inputDevices);
+    if (prevMic) micSelect.value = prevMic;
+
+    const outputDevices = await invoke('get_output_devices');
+    const prevMonitor = monitorSelect.value;
+    populateOutputDeviceList(outputDevices);
+    if (prevMonitor) monitorSelect.value = prevMonitor;
 
     const virtualStatus = await invoke('get_virtual_status');
     updateVirtualStatus(virtualStatus);
@@ -68,7 +91,7 @@ function stopPolling() {
   }
 }
 
-// Pause timers when UI window is minimized or hidden in system tray (0% idle CPU)
+// Pause timers and stop live test when window is hidden or page unloaded
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     stopPolling();
@@ -79,7 +102,19 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-window.addEventListener('pagehide', stopPolling);
+window.addEventListener('beforeunload', () => {
+  if (invoke) {
+    invoke('stop_live_test');
+  }
+});
+
+window.addEventListener('pagehide', () => {
+  stopPolling();
+  if (invoke) {
+    invoke('stop_live_test');
+  }
+});
+
 window.addEventListener('pageshow', startPolling);
 
 async function init() {
@@ -91,14 +126,14 @@ async function init() {
 
   try {
     // 1. Fetch devices and configuration
-    const devices = await invoke('get_input_devices');
-    populateDeviceList(devices);
-
-    const virtualStatus = await invoke('get_virtual_status');
-    updateVirtualStatus(virtualStatus);
+    await pollDevices();
 
     currentConfig = await invoke('get_config');
     applyConfigToUI(currentConfig);
+
+    // Initial query of Live Test status
+    const liveStatus = await invoke('get_live_test_status');
+    updateLiveTestUI(liveStatus);
 
     // 2. Start polling only if window is currently visible
     if (!document.hidden) {
@@ -109,7 +144,7 @@ async function init() {
   }
 }
 
-function populateDeviceList(devices) {
+function populateInputDeviceList(devices) {
   micSelect.innerHTML = '<option value="">Default System Microphone</option>';
   devices.forEach(dev => {
     const opt = document.createElement('option');
@@ -119,6 +154,24 @@ function populateDeviceList(devices) {
       opt.textContent += ' [Default]';
     }
     micSelect.appendChild(opt);
+  });
+}
+
+function populateOutputDeviceList(devices) {
+  monitorSelect.innerHTML = '<option value="">Default System Headphones / Speakers</option>';
+  devices.forEach(dev => {
+    // Strictly filter out any virtual cables just in case
+    const nameLower = dev.name.toLowerCase();
+    if (nameLower.includes('cable') || nameLower.includes('vb-audio')) {
+      return;
+    }
+    const opt = document.createElement('option');
+    opt.value = dev.name;
+    opt.textContent = `${dev.name} (${dev.default_sample_rate / 1000} kHz)`;
+    if (dev.is_default) {
+      opt.textContent += ' [Default]';
+    }
+    monitorSelect.appendChild(opt);
   });
 }
 
@@ -169,6 +222,63 @@ function updateBypassUI(isBypassed) {
   }
 }
 
+function updateLiveTestUI(st) {
+  if (!st) return;
+
+  if (st.is_active) {
+    liveBadge.classList.remove('hidden');
+    liveTestToggleBtn.classList.add('btn-live-active');
+    liveTestBtnIcon.textContent = '⏹';
+    liveTestBtnText.textContent = 'Stop Live Test';
+  } else {
+    liveBadge.classList.add('hidden');
+    liveTestToggleBtn.classList.remove('btn-live-active');
+    liveTestBtnIcon.textContent = '▶';
+    liveTestBtnText.textContent = 'Start Live Test';
+  }
+
+  // A/B mode
+  abCleanedBtn.classList.toggle('active', st.ab_mode === 'Cleaned');
+  abOriginalBtn.classList.toggle('active', st.ab_mode === 'Original');
+
+  // Howling / Feedback alert
+  if (st.feedback_detected) {
+    feedbackAlert.classList.remove('hidden');
+  } else {
+    feedbackAlert.classList.add('hidden');
+  }
+
+  // Record & Replay
+  if (st.is_recording) {
+    const pct = Math.min(100, (st.recording_seconds / 10.0) * 100);
+    recordProgressBar.style.width = `${pct}%`;
+    recordStatusLabel.textContent = `Recording... (${st.recording_seconds.toFixed(1)}s / 10s)`;
+    startRecordBtn.disabled = true;
+    playReplayBtn.disabled = true;
+    exportWavBtn.disabled = true;
+  } else if (st.is_replaying) {
+    recordProgressBar.style.width = '100%';
+    recordStatusLabel.textContent = st.replay_is_cleaned ? 'Replaying: Cleaned...' : 'Replaying: Original (Raw)...';
+    startRecordBtn.disabled = true;
+    playReplayBtn.disabled = true;
+    playReplayBtn.textContent = 'Replaying...';
+  } else {
+    playReplayBtn.textContent = 'Play Replay (A/B)';
+    startRecordBtn.disabled = false;
+    if (st.has_recorded_audio) {
+      recordProgressBar.style.width = '100%';
+      recordStatusLabel.textContent = '10s Sample Ready';
+      playReplayBtn.disabled = false;
+      exportWavBtn.disabled = false;
+    } else {
+      recordProgressBar.style.width = '0%';
+      recordStatusLabel.textContent = 'Idle';
+      playReplayBtn.disabled = true;
+      exportWavBtn.disabled = true;
+    }
+  }
+}
+
 async function updateMetrics() {
   if (!invoke) return;
   try {
@@ -188,6 +298,10 @@ async function updateMetrics() {
 
     inputPeakText.textContent = `${Math.round(m.input_peak_db)} dB`;
     outputPeakText.textContent = `${Math.round(m.output_peak_db)} dB`;
+
+    // Query Live Test status
+    const liveStatus = await invoke('get_live_test_status');
+    updateLiveTestUI(liveStatus);
   } catch (err) {
     // Throttled logging to avoid spamming
   }
@@ -254,6 +368,86 @@ recheckCableBtn.addEventListener('click', async () => {
   if (invoke) {
     const status = await invoke('get_virtual_status');
     updateVirtualStatus(status);
+  }
+});
+
+// Live Test Listeners
+liveTestToggleBtn.addEventListener('click', async () => {
+  if (!invoke) return;
+  try {
+    await invoke('toggle_live_test', { deviceName: monitorSelect.value || null });
+    const st = await invoke('get_live_test_status');
+    updateLiveTestUI(st);
+  } catch (err) {
+    alert("Live Test error: " + err);
+  }
+});
+
+monitorSelect.addEventListener('change', async () => {
+  if (!invoke) return;
+  const isCurrentlyActive = liveTestToggleBtn.classList.contains('btn-live-active');
+  if (isCurrentlyActive) {
+    try {
+      await invoke('start_live_test', { deviceName: monitorSelect.value || null });
+    } catch (err) {
+      alert("Failed to switch monitor device: " + err);
+    }
+  }
+});
+
+abCleanedBtn.addEventListener('click', async () => {
+  abCleanedBtn.classList.add('active');
+  abOriginalBtn.classList.remove('active');
+  if (invoke) await invoke('set_live_test_ab', { mode: 'Cleaned' });
+});
+
+abOriginalBtn.addEventListener('click', async () => {
+  abOriginalBtn.classList.add('active');
+  abCleanedBtn.classList.remove('active');
+  if (invoke) await invoke('set_live_test_ab', { mode: 'Original' });
+});
+
+monitorVolumeSlider.addEventListener('input', async (e) => {
+  const val = parseInt(e.target.value, 10);
+  monitorVolumeValue.textContent = `${val}%`;
+  if (invoke) await invoke('set_live_test_volume', { volume: val / 100 });
+});
+
+startRecordBtn.addEventListener('click', async () => {
+  if (!invoke) return;
+  try {
+    const isCurrentlyActive = liveTestToggleBtn.classList.contains('btn-live-active');
+    if (!isCurrentlyActive) {
+      await invoke('start_live_test', { deviceName: monitorSelect.value || null });
+    }
+    await invoke('start_record_and_replay');
+    wavExportNotice.classList.add('hidden');
+  } catch (err) {
+    alert("Recording error: " + err);
+  }
+});
+
+playReplayBtn.addEventListener('click', async () => {
+  if (!invoke) return;
+  try {
+    const isCurrentlyActive = liveTestToggleBtn.classList.contains('btn-live-active');
+    if (!isCurrentlyActive) {
+      await invoke('start_live_test', { deviceName: monitorSelect.value || null });
+    }
+    await invoke('start_replay_playback');
+  } catch (err) {
+    alert("Replay error: " + err);
+  }
+});
+
+exportWavBtn.addEventListener('click', async () => {
+  if (!invoke) return;
+  try {
+    const [rawPath, cleanPath] = await invoke('export_recorded_wav', { dir: null });
+    wavExportNotice.classList.remove('hidden');
+    wavExportNotice.innerHTML = `Saved WAV files:<br>&bull; Raw: <code>${rawPath}</code><br>&bull; Cleaned: <code>${cleanPath}</code>`;
+  } catch (err) {
+    alert("Export WAV error: " + err);
   }
 });
 
