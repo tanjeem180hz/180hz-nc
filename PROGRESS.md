@@ -19,6 +19,7 @@
 - [x] Part D: Stress & Soak Testing (60-min Soak, Clock Drift Skew, Hotplug Storm, Fuzzing in `benchmarks/stress_tests.md`).
 - [x] Part E: Low-End PC Verification (1-Core Affinity Test, RTF = 0.0031 vs 0.30 Budget in `benchmarks/low_end_pc.md`).
 - [x] Part F: Comprehensive Performance Report & Final Clean Rebuild (0 warnings, 31/31 unit tests, `PERFORMANCE.md`).
+- [ ] Live Test Feature: Real-time Monitor Audio to Headphones with A/B Crossfade & Howling Protection.
 - [x] Final Honest Bug & Limitation Inventory.
 
 ---
@@ -129,6 +130,12 @@
 - Ran `cargo clippy --workspace -- -D warnings`: passed with **0 errors and 0 warnings**.
 - Ran `cargo test --workspace`: passed with **31/31 unit tests passing**, 0 failures.
 - Maintained **0 heap allocations per frame** in the real-time audio thread across all pipelines.
+
+### Commit 13: Live Test Phase 1 (Feedback Howling Detector & A/B Crossfader)
+- Created `HowlingDetector` in `quietmic_core::dsp::howling`: automatically detects runaway acoustic feedback loops using energy thresholding, sinusoidal crest factor analysis, and zero-crossing period consistency.
+- Created `CrossfadeSwitch` in `quietmic_core::dsp::crossfade`: provides click-free 15 ms exponential interpolation between Cleaned and Original audio for live A/B comparison.
+- Added `DeviceManager::list_output_devices` in `device.rs`: strictly filters out VB-CABLE virtual playback/recording endpoints to prevent accidental feedback into virtual mic.
+- Added unit tests for feedback howling triggering vs natural speech rejection, click-free crossfade, and virtual cable exclusion. Verified 0 warnings.
 
 ---
 

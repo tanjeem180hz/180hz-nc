@@ -146,6 +146,78 @@ impl DeviceManager {
         host.default_output_device()
             .ok_or_else(|| "No default audio output device found".to_string())
     }
+
+    /// Lists all physical output (headphones, speakers) devices available for monitoring.
+    /// Strictly filters out VB-CABLE devices to prevent accidental feedback into virtual mic.
+    pub fn list_output_devices(&self) -> Result<Vec<AudioDeviceInfo>, String> {
+        let host = cpal::default_host();
+        let default_device_name = host.default_output_device()
+            .and_then(|d| d.name().ok());
+
+        let mut devices = Vec::new();
+        let output_devices = host.output_devices()
+            .map_err(|e| format!("Failed to enumerate output devices: {}", e))?;
+
+        for dev in output_devices {
+            if let Ok(name) = dev.name() {
+                let lower = name.to_lowercase();
+                // Strictly exclude virtual cables from monitoring output
+                if lower.contains("cable input") || lower.contains("cable output") || lower.contains("vb-audio") {
+                    continue;
+                }
+
+                let default_config = dev.default_output_config().ok();
+                let sample_rate = default_config.as_ref().map(|c| c.sample_rate().0).unwrap_or(48000);
+                let channels = default_config.as_ref().map(|c| c.channels()).unwrap_or(2);
+                let is_default = default_device_name.as_deref() == Some(&name);
+
+                devices.push(AudioDeviceInfo {
+                    id: name.clone(),
+                    name,
+                    default_sample_rate: sample_rate,
+                    channels,
+                    is_default,
+                });
+            }
+        }
+
+        Ok(devices)
+    }
+
+    /// Finds a named output device or falls back to system default.
+    pub fn get_output_device(&self, name_opt: Option<&str>) -> Result<cpal::Device, String> {
+        let host = cpal::default_host();
+        if let Some(target_name) = name_opt {
+            if let Ok(outputs) = host.output_devices() {
+                for dev in outputs {
+                    if let Ok(name) = dev.name() {
+                        if name == target_name {
+                            return Ok(dev);
+                        }
+                    }
+                }
+            }
+        }
+
+        self.get_default_output_device()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_list_output_devices_excludes_virtual_cables() {
+        let manager = DeviceManager::new();
+        if let Ok(devices) = manager.list_output_devices() {
+            for dev in devices {
+                let lower = dev.name.to_lowercase();
+                assert!(!lower.contains("cable input"), "Virtual cable leaked into monitor output list: {}", dev.name);
+                assert!(!lower.contains("cable output"), "Virtual cable leaked into monitor output list: {}", dev.name);
+            }
+        }
+    }
 }
 
 
