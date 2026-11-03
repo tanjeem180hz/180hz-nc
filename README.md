@@ -62,6 +62,40 @@ It captures audio from your physical microphone via **WASAPI**, processes each *
 
 ---
 
+## 🎧 How to Use the Real-Time "Live Test" Feature
+
+QuietMic includes an integrated real-time audio monitor allowing you to audition the noise cancellation engine and compare raw vs. cleaned voice through your headphones before joining calls.
+
+### 1. Headphone Safety First
+> [!WARNING]
+> Always use headphones when activating Live Test! If you use open laptop or desktop speakers while monitoring your live microphone, acoustic feedback (a high-pitched howling loop) will occur.
+>
+> QuietMic includes an automated **Acoustic Howling & Feedback Detector** and **Soft Peak Limiter**. If feedback resonance or sudden loud noises occur, QuietMic instantly cuts and mutes the monitor playback, safeguarding your hearing.
+
+### 2. Live Monitoring Steps
+1. Open the QuietMic window from the system tray icon.
+2. Select your headphones in the **Monitor Headphones / Speakers** dropdown. (Virtual devices such as VB-CABLE are filtered out to prevent feedback loops).
+3. Click the **Start Live Test** button. A red pulsing `● LIVE` badge indicates real-time monitoring is active.
+4. Speak normally into your microphone to hear your voice processed by the active noise cancellation engine.
+5. Adjust the **Monitor Volume** slider (default 50%) to a comfortable listening level.
+
+### 3. Instant A/B Comparison
+- Click the **Cleaned** button to hear AI noise-cancelled audio.
+- Click the **Original** button to hear raw, unfiltered microphone audio.
+- The transition uses a 15 ms exponential crossfade, ensuring click-free, phase-aligned switching with zero pops or artifacts.
+
+### 4. 10-Second Record & Replay
+If you prefer not to listen to yourself speaking in real time:
+1. Click **Record 10s Sample**. QuietMic records 10 seconds of synchronized raw dry audio and AI-cleaned audio.
+2. Click **Play Replay (A/B)**. QuietMic plays back the 10 seconds of raw microphone audio followed immediately by the 10 seconds of AI-cleaned audio.
+3. Click **Export WAVs** to save `live_test_original_raw.wav` and `live_test_noise_cancelled.wav` to your disk for external auditing.
+
+### 5. Automatic Inactivity Auto-Stop & Zero CPU Overhead
+- **Zero Overhead**: When Live Test is turned off, the audio thread incurs zero CPU penalty (a single relaxed atomic check < 1 ns).
+- **Auto-Stop**: Live Test automatically shuts down after 10 minutes of inactivity and immediately whenever the settings window is closed or the application exits.
+
+---
+
 ## 📊 Measured Quality & Performance Benchmarks
 
 All metrics below were measured using the offline test harness (`quietmic-bench`) across standardized mixtures at -5 dB, 0 dB, 5 dB, and 10 dB SNR:

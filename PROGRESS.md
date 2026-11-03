@@ -22,7 +22,7 @@
 - [x] Live Test Feature: Real-time Monitor Audio to Headphones with A/B Crossfade & Howling Protection (Backend & DSP).
 - [x] Live Test Frontend UI (Controls, Meters, A/B Switch, Record/Replay UI).
 - [x] Automated Integration & Stress Tests for Live Test (200-cycle start/stop, device disconnect, stress).
-- [ ] User Documentation & Final Clean Build.
+- [x] User Documentation & Final Clean Build (`README.md`, `PROGRESS.md`, `cargo build --release`).
 - [x] Final Honest Bug & Limitation Inventory.
 
 ---
