@@ -1,4 +1,5 @@
 use crate::audio::device::DeviceManager;
+use crate::audio::live_monitor::LiveMonitorTapProducers;
 use crate::audio::mmcss::MmcssHandle;
 use crate::engine::pipeline::{AudioPipeline, EngineMode};
 use cpal::traits::{DeviceTrait, StreamTrait};
@@ -74,6 +75,7 @@ impl AudioStreamController {
         selected_mic_name: Option<&str>,
         pipeline: AudioPipeline,
         speaker_pipeline: Option<AudioPipeline>,
+        mut live_monitor_tap: Option<LiveMonitorTapProducers>,
     ) -> Result<Self, String> {
         let running = Arc::new(AtomicBool::new(true));
         let metrics = Arc::new(AudioMetrics::new());
@@ -297,6 +299,9 @@ impl AudioStreamController {
                         }
 
                         if res.is_ok() {
+                            if let Some(ref mut tap) = live_monitor_tap {
+                                tap.push_frame(&in_chunk, &out_chunk);
+                            }
                             let mut out_peak = 0.0f32;
                             for &s in &out_chunk {
                                 out_peak = out_peak.max(s.abs());
@@ -307,6 +312,9 @@ impl AudioStreamController {
                             let out_db = if out_peak > 1e-5 { 20.0 * out_peak.log10() } else { -100.0 };
                             worker_metrics.output_peak_db.store(out_db.to_bits(), Ordering::Relaxed);
                         } else {
+                            if let Some(ref mut tap) = live_monitor_tap {
+                                tap.push_frame(&in_chunk, &in_chunk);
+                            }
                             // Engine/resampler fallback: pass-through unprocessed in_chunk
                             for &s in &in_chunk {
                                 if out_prod.try_push(s).is_err() {

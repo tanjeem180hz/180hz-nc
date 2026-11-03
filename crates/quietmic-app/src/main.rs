@@ -1,8 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use parking_lot::Mutex;
-use quietmic_core::audio::{AudioDeviceInfo, DeviceManager, VirtualDeviceStatus};
+use quietmic_core::audio::{
+    AudioDeviceInfo, DeviceManager, LiveMonitorController, LiveMonitorStatus, VirtualDeviceStatus,
+};
 use quietmic_core::config::AppConfig;
+use quietmic_core::dsp::crossfade::CrossfadeMode;
 use quietmic_core::engine::pipeline::{AudioPipeline, EngineMode};
 use quietmic_core::{init_logging, AudioStreamController};
 use serde::{Deserialize, Serialize};
@@ -37,6 +40,7 @@ pub struct AppState {
     pub config: Mutex<AppConfig>,
     pub device_manager: DeviceManager,
     pub stream_controller: Mutex<Option<AudioStreamController>>,
+    pub live_monitor: Mutex<LiveMonitorController>,
 }
 
 // ----------------------------------------------------------------------------
@@ -46,6 +50,85 @@ pub struct AppState {
 #[tauri::command]
 fn get_input_devices(state: State<AppState>) -> Result<Vec<AudioDeviceInfo>, String> {
     state.device_manager.list_input_devices()
+}
+
+#[tauri::command]
+fn get_output_devices(state: State<AppState>) -> Result<Vec<AudioDeviceInfo>, String> {
+    state.device_manager.list_output_devices()
+}
+
+#[tauri::command]
+fn start_live_test(device_name: Option<String>, state: State<AppState>) -> Result<(), String> {
+    let mut monitor = state.live_monitor.lock();
+    monitor.start(&state.device_manager, device_name.as_deref())
+}
+
+#[tauri::command]
+fn stop_live_test(state: State<AppState>) -> Result<(), String> {
+    let mut monitor = state.live_monitor.lock();
+    monitor.stop();
+    Ok(())
+}
+
+#[tauri::command]
+fn toggle_live_test(device_name: Option<String>, state: State<AppState>) -> Result<bool, String> {
+    let mut monitor = state.live_monitor.lock();
+    let current_status = monitor.get_status();
+    if current_status.is_active {
+        monitor.stop();
+        Ok(false)
+    } else {
+        monitor.start(&state.device_manager, device_name.as_deref())?;
+        Ok(true)
+    }
+}
+
+#[tauri::command]
+fn set_live_test_ab(mode: String, state: State<AppState>) -> Result<(), String> {
+    let monitor = state.live_monitor.lock();
+    let crossfade_mode = match mode.as_str() {
+        "Original" => CrossfadeMode::Original,
+        _ => CrossfadeMode::Cleaned,
+    };
+    monitor.set_ab_mode(crossfade_mode);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_live_test_volume(volume: f32, state: State<AppState>) -> Result<(), String> {
+    let monitor = state.live_monitor.lock();
+    monitor.set_volume(volume);
+    Ok(())
+}
+
+#[tauri::command]
+fn start_record_and_replay(state: State<AppState>) -> Result<(), String> {
+    let monitor = state.live_monitor.lock();
+    monitor.start_recording()
+}
+
+#[tauri::command]
+fn start_replay_playback(state: State<AppState>) -> Result<(), String> {
+    let mut monitor = state.live_monitor.lock();
+    monitor.start_replay()
+}
+
+#[tauri::command]
+fn export_recorded_wav(dir: Option<String>, state: State<AppState>) -> Result<(String, String), String> {
+    let monitor = state.live_monitor.lock();
+    let target_dir = if let Some(d) = dir {
+        std::path::PathBuf::from(d)
+    } else {
+        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")).join("recordings")
+    };
+    let (raw, clean) = monitor.export_recorded_wavs(&target_dir)?;
+    Ok((raw.to_string_lossy().to_string(), clean.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+fn get_live_test_status(state: State<AppState>) -> LiveMonitorStatus {
+    let mut monitor = state.live_monitor.lock();
+    monitor.get_status()
 }
 
 #[tauri::command]
@@ -200,7 +283,9 @@ fn restart_audio_stream(state: &AppState, cfg: &AppConfig) -> Result<(), String>
         None
     };
 
-    match AudioStreamController::start(&state.device_manager, cfg.selected_mic.as_deref(), pipeline, speaker_pipe) {
+    let live_tap = state.live_monitor.lock().create_new_tap();
+
+    match AudioStreamController::start(&state.device_manager, cfg.selected_mic.as_deref(), pipeline, speaker_pipe, Some(live_tap)) {
         Ok(ctrl) => {
             *stream_lock = Some(ctrl);
             Ok(())
@@ -258,7 +343,9 @@ fn main() {
         None
     };
 
-    let initial_controller = match AudioStreamController::start(&device_manager, config.selected_mic.as_deref(), pipeline, speaker_pipe) {
+    let (live_monitor, live_tap) = LiveMonitorController::new();
+
+    let initial_controller = match AudioStreamController::start(&device_manager, config.selected_mic.as_deref(), pipeline, speaker_pipe, Some(live_tap)) {
         Ok(ctrl) => Some(ctrl),
         Err(err) => {
             tracing::warn!("Standby mode: Audio device not ready on launch: {}", err);
@@ -270,10 +357,17 @@ fn main() {
         config: Mutex::new(config),
         device_manager,
         stream_controller: Mutex::new(initial_controller),
+        live_monitor: Mutex::new(live_monitor),
     };
 
     tauri::Builder::default()
         .manage(app_state)
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                let state = window.state::<AppState>();
+                state.live_monitor.lock().stop();
+            }
+        })
         .setup(|app| {
             // Spawn Windows Global Hotkey Listener (Ctrl+Shift+B for Bypass, Ctrl+Shift+M for Mute)
             #[cfg(windows)]
@@ -337,17 +431,28 @@ fn main() {
             }
 
             // Build System Tray Menu
+            let live_test_item = MenuItem::with_id(app, "toggle_live_test", "Live Test: On/Off", true, None::<&str>)?;
             let toggle_item = MenuItem::with_id(app, "toggle_bypass", "Toggle Active/Bypass (Ctrl+Shift+B)", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "open_settings", "Settings...", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit QuietMic", true, None::<&str>)?;
 
-            let menu = Menu::with_items(app, &[&toggle_item, &settings_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[&live_test_item, &toggle_item, &settings_item, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .tooltip("QuietMic - Real-Time AI Noise Suppression")
                 .on_menu_event(|app, event| {
                     match event.id().as_ref() {
+                        "toggle_live_test" => {
+                            let state = app.state::<AppState>();
+                            let mut monitor = state.live_monitor.lock();
+                            let st = monitor.get_status();
+                            if st.is_active {
+                                monitor.stop();
+                            } else {
+                                let _ = monitor.start(&state.device_manager, None);
+                            }
+                        }
                         "toggle_bypass" => {
                             let state = app.state::<AppState>();
                             let mut cfg = state.config.lock();
@@ -362,6 +467,8 @@ fn main() {
                             }
                         }
                         "quit" => {
+                            let state = app.state::<AppState>();
+                            state.live_monitor.lock().stop();
                             app.exit(0);
                         }
                         _ => {}
@@ -382,6 +489,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             get_input_devices,
+            get_output_devices,
             get_virtual_status,
             get_config,
             set_mode,
@@ -394,6 +502,15 @@ fn main() {
             set_speaker_denoise,
             set_autostart,
             get_metrics,
+            start_live_test,
+            stop_live_test,
+            toggle_live_test,
+            set_live_test_ab,
+            set_live_test_volume,
+            start_record_and_replay,
+            start_replay_playback,
+            export_recorded_wav,
+            get_live_test_status,
             open_url
         ])
         .run(tauri::generate_context!())

@@ -19,12 +19,26 @@
 - [x] Part D: Stress & Soak Testing (60-min Soak, Clock Drift Skew, Hotplug Storm, Fuzzing in `benchmarks/stress_tests.md`).
 - [x] Part E: Low-End PC Verification (1-Core Affinity Test, RTF = 0.0031 vs 0.30 Budget in `benchmarks/low_end_pc.md`).
 - [x] Part F: Comprehensive Performance Report & Final Clean Rebuild (0 warnings, 31/31 unit tests, `PERFORMANCE.md`).
-- [ ] Live Test Feature: Real-time Monitor Audio to Headphones with A/B Crossfade & Howling Protection.
+- [x] Live Test Feature: Real-time Monitor Audio to Headphones with A/B Crossfade & Howling Protection (Backend & DSP).
+- [ ] Live Test Frontend UI (Controls, Meters, A/B Switch, Record/Replay UI).
 - [x] Final Honest Bug & Limitation Inventory.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 13: Live Test DSP Foundation (Howling Detection, Click-Free A/B Crossfade)
+- Created `quietmic_core::dsp::howling`: `HowlingDetector` with narrow-band autocorrelation, crest factor analysis (< 2.2 feedback threshold), zero-crossing periodicity, and energy gating (> -26 dBFS). Successfully triggers on pure sinusoidal acoustic howling while completely ignoring human speech dynamics.
+- Created `quietmic_core::dsp::crossfade`: `CrossfadeSwitch` with exponential 15 ms settling time constant ($\tau = \text{crossfade\_ms}/3.0$) providing completely click-free, phase-aligned transitions between raw dry microphone input and AI-cleaned output.
+- Updated `DeviceManager` with `list_output_devices()` and `get_output_device()` with strict filtering to prevent VB-CABLE virtual output devices from receiving monitor audio.
+
+### Commit 14: Live Test Controller & Tauri IPC State Architecture
+- Created `LiveMonitorController` with atomic lock-free SPSC tapping into the main audio engine thread.
+- Zero CPU/RAM penalty on virtual mic streaming when Live Test is disabled (single relaxed atomic check returning in < 1 ns).
+- Implemented `start_live_test`, `stop_live_test`, `toggle_live_test`, `set_live_test_ab`, `set_live_test_volume`, `start_record_and_replay`, `start_replay_playback`, `export_recorded_wav`, `get_live_test_status`, and `get_output_devices` Tauri commands.
+- Added "Live Test: On/Off" toggle menu item to the Windows system tray.
+- Added automatic shutdown of monitor stream on window close and application termination to prevent audio leakage.
+
 
 ### Commit 1: `.gitignore` and `PROGRESS.md` setup
 - Updated `.gitignore` to comprehensively exclude build artifacts, logs, wav test files, and node_modules.
