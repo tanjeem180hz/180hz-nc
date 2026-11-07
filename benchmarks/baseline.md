@@ -8,34 +8,34 @@
 
 | Mode | AEC Enabled | Mean Frame (µs) | P99 Frame (µs) | Max Frame (µs) | RTF | Heap Allocs/Frame | Peak RAM (MB) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Light (RNNoise)** | No | **66.5 µs** | 144.1 µs | 1374.0 µs | **0.0067** | **0** | 32.18 MB |
-| **Light (RNNoise)** | Yes | **24.8 µs** | 98.8 µs | 268.0 µs | **0.0026** | **0** | 32.18 MB |
-| **Standard (DeepFilterNet3)** | No | **8.7 µs** | 19.9 µs | 146.0 µs | **0.0009** | **0** | 32.18 MB |
-| **Standard (DeepFilterNet3)** | Yes | **17.0 µs** | 48.0 µs | 243.0 µs | **0.0018** | **0** | 32.18 MB |
-| **Voice Isolation** | No | **68.0 µs** | 127.5 µs | 538.0 µs | **0.0069** | **0** | 32.18 MB |
-| **Voice Isolation** | Yes | **27.3 µs** | 97.2 µs | 211.0 µs | **0.0029** | **0** | 32.18 MB |
+| **Light (RNNoise)** | No | **75.9 µs** | 368.3 µs | 1710.0 µs | **0.0077** | **0** | 32.20 MB |
+| **Light (RNNoise)** | Yes | **81.4 µs** | 436.9 µs | 21211.0 µs | **0.0083** | **0** | 32.20 MB |
+| **Standard (DeepFilterNet3)** | No | **13.0 µs** | 68.1 µs | 597.0 µs | **0.0014** | **0** | 32.20 MB |
+| **Standard (DeepFilterNet3)** | Yes | **12.9 µs** | 73.2 µs | 711.0 µs | **0.0014** | **0** | 32.20 MB |
+| **Voice Isolation** | No | **80.3 µs** | 411.5 µs | 1582.0 µs | **0.0081** | **0** | 32.20 MB |
+| **Voice Isolation** | Yes | **79.5 µs** | 414.8 µs | 1296.0 µs | **0.0081** | **0** | 32.20 MB |
 
 ## 2. Objective Speech Quality & Noise Suppression Matrix
 
 | Scenario | Mode | AEC | Input SNR | Output SNR | ΔSNR | DNSMOS SIG | DNSMOS BAK | DNSMOS OVRL |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| Keyboard_Clicks_-5dB_SNR | Light (RNNoise) | No | -5.0 dB | -2.9 dB | **2.1 dB** | 1.51 | 2.10 | **1.77** |
-| Keyboard_Clicks_-5dB_SNR | Light (RNNoise) | Yes | -5.0 dB | -2.6 dB | **2.4 dB** | 1.20 | 2.10 | **1.61** |
-| Keyboard_Clicks_-5dB_SNR | Standard (DeepFilterNet3) | No | -5.0 dB | -2.8 dB | **2.2 dB** | 1.20 | 2.10 | **1.61** |
-| Keyboard_Clicks_-5dB_SNR | Standard (DeepFilterNet3) | Yes | -5.0 dB | -3.4 dB | **1.6 dB** | 1.20 | 2.10 | **1.61** |
-| Keyboard_Clicks_+0dB_SNR | Light (RNNoise) | No | -0.0 dB | -2.9 dB | **-2.9 dB** | 1.51 | 2.10 | **1.77** |
-| Keyboard_Clicks_+0dB_SNR | Light (RNNoise) | Yes | -0.0 dB | -2.6 dB | **-2.6 dB** | 1.20 | 2.10 | **1.61** |
-| Keyboard_Clicks_+0dB_SNR | Standard (DeepFilterNet3) | No | -0.0 dB | -2.7 dB | **-2.7 dB** | 1.20 | 2.10 | **1.61** |
-| Keyboard_Clicks_+0dB_SNR | Standard (DeepFilterNet3) | Yes | -0.0 dB | -3.4 dB | **-3.4 dB** | 1.20 | 2.10 | **1.61** |
-| Keyboard_Clicks_+5dB_SNR | Light (RNNoise) | No | 5.0 dB | -3.0 dB | **-8.0 dB** | 1.49 | 2.10 | **1.77** |
-| Keyboard_Clicks_+5dB_SNR | Light (RNNoise) | Yes | 5.0 dB | -2.6 dB | **-7.6 dB** | 1.20 | 2.10 | **1.61** |
-| Keyboard_Clicks_+5dB_SNR | Standard (DeepFilterNet3) | No | 5.0 dB | -2.7 dB | **-7.7 dB** | 1.20 | 2.10 | **1.61** |
-| Keyboard_Clicks_+5dB_SNR | Standard (DeepFilterNet3) | Yes | 5.0 dB | -3.4 dB | **-8.4 dB** | 1.20 | 2.10 | **1.61** |
-| Keyboard_Clicks_+10dB_SNR | Light (RNNoise) | No | 10.0 dB | -2.9 dB | **-12.9 dB** | 1.48 | 2.10 | **1.76** |
-| Keyboard_Clicks_+10dB_SNR | Light (RNNoise) | Yes | 10.0 dB | -2.6 dB | **-12.6 dB** | 1.20 | 2.10 | **1.61** |
-| Keyboard_Clicks_+10dB_SNR | Standard (DeepFilterNet3) | No | 10.0 dB | -2.7 dB | **-12.7 dB** | 1.20 | 2.10 | **1.61** |
-| Keyboard_Clicks_+10dB_SNR | Standard (DeepFilterNet3) | Yes | 10.0 dB | -3.4 dB | **-13.4 dB** | 1.20 | 2.10 | **1.61** |
-| Fan_AC_Hum_-5dB_SNR | Light (RNNoise) | No | -5.0 dB | -1.0 dB | **4.0 dB** | 1.50 | 2.10 | **1.77** |
-| Fan_AC_Hum_-5dB_SNR | Light (RNNoise) | Yes | -5.0 dB | -2.7 dB | **2.3 dB** | 1.20 | 2.10 | **1.61** |
-| Fan_AC_Hum_-5dB_SNR | Standard (DeepFilterNet3) | No | -5.0 dB | -4.8 dB | **0.2 dB** | 1.20 | 2.10 | **1.61** |
-| Fan_AC_Hum_-5dB_SNR | Standard (DeepFilterNet3) | Yes | -5.0 dB | -3.3 dB | **1.7 dB** | 1.20 | 2.10 | **1.61** |
+| Keyboard_Clicks_-5dB_SNR | Light (RNNoise) | No | -5.0 dB | 3.7 dB | **8.7 dB** | 3.29 | 2.65 | **3.00** |
+| Keyboard_Clicks_-5dB_SNR | Light (RNNoise) | Yes | -5.0 dB | 3.7 dB | **8.7 dB** | 3.29 | 2.65 | **3.00** |
+| Keyboard_Clicks_-5dB_SNR | Standard (DeepFilterNet3) | No | -5.0 dB | 4.4 dB | **9.4 dB** | 3.35 | 2.73 | **3.07** |
+| Keyboard_Clicks_-5dB_SNR | Standard (DeepFilterNet3) | Yes | -5.0 dB | 4.4 dB | **9.4 dB** | 3.35 | 2.73 | **3.07** |
+| Keyboard_Clicks_+0dB_SNR | Light (RNNoise) | No | -0.0 dB | 4.4 dB | **4.4 dB** | 3.34 | 2.73 | **3.06** |
+| Keyboard_Clicks_+0dB_SNR | Light (RNNoise) | Yes | -0.0 dB | 4.4 dB | **4.4 dB** | 3.34 | 2.73 | **3.06** |
+| Keyboard_Clicks_+0dB_SNR | Standard (DeepFilterNet3) | No | -0.0 dB | 4.7 dB | **4.7 dB** | 3.37 | 2.77 | **3.10** |
+| Keyboard_Clicks_+0dB_SNR | Standard (DeepFilterNet3) | Yes | -0.0 dB | 4.7 dB | **4.7 dB** | 3.37 | 2.77 | **3.10** |
+| Keyboard_Clicks_+5dB_SNR | Light (RNNoise) | No | 5.0 dB | 4.8 dB | **-0.2 dB** | 3.38 | 2.78 | **3.11** |
+| Keyboard_Clicks_+5dB_SNR | Light (RNNoise) | Yes | 5.0 dB | 4.8 dB | **-0.2 dB** | 3.38 | 2.78 | **3.11** |
+| Keyboard_Clicks_+5dB_SNR | Standard (DeepFilterNet3) | No | 5.0 dB | 5.1 dB | **0.1 dB** | 3.39 | 2.80 | **3.13** |
+| Keyboard_Clicks_+5dB_SNR | Standard (DeepFilterNet3) | Yes | 5.0 dB | 5.1 dB | **0.1 dB** | 3.39 | 2.80 | **3.13** |
+| Keyboard_Clicks_+10dB_SNR | Light (RNNoise) | No | 10.0 dB | 5.1 dB | **-4.9 dB** | 3.39 | 2.81 | **3.13** |
+| Keyboard_Clicks_+10dB_SNR | Light (RNNoise) | Yes | 10.0 dB | 5.1 dB | **-4.9 dB** | 3.39 | 2.81 | **3.13** |
+| Keyboard_Clicks_+10dB_SNR | Standard (DeepFilterNet3) | No | 10.0 dB | 5.5 dB | **-4.5 dB** | 3.41 | 2.84 | **3.15** |
+| Keyboard_Clicks_+10dB_SNR | Standard (DeepFilterNet3) | Yes | 10.0 dB | 5.5 dB | **-4.5 dB** | 3.41 | 2.84 | **3.15** |
+| Fan_AC_Hum_-5dB_SNR | Light (RNNoise) | No | -5.0 dB | 1.8 dB | **6.8 dB** | 3.07 | 2.29 | **2.72** |
+| Fan_AC_Hum_-5dB_SNR | Light (RNNoise) | Yes | -5.0 dB | 1.8 dB | **6.8 dB** | 3.07 | 2.29 | **2.72** |
+| Fan_AC_Hum_-5dB_SNR | Standard (DeepFilterNet3) | No | -5.0 dB | 2.0 dB | **7.0 dB** | 3.17 | 2.44 | **2.84** |
+| Fan_AC_Hum_-5dB_SNR | Standard (DeepFilterNet3) | Yes | -5.0 dB | 2.0 dB | **7.0 dB** | 3.17 | 2.44 | **2.84** |

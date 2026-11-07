@@ -96,7 +96,7 @@ fn benchmark_pipeline(
 
     let frame_size = 480;
     let mut offset = 0;
-    let aec_ref_chunk = vec![0.02f32; frame_size];
+    let aec_ref_chunk = vec![0.0f32; frame_size];
 
     let t_start_total = Instant::now();
 
@@ -182,6 +182,8 @@ fn main() {
 
     let output_dir = Path::new("target/bench_output");
     let _ = fs::create_dir_all(output_dir);
+    let ab_dir = Path::new("ab_samples");
+    let _ = fs::create_dir_all(ab_dir);
     let bench_dir = Path::new("benchmarks");
     let _ = fs::create_dir_all(bench_dir);
 
@@ -209,6 +211,8 @@ fn main() {
         if is_key {
             let orig_path = output_dir.join(format!("original_{}.wav", sc.name));
             let _ = write_wav(&orig_path, &sc.noisy_mixture, sc.sample_rate);
+            let ab_orig = ab_dir.join(format!("original_{}.wav", sc.name));
+            let _ = write_wav(&ab_orig, &sc.noisy_mixture, sc.sample_rate);
         }
 
         // Test Unprocessed Baseline
@@ -271,7 +275,19 @@ fn main() {
     let json_str = serde_json::to_string_pretty(&all_results).expect("JSON serialization failed");
     let _ = fs::write(&report_path, json_str);
     println!("\nFull benchmark report written to: {:?}", report_path);
-    println!("A/B comparison WAV files saved to: {:?}", output_dir);
+
+    // Copy representative A/B WAV files to ab_samples/
+    if let Ok(entries) = fs::read_dir(output_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("wav") {
+                if let Some(file_name) = path.file_name() {
+                    let _ = fs::copy(&path, ab_dir.join(file_name));
+                }
+            }
+        }
+    }
+    println!("A/B comparison WAV files saved to: {:?} and {:?}", output_dir, ab_dir);
 
     // Generate benchmarks/baseline.md
     generate_baseline_markdown(&all_results, &bench_dir.join("baseline.md"));

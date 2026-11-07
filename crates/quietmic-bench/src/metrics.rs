@@ -23,16 +23,62 @@ pub struct BenchmarkResult {
 pub struct AudioMetricsEvaluator;
 
 impl AudioMetricsEvaluator {
-    /// Computes Scale-Invariant Signal-to-Distortion Ratio (SI-SDR) in dB.
+    /// Finds optimal integer lag (in samples) between reference and processed signal.
+    /// Compensates for algorithmic lookahead delay in STFT overlap-add filtering (~480 samples / 10 ms).
+    pub fn find_optimal_lag(reference: &[f32], signal: &[f32], max_lag: usize) -> usize {
+        let max_search = max_lag
+            .min(reference.len().saturating_sub(4800))
+            .min(signal.len().saturating_sub(4800));
+        if max_search == 0 {
+            return 0;
+        }
+
+        // Find onset with audible energy in reference
+        let mut start_idx = 0;
+        while start_idx + 4800 < reference.len() {
+            let energy: f32 = reference[start_idx..start_idx + 480].iter().map(|&x| x * x).sum();
+            if energy > 0.001 {
+                break;
+            }
+            start_idx += 480;
+        }
+        let ref_start = start_idx.min(reference.len().saturating_sub(max_search + 4800));
+        let eval_len = 4800
+            .min(reference.len() - ref_start - max_search)
+            .min(signal.len() - ref_start - max_search);
+
+        if eval_len == 0 {
+            return 0;
+        }
+
+        let mut best_lag = 0;
+        let mut max_corr = f32::NEG_INFINITY;
+
+        for lag in 0..=max_search {
+            let mut corr = 0.0f32;
+            for i in 0..eval_len {
+                corr += reference[ref_start + i] * signal[ref_start + i + lag];
+            }
+            if corr > max_corr {
+                max_corr = corr;
+                best_lag = lag;
+            }
+        }
+
+        best_lag
+    }
+
+    /// Computes Scale-Invariant Signal-to-Distortion Ratio (SI-SDR) in dB with lag alignment.
     /// Standard metric used in speech enhancement literature and DNS Challenge.
     pub fn calculate_si_sdr(reference: &[f32], estimated: &[f32]) -> f32 {
-        let len = reference.len().min(estimated.len());
-        if len == 0 {
+        let lag = Self::find_optimal_lag(reference, estimated, 960);
+        let avail = reference.len().min(estimated.len().saturating_sub(lag));
+        if avail == 0 {
             return 0.0;
         }
 
-        let s = &reference[..len];
-        let s_hat = &estimated[..len];
+        let s = &reference[..avail];
+        let s_hat = &estimated[lag..lag + avail];
 
         // Optimal scaling factor: alpha = <s_hat, s> / ||s||^2
         let dot: f32 = s_hat.iter().zip(s.iter()).map(|(&sh, &sr)| sh * sr).sum();
@@ -57,16 +103,21 @@ impl AudioMetricsEvaluator {
         10.0 * ratio.log10()
     }
 
-    /// Computes SNR (Signal to Noise Ratio) improvement in dB given clean speech reference.
+    /// Computes SNR (Signal to Noise Ratio) improvement in dB given clean speech reference with lag alignment.
     pub fn calculate_snr_improvement(clean: &[f32], noisy: &[f32], cleaned: &[f32]) -> (f32, f32, f32) {
-        let len = clean.len().min(noisy.len()).min(cleaned.len());
-        if len == 0 {
+        let lag = Self::find_optimal_lag(clean, cleaned, 960);
+        let avail = clean.len().min(noisy.len()).min(cleaned.len().saturating_sub(lag));
+        if avail == 0 {
             return (0.0, 0.0, 0.0);
         }
 
-        let clean_energy: f32 = clean[..len].iter().map(|&x| x * x).sum();
-        let in_noise_energy: f32 = noisy[..len].iter().zip(&clean[..len]).map(|(&n, &c)| (n - c) * (n - c)).sum();
-        let out_noise_energy: f32 = cleaned[..len].iter().zip(&clean[..len]).map(|(&cl, &c)| (cl - c) * (cl - c)).sum();
+        let clean_seg = &clean[..avail];
+        let noisy_seg = &noisy[..avail];
+        let cleaned_seg = &cleaned[lag..lag + avail];
+
+        let clean_energy: f32 = clean_seg.iter().map(|&x| x * x).sum();
+        let in_noise_energy: f32 = noisy_seg.iter().zip(clean_seg).map(|(&n, &c)| (n - c) * (n - c)).sum();
+        let out_noise_energy: f32 = cleaned_seg.iter().zip(clean_seg).map(|(&cl, &c)| (cl - c) * (cl - c)).sum();
 
         let in_snr = 10.0 * (clean_energy / in_noise_energy.max(1e-10)).log10();
         let out_snr = 10.0 * (clean_energy / out_noise_energy.max(1e-10)).log10();
