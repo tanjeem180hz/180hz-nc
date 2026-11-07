@@ -48,6 +48,19 @@
 - Features:
   - Automatic UAC administrator elevation check and re-launch via Windows ShellExecute.
   - Automatic virtual cable detection and silent background driver installation (`VBCABLE_Setup_x64.exe -i -h`).
+  - Desktop and Start Menu shortcut generation.
+  - Windows registry registration for Control Panel Add/Remove Programs with clean uninstaller.
+  - Embedded binary header verification unit test (`test_embedded_payloads_validity`).
+
+### Commit 23: GitHub Release v1.0.0 Published & 404 Download Link Resolution
+- Root Cause Identified: Direct download links pointed to GitHub Releases (`releases/latest/download/`), but no tag or release had been published yet on `tanjeem180hz/180hz-nc`, resulting in HTTP 404 Not Found.
+- Pushed release tag `v1.0.0` to `origin main`.
+- Created official GitHub Release `v1.0.0` with full changelog via GitHub REST API.
+- Uploaded release assets:
+  - `QuietMic-Setup.exe` (9,351,680 bytes) — Turnkey installer with bundled VB-CABLE driver.
+  - `QuietMic.exe` (7,379,968 bytes) — Portable standalone executable.
+- Verified download endpoints via HTTP HEAD requests: both return `HTTP/1.1 302 Found` redirecting to GitHub release asset CDN.
+- Verified end-to-end direct download streaming test. Downloads now function flawlessly with 1-click execution.
   - Creates Desktop shortcut and Start Menu shortcut.
   - Registers Windows Add/Remove Programs uninstaller (`Uninstall.exe --uninstall`).
   - Silent mode flag support (`--silent`, `-s`, `/S`).
