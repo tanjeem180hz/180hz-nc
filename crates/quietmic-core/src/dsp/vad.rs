@@ -29,8 +29,10 @@ impl SilenceDetector {
     }
 
     /// Standard preset for 48 kHz 10 ms speech frames.
+    /// Uses sensitive -58.0 dBFS threshold (preserves whispers and quiet fricatives)
+    /// and 35 frames (350 ms) of hangover to eliminate syllable clipping.
     pub fn default_48k() -> Self {
-        Self::new(-52.0, 25, 480)
+        Self::new(-58.0, 35, 480)
     }
 
     /// Computes RMS energy of a frame and updates activation state.

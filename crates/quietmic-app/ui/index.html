@@ -204,6 +204,25 @@
       </label>
     </section>
 
+    <!-- Meeting App Conflict Notice -->
+    <section class="section notice-card">
+      <div class="notice-header">
+        <span class="notice-icon">💡</span>
+        <span class="notice-title">Meeting Apps Tip (Discord, Zoom, Teams)</span>
+      </div>
+      <p class="notice-desc">
+        Disable built-in noise suppression inside Discord, Zoom, or Teams. Running two AI noise cancellers at once causes double-filtering and muffled audio.
+      </p>
+    </section>
+
+    <!-- System Audio Diagnostics -->
+    <section class="section diag-section">
+      <button id="runDiagBtn" class="btn btn-secondary w-full">🔍 Run Audio Diagnostics</button>
+      <div id="diagResults" class="diag-results hidden">
+        <ul id="diagList" class="diag-list"></ul>
+      </div>
+    </section>
+
     <!-- Footer & Global Hotkey -->
     <footer class="footer">
       <span>Global Toggle: <kbd id="hotkeyText">Ctrl+Alt+N</kbd></span>

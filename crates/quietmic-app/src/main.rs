@@ -163,6 +163,11 @@ fn run_pipeline_diagnostics(
 }
 
 #[tauri::command]
+fn get_system_audio_diagnostics() -> quietmic_core::audio::SystemAudioDiagnostic {
+    quietmic_core::audio::SystemAudioDiagnostic::run()
+}
+
+#[tauri::command]
 fn get_virtual_status(state: State<AppState>) -> VirtualDeviceStatus {
     state.device_manager.check_virtual_cable()
 }
@@ -579,6 +584,7 @@ fn main() {
             export_recorded_wav,
             get_live_test_status,
             run_pipeline_diagnostics,
+            get_system_audio_diagnostics,
             open_url
         ])
         .run(tauri::generate_context!())

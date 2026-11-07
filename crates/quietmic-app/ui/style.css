@@ -666,3 +666,68 @@ kbd {
 .export-notice.hidden {
   display: none;
 }
+
+.notice-card {
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.notice-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.notice-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #60a5fa;
+}
+
+.notice-desc {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.diag-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.diag-results {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.diag-results.hidden {
+  display: none;
+}
+
+.diag-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--text-main);
+  padding: 0;
+  margin: 0;
+}
+
+.diag-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: 1.3;
+}

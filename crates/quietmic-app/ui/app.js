@@ -451,6 +451,48 @@ exportWavBtn.addEventListener('click', async () => {
   }
 });
 
+const runDiagBtn = document.getElementById('runDiagBtn');
+const diagResults = document.getElementById('diagResults');
+const diagList = document.getElementById('diagList');
+
+if (runDiagBtn) {
+  runDiagBtn.addEventListener('click', async () => {
+    if (!invoke) return;
+    runDiagBtn.disabled = true;
+    runDiagBtn.textContent = 'Running diagnostics...';
+    try {
+      const diag = await invoke('get_system_audio_diagnostics');
+      diagList.innerHTML = '';
+
+      const micStatus = diag.mic_permission_granted ? '✅ Microphone Permission: Granted' : '❌ Microphone Permission: Denied in Windows Settings';
+      const cableStatus = diag.virtual_cable_installed ? '✅ Virtual Device: VB-CABLE Detected' : '⚠️ Virtual Device: VB-CABLE Not Found';
+      const inputStatus = `🎙️ Default Input: ${diag.default_input_name} (${diag.default_input_sample_rate} Hz)`;
+      const outputStatus = `🔊 Default Output: ${diag.default_output_name} (${diag.default_output_sample_rate} Hz)`;
+
+      [micStatus, cableStatus, inputStatus, outputStatus].forEach(text => {
+        const li = document.createElement('li');
+        li.className = 'diag-item';
+        li.textContent = text;
+        diagList.appendChild(li);
+      });
+
+      diag.recommendations.forEach(rec => {
+        const li = document.createElement('li');
+        li.className = 'diag-item';
+        li.innerHTML = `<strong>Tip:</strong> ${rec}`;
+        diagList.appendChild(li);
+      });
+
+      diagResults.classList.remove('hidden');
+    } catch (err) {
+      alert("Diagnostic error: " + err);
+    } finally {
+      runDiagBtn.disabled = false;
+      runDiagBtn.textContent = '🔍 Run Audio Diagnostics';
+    }
+  });
+}
+
 // Demo fallback when opened in a regular web browser
 function startMeterSimulation() {
   setInterval(() => {
