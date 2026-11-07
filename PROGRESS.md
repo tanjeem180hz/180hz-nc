@@ -42,6 +42,15 @@
 - Initialized `DEBUG_REPORT.md` documenting symptoms, hypotheses, empirical evidence, and cause evaluation.
 - Added `realfft` dependency to workspace.
 
+### Commit 18: LightEngine RNNoise 16-bit Float Sample Scaling Fix (Bug #1 Resolved)
+- Fixed sample scaling mismatch: normalized $[-1.0, 1.0]$ samples are scaled by $32768.0$ into pre-allocated `scratch_in: [f32; 480]` buffer, processed by `nnnoiseless::DenoiseState::process_frame`, and scaled by $1.0 / 32768.0$ into `out_frame`.
+- 0 heap allocations, 0 locks in the real-time audio thread.
+- Added regression test `test_light_engine_attenuation_and_speech_preservation` proving:
+  - Speech VAD: **0.997** (detected as clean speech).
+  - Noise-only VAD: **0.004** (properly classified as floor noise).
+  - Speech harmonic energy preservation diff: **0.02 dB** (< 1.0 dB threshold).
+- Diagnostic sweep confirms **11.8 dB noise reduction** on composite test track and SNR improved from 17.7 dB to **29.5 dB**.
+
 
 ### Commit 13: Live Test DSP Foundation (Howling Detection, Click-Free A/B Crossfade)
 - Created `quietmic_core::dsp::howling`: `HowlingDetector` with narrow-band autocorrelation, crest factor analysis (< 2.2 feedback threshold), zero-crossing periodicity, and energy gating (> -26 dBFS). Successfully triggers on pure sinusoidal acoustic howling while completely ignoring human speech dynamics.

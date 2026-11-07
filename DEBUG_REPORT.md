@@ -58,13 +58,25 @@ Evaluated on a standardized 3-second test signal combining stationary fan hum (6
 ## 3. Systematic Investigation of All 9 Causes
 
 ### Cause 1: Sample Scaling
-- **Status**: **FOUND BUG (CRITICAL)**
+- **Status**: **FIXED & PROVEN (Bug #1 Resolved)**
 - **Hypothesis**: RNNoise (`nnnoiseless`) assumes 16-bit float amplitude range ($[-32768.0, 32767.0]$), whereas the QuietMic pipeline operates in normalized float range ($[-1.0, 1.0]$).
 - **Test**: Created unit test `test_nnnoiseless_scaling_behavior` feeding identical sine waves in $[-1.0, 1.0]$ vs scaled $[-32768.0, 32767.0]$ into `nnnoiseless::DenoiseState`.
-- **Result**:
+- **Result Pre-Fix**:
   - Input $[-1.0, 1.0]$: $\text{VAD} = 0.0037$ (99.6% silence detection). The recurrent network treated the input as digital floor noise under 1 LSB and applied no filtering.
   - Input $[-32768.0, 32767.0]$: $\text{VAD} = 0.4067$ (valid speech detection). Filter active.
-- **Fix**: In `LightEngine::process_frame`, multiply `in_frame` by `32768.0` into a pre-allocated scratch buffer, call `self.state.process_frame`, and multiply `out_frame` by `1.0 / 32768.0`.
+- **Fix Implemented**:
+  - Added pre-allocated `scratch_in: [f32; 480]` and `scratch_out: [f32; 480]` to `LightEngine` (0 heap allocations in audio callback).
+  - Multiplied incoming samples by $32768.0$ into `scratch_in`.
+  - Processed frame via `self.state.process_frame(&mut self.scratch_out, &self.scratch_in)`.
+  - Multiplied output samples by $1.0 / 32768.0$ into `out_frame`.
+- **Proof & Measurements Post-Fix**:
+  - Regression unit test `test_light_engine_attenuation_and_speech_preservation` passed:
+    - Speech VAD: **0.997** (clean speech recognized).
+    - Noise-only VAD: **0.004** (noise floor identified).
+    - Speech harmonic energy preservation diff: **0.02 dB** (imperceptible change, well within < 1.0 dB threshold).
+  - 8-stage diagnostic sweep in Light mode:
+    - Before fix: 0.0 dB noise reduction.
+    - After fix: **11.8 dB noise reduction** on composite noisy file, increasing SNR difference from 17.7 dB to **29.5 dB**.
 
 ---
 
