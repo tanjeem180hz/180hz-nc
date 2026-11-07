@@ -3,6 +3,7 @@ members = [
     "crates/quietmic-core",
     "crates/quietmic-bench",
     "crates/quietmic-app",
+    "crates/quietmic-installer",
 ]
 resolver = "2"
 

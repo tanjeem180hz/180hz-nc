@@ -5,6 +5,39 @@
 
 ---
 
+## 💾 Direct Download & 1-Click Install
+
+[![Download QuietMic Setup](https://img.shields.io/badge/Download-QuietMic%20v1.0.0%20Installer%20(Windows%20x64)-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/QuietMic-Setup.exe)
+[![Download Portable EXE](https://img.shields.io/badge/Portable-QuietMic.exe-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/QuietMic.exe)
+
+### 📥 Available Packages:
+| Package | File | Description | Download |
+| :--- | :--- | :--- | :---: |
+| **All-in-One Installer (Recommended)** | `QuietMic-Setup.exe` (8.7 MB) | **Turnkey setup:** Installs QuietMic + bundled Virtual Audio Cable Driver (VB-CABLE) + Start Menu & Desktop shortcuts. Everything needed to run out-of-the-box is included. | [**Direct Download**](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/QuietMic-Setup.exe) |
+| **Portable Executable** | `QuietMic.exe` (7.3 MB) | **Zero install:** Standalone executable with embedded UI, DSP, and AI models. Run directly from any folder or USB drive. | [**Direct Download**](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/QuietMic.exe) |
+| **Release Page** | `v1.0.0 Release` | Full release notes, checksums, benchmark reports, and source archives. | [**View Releases**](https://github.com/tanjeem180hz/180hz-nc/releases) |
+
+---
+
+### 📦 What is Included in the All-in-One Installer?
+Everything required for QuietMic to function perfectly is bundled into `QuietMic-Setup.exe`:
+1. **QuietMic Core Engine & Tauri UI**: High-performance DSP noise canceler written in Rust with embedded HTML5/CSS/JS frontend.
+2. **Bundled Virtual Audio Cable Driver (VB-CABLE Pack)**: Automatically installs and registers the virtual audio driver so third-party software (Discord, Zoom, Google Meet, Microsoft Teams, OBS, Skype, Games) can immediately use `CABLE Output` as their microphone.
+3. **Automatic 48,000 Hz Clock Alignment**: Configures audio devices to the studio standard 48 kHz rate for bit-perfect streaming with zero resampling latency.
+4. **Desktop & Start Menu Shortcuts**: Pre-configured with tray icon and global hotkey toggle (`Ctrl+Alt+N`).
+5. **Clean Uninstaller**: Registered in Windows Control Panel / Settings (Apps & Features) for full removal at any time.
+
+---
+
+### ⚡ Quick Start (3 Steps):
+1. **Download & Run**: Download and double-click `QuietMic-Setup.exe`. Click **Yes** on the UAC prompt to install.
+2. **Launch QuietMic**: Open QuietMic from your Desktop or Start Menu. Select your real microphone from the dropdown (or leave as Default).
+3. **Configure Your Meeting Apps**: Open Discord, Zoom, Meet, Teams, or OBS, and set your **Microphone / Audio Input Device** to **`CABLE Output (VB-Audio Virtual Cable)`**.
+   > [!TIP]
+   > Remember to turn off the built-in noise suppression inside Discord (Krisp) or Zoom to avoid double-processing.
+
+---
+
 ## 🌟 Overview & Architecture
 
 **QuietMic** is an ultra-low latency, real-time audio enhancement application engineered exclusively in **Rust** with a lightweight **Tauri** frontend (plain HTML/CSS/JS, no heavy frontend frameworks).
@@ -184,6 +217,9 @@ cargo run --release -p quietmic-bench
 
 # Build production Windows application
 cargo build --release -p quietmic-app
+
+# Build all-in-one standalone installer (QuietMic-Setup.exe)
+cargo build --release --bin QuietMic-Setup
 ```
 
 ---

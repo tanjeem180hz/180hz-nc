@@ -42,6 +42,20 @@
 - Initialized `DEBUG_REPORT.md` documenting symptoms, hypotheses, empirical evidence, and cause evaluation.
 - Added `realfft` dependency to workspace.
 
+### Commit 22: All-in-One Installer (QuietMic-Setup.exe), Driver Bundling & Direct Download in README
+- Engineered native Rust installer crate `crates/quietmic-installer` producing standalone Windows executable `QuietMic-Setup.exe` (8.77 MB).
+- Bundled WHQL-certified VB-Audio Virtual Cable driver installer (`vbcable_pack.zip`) and `QuietMic.exe` into a single, self-contained setup file.
+- Features:
+  - Automatic UAC administrator elevation check and re-launch via Windows ShellExecute.
+  - Automatic virtual cable detection and silent background driver installation (`VBCABLE_Setup_x64.exe -i -h`).
+  - Creates Desktop shortcut and Start Menu shortcut.
+  - Registers Windows Add/Remove Programs uninstaller (`Uninstall.exe --uninstall`).
+  - Silent mode flag support (`--silent`, `-s`, `/S`).
+  - Post-install launch prompt.
+- Added unit test `test_embedded_payloads_validity` proving PE `MZ` and ZIP `PK` magic header integrity.
+- Added `.github/workflows/release.yml` automating release builds and binary publishing on tag push.
+- Updated `README.md` with direct download links, badges, feature summary, and quick start guide.
+
 ### Commit 21: Windows Audio Diagnostics, Third-Party Meeting App Tip & VAD Tuning
 - Created `quietmic_core::audio::windows_diag`:
   - Microphone privacy permission detection via Windows Registry (`ConsentStore\microphone`).

@@ -2964,6 +2964,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "quietmic-installer"
+version = "1.0.0"
+dependencies = [
+ "windows 0.58.0",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"

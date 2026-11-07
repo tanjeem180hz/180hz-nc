@@ -1,0 +1,20 @@
+[package]
+name = "quietmic-installer"
+version = "1.0.0"
+edition = "2021"
+authors = ["QuietMic Engineering Team"]
+description = "All-in-One Automated Installer for QuietMic and Virtual Audio Cable"
+
+[[bin]]
+name = "QuietMic-Setup"
+path = "src/main.rs"
+
+[dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_Registry",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell",
+    "Win32_System_Threading",
+    "Win32_Security"
+] }
