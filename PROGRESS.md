@@ -42,6 +42,25 @@
 - Initialized `DEBUG_REPORT.md` documenting symptoms, hypotheses, empirical evidence, and cause evaluation.
 - Added `realfft` dependency to workspace.
 
+### Commit 19: StandardEngine STFT RealFFT Spectral Wiener Filter (Bug #2 Resolved)
+- Replaced the time-domain pseudo-filter in `StandardEngine` with a true 960-point Real-to-Complex (R2C) and Complex-to-Real (C2R) STFT engine using `realfft 3.5.1`.
+- Built 32 Equivalent Rectangular Bandwidth (ERB) subbands spanning 50 Hz to 22,000 Hz across 481 complex frequency bins.
+- Implemented square-root Hann analysis and synthesis windows for exact signal reconstruction ($< 1 \times 10^{-4}$ error at 0% suppression) under 50% overlap-add (480 samples / 10 ms step).
+- Designed VAD-guided stationary noise floor tracking:
+  - Low-frequency rumble/hum bands (< 200 Hz) adapt continuously to eliminate 50/60 Hz mains hum and fan noise without being blocked by speech.
+  - Speech formant bands (200 Hz to 6000 Hz) freeze noise floor adaptation during active speech, preventing speech harmonic attenuation.
+- Formulated smooth Wiener over-subtraction filtering:
+  - Speech harmonics ($SNR > 2.0$) maintain natural timbre ($G = \sqrt{(SNR - 1)/SNR}$).
+  - Stationary noise is smoothly attenuated down to $-34$ dB ($G = 0.02$).
+- Pre-allocated all scratch and spectrum buffers during instantiation for 100% zero allocation real-time audio safety.
+- Boxed `ActiveEngine::Standard(Box<StandardEngine>)` to keep enum size minimal, passing strict `-D warnings` clippy checks.
+- Empirical Test Proof:
+  - `test_standard_engine_silence`: Passed.
+  - `test_standard_engine_perfect_reconstruction_at_zero_suppression`: Passed ($< 1 \times 10^{-4}$ error).
+  - `test_standard_engine_fan_noise_attenuation`: **33.1 dB attenuation** (input 0.02570 RMS, output 0.00057 RMS).
+  - `test_standard_engine_speech_preservation`: **0.31 dB difference** (input 0.20616 RMS, output 0.19899 RMS, VAD = 1.000).
+- All 50 `quietmic-core` unit tests pass cleanly.
+
 ### Commit 18: LightEngine RNNoise 16-bit Float Sample Scaling Fix (Bug #1 Resolved)
 - Fixed sample scaling mismatch: normalized $[-1.0, 1.0]$ samples are scaled by $32768.0$ into pre-allocated `scratch_in: [f32; 480]` buffer, processed by `nnnoiseless::DenoiseState::process_frame`, and scaled by $1.0 / 32768.0$ into `out_frame`.
 - 0 heap allocations, 0 locks in the real-time audio thread.

@@ -18,7 +18,7 @@ pub enum EngineMode {
 
 pub enum ActiveEngine {
     Light(LightEngine),
-    Standard(StandardEngine),
+    Standard(Box<StandardEngine>),
     VoiceIsolation(VoiceIsolationEngine),
 }
 
@@ -64,7 +64,7 @@ impl AudioPipeline {
 
         Ok(Self {
             mode: EngineMode::Standard,
-            active_engine: ActiveEngine::Standard(standard),
+            active_engine: ActiveEngine::Standard(Box::new(standard)),
             enrolled_voiceprint: None,
             hpf: HighPassFilter::default_48k(),
             aec: EchoCanceller::default_preset(),
@@ -99,7 +99,7 @@ impl AudioPipeline {
                 EngineMode::Standard => {
                     let mut s = StandardEngine::new();
                     s.set_suppression(self.strength);
-                    ActiveEngine::Standard(s)
+                    ActiveEngine::Standard(Box::new(s))
                 }
                 EngineMode::VoiceIsolation => {
                     let mut v = VoiceIsolationEngine::new(Box::new(LightEngine::new()));

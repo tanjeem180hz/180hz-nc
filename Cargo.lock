@@ -2949,6 +2949,7 @@ dependencies = [
  "crossbeam-channel",
  "hound",
  "nnnoiseless",
+ "num-complex",
  "parking_lot",
  "realfft",
  "ringbuf",
