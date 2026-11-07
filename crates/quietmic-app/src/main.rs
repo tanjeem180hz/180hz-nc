@@ -132,6 +132,37 @@ fn get_live_test_status(state: State<AppState>) -> LiveMonitorStatus {
 }
 
 #[tauri::command]
+fn run_pipeline_diagnostics(
+    output_dir: Option<String>,
+    state: State<AppState>,
+) -> Result<Vec<quietmic_core::StageMetrics>, String> {
+    let out = if let Some(d) = output_dir {
+        std::path::PathBuf::from(d)
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+            .join("diagnostics_output")
+    };
+    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+
+    let test_audio = quietmic_core::generate_diagnostic_test_signal(3.0);
+
+    let cfg = state.config.lock();
+    let mut pipeline = AudioPipeline::new(48000, 48000)?;
+    let mode = match cfg.mode.as_str() {
+        "Light" => EngineMode::Light,
+        "VoiceIsolation" => EngineMode::VoiceIsolation,
+        _ => EngineMode::Standard,
+    };
+    pipeline.set_mode(mode);
+    pipeline.set_strength(cfg.strength);
+    pipeline.set_aec_enabled(cfg.aec_enabled);
+    pipeline.set_comfort_noise_enabled(cfg.comfort_noise);
+
+    quietmic_core::run_diagnostic_sweep(&mut pipeline, &test_audio, &out)
+}
+
+#[tauri::command]
 fn get_virtual_status(state: State<AppState>) -> VirtualDeviceStatus {
     state.device_manager.check_virtual_cable()
 }
@@ -302,6 +333,42 @@ fn restart_audio_stream(state: &AppState, cfg: &AppConfig) -> Result<(), String>
 // ----------------------------------------------------------------------------
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--diagnostic" || a == "--diagnostics" || a == "-d") {
+        let out_dir = args
+            .iter()
+            .position(|a| a == "--diagnostic" || a == "--diagnostics" || a == "-d")
+            .and_then(|idx| args.get(idx + 1))
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("diagnostics_output"));
+
+        println!("QuietMic Diagnostic Mode Active");
+        println!("Writing 8-stage WAV dumps to: {}", out_dir.display());
+        let _ = std::fs::create_dir_all(&out_dir);
+
+        let test_audio = quietmic_core::generate_diagnostic_test_signal(3.0);
+
+        let mut pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline init failed");
+        pipeline.set_mode(EngineMode::Standard);
+        pipeline.set_strength(1.0);
+
+        match quietmic_core::run_diagnostic_sweep(&mut pipeline, &test_audio, &out_dir) {
+            Ok(metrics) => {
+                println!("{:<32} | {:<10} | {:<10} | {:<8} | {:<8}", "Stage Name", "RMS (dB)", "Peak (dB)", "Rate (Hz)", "Ch");
+                println!("{:-<76}", "");
+                for m in metrics {
+                    println!("{:<32} | {:>8.1} dB | {:>8.1} dB | {:>9} | {:>4}", m.stage_name, m.rms_db, m.peak_db, m.sample_rate, m.channels);
+                }
+                println!("\nDiagnostic dump complete. All 8 WAV stages saved successfully.");
+                return;
+            }
+            Err(e) => {
+                eprintln!("Diagnostic sweep failed: {}", e);
+                return;
+            }
+        }
+    }
+
     #[cfg(windows)]
     unsafe {
         let _mutex = CreateMutexW(None, true, w!("Global\\QuietMic_SingleInstance_Mutex"));
@@ -511,6 +578,7 @@ fn main() {
             start_replay_playback,
             export_recorded_wav,
             get_live_test_status,
+            run_pipeline_diagnostics,
             open_url
         ])
         .run(tauri::generate_context!())

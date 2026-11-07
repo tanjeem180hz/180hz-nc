@@ -9,7 +9,11 @@ pub use dsp::{
     AudioResampler, ComfortNoiseGenerator, DriftCompensator, GainSmoother, HighPassFilter,
     SilenceDetector, SoftLimiter,
 };
-pub use engine::{AudioPipeline, DenoiseEngine, EchoCanceller, EngineMode, LightEngine, StandardEngine, VoiceIsolationEngine};
+pub use engine::{
+    generate_diagnostic_test_signal, run_diagnostic_sweep, AudioPipeline, DenoiseEngine,
+    DiagnosticController, DiagnosticTapProducers, EchoCanceller, EngineMode, LightEngine,
+    StageMetrics, StandardEngine, VoiceIsolationEngine, STAGE_NAMES,
+};
 
 /// Initializes rotating file logger in %APPDATA%/QuietMic/logs/quietmic.log
 pub fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {

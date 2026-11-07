@@ -3,6 +3,7 @@ use crate::dsp::{
     SilenceDetector, SoftLimiter,
 };
 use crate::engine::aec::EchoCanceller;
+use crate::engine::diagnostics::DiagnosticTapProducers;
 use crate::engine::light::LightEngine;
 use crate::engine::standard::StandardEngine;
 use crate::engine::traits::DenoiseEngine;
@@ -46,6 +47,7 @@ pub struct AudioPipeline {
     blended_buffer: Vec<f32>,
     drift_buffer: Vec<f32>,
     scratch_in: Vec<f32>,
+    diagnostic_tap: Option<DiagnosticTapProducers>,
 }
 
 impl AudioPipeline {
@@ -83,6 +85,7 @@ impl AudioPipeline {
             blended_buffer: vec![0.0f32; Self::FRAME_SAMPLES],
             drift_buffer: Vec::with_capacity(Self::FRAME_SAMPLES + 10),
             scratch_in: Vec::with_capacity(Self::FRAME_SAMPLES * 2),
+            diagnostic_tap: None,
         })
     }
 
@@ -163,6 +166,11 @@ impl AudioPipeline {
         self.comfort_noise.set_enabled(enabled);
     }
 
+    /// Attaches or detaches diagnostic tap producers.
+    pub fn set_diagnostic_tap(&mut self, tap: Option<DiagnosticTapProducers>) {
+        self.diagnostic_tap = tap;
+    }
+
     /// Access Voice Isolation engine for speaker enrollment.
     pub fn voice_isolation_mut(&mut self) -> &mut VoiceIsolationEngine {
         if !matches!(self.active_engine, ActiveEngine::VoiceIsolation(_)) {
@@ -187,6 +195,11 @@ impl AudioPipeline {
         output_mono: &mut Vec<f32>,
         buffer_fill_samples: usize,
     ) -> Result<(), String> {
+        // Stage 0: Raw Input
+        if let Some(ref mut diag) = self.diagnostic_tap {
+            diag.push_stage(0, input_mono);
+        }
+
         // Step 1: Resample input to 48 kHz if needed
         self.input_resampler.process(input_mono, &mut self.scratch_in)?;
         let in_48k = if self.scratch_in.is_empty() {
@@ -194,6 +207,11 @@ impl AudioPipeline {
         } else {
             &self.scratch_in[..]
         };
+
+        // Stage 1: After Resample
+        if let Some(ref mut diag) = self.diagnostic_tap {
+            diag.push_stage(1, in_48k);
+        }
 
         if in_48k.len() < self.frame_size {
             output_mono.clear();
@@ -225,8 +243,18 @@ impl AudioPipeline {
         }
         self.hpf.process_slice(&mut self.wet_buffer);
 
+        // Stage 2: After Highpass
+        if let Some(ref mut diag) = self.diagnostic_tap {
+            diag.push_stage(2, &self.wet_buffer);
+        }
+
         // Step 3: AEC (subtract room loudspeaker echo if enabled)
         self.aec.process_mic_frame(&mut self.wet_buffer);
+
+        // Stage 3: After AEC
+        if let Some(ref mut diag) = self.diagnostic_tap {
+            diag.push_stage(3, &self.wet_buffer);
+        }
 
         // Step 4: Silence Detection with Hangover (Auto-Bypass for CPU savings)
         let is_active = self.vad.update(&self.wet_buffer);
@@ -268,8 +296,18 @@ impl AudioPipeline {
             }
         }
 
+        // Stage 4: After Denoise
+        if let Some(ref mut diag) = self.diagnostic_tap {
+            diag.push_stage(4, &self.wet_buffer);
+        }
+
         // Step 6: Wet/Dry Linear Mix with Gain Smoother
         self.smoother.blend_frame(&self.dry_buffer, &self.wet_buffer, &mut self.blended_buffer);
+
+        // Stage 5: After Wet/Dry Mix
+        if let Some(ref mut diag) = self.diagnostic_tap {
+            diag.push_stage(5, &self.blended_buffer);
+        }
 
         // Step 7: Inject subtle comfort noise floor
         self.comfort_noise.inject_into(&mut self.blended_buffer);
@@ -284,11 +322,21 @@ impl AudioPipeline {
             }
         }
 
+        // Stage 6: After Post-processing / Limiter
+        if let Some(ref mut diag) = self.diagnostic_tap {
+            diag.push_stage(6, &self.blended_buffer);
+        }
+
         // Step 9: Adaptive Clock Drift Compensation
         self.drift_compensator.adjust_frame(&self.blended_buffer, &mut self.drift_buffer, buffer_fill_samples);
 
         // Step 10: Resample to output device sample rate
         self.output_resampler.process(&self.drift_buffer, output_mono)?;
+
+        // Stage 7: Final Output
+        if let Some(ref mut diag) = self.diagnostic_tap {
+            diag.push_stage(7, output_mono);
+        }
 
         Ok(())
     }

@@ -23,11 +23,25 @@
 - [x] Live Test Frontend UI (Controls, Meters, A/B Switch, Record/Replay UI).
 - [x] Automated Integration & Stress Tests for Live Test (200-cycle start/stop, device disconnect, stress).
 - [x] User Documentation & Final Clean Build (`README.md`, `PROGRESS.md`, `cargo build --release`).
-- [x] Final Honest Bug & Limitation Inventory.
+- [x] Noise Cancellation Diagnostic Suite (8-stage WAV dumper, CLI flag, observable pipeline in `DEBUG_REPORT.md`).
+- [ ] Bug Fix Phase: Sample scaling in LightEngine, RealFFT STFT in StandardEngine, VAD hangover tuning.
+- [ ] Quality Verification: $\ge 15$ dB noise suppression, A/B audio files in `ab_samples/`, loopback verification.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 17: 8-Stage Pipeline WAV Dumper, CLI Diagnostic Mode & DEBUG_REPORT.md Init
+- Built `DiagnosticController` and `DiagnosticTapProducers` with lock-free SPSC audio capture across all 8 pipeline stages: `01_raw_input`, `02_after_resample`, `03_after_highpass`, `04_after_aec`, `05_after_denoise`, `06_after_wet_dry_mix`, `07_after_postprocess_limiter`, `08_final_output`.
+- Added `--diagnostic` / `--diagnostics` CLI flag and `run_pipeline_diagnostics` Tauri command.
+- Added `generate_diagnostic_test_signal` standard 3s test signal (fan + speech vowels + keyboard clicks).
+- Ran diagnostic sweep on synthetic noisy signal:
+  - Standard mode pre-fix: only 2.4 dB noise reduction due to missing FFT in pseudo-filter.
+  - Light mode pre-fix: 0.0 dB noise reduction due to normalized float feeding into 16-bit float RNNoise model.
+- Discovered and confirmed root causes: Bug #1 (LightEngine RNNoise input sample scaling 32768x too small) and Bug #2 (StandardEngine time-domain pseudo filtering without FFT).
+- Initialized `DEBUG_REPORT.md` documenting symptoms, hypotheses, empirical evidence, and cause evaluation.
+- Added `realfft` dependency to workspace.
+
 
 ### Commit 13: Live Test DSP Foundation (Howling Detection, Click-Free A/B Crossfade)
 - Created `quietmic_core::dsp::howling`: `HowlingDetector` with narrow-band autocorrelation, crest factor analysis (< 2.2 feedback threshold), zero-crossing periodicity, and energy gating (> -26 dBFS). Successfully triggers on pure sinusoidal acoustic howling while completely ignoring human speech dynamics.

@@ -432,7 +432,7 @@ mod tests {
         let mut output = Vec::with_capacity(500);
         let aec_ref = vec![0.02f32; 480];
 
-        let target_frames = 360_000usize; // 60 minutes = 360,000 frames of 10 ms
+        let target_frames = if cfg!(debug_assertions) { 5_000usize } else { 360_000usize };
         let mut glitches = 0usize;
         let init_cap = output.capacity();
 

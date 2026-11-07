@@ -2950,6 +2950,7 @@ dependencies = [
  "hound",
  "nnnoiseless",
  "parking_lot",
+ "realfft",
  "ringbuf",
  "rubato",
  "serde",
