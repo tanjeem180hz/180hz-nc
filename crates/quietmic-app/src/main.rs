@@ -78,9 +78,137 @@ fn toggle_live_test(device_name: Option<String>, state: State<AppState>) -> Resu
         monitor.stop();
         Ok(false)
     } else {
-        monitor.start(&state.device_manager, device_name.as_deref())?;
+        let dev = if device_name.is_some() {
+            device_name
+        } else {
+            state.config.lock().selected_speaker.clone()
+        };
+        let vol = state.config.lock().speaker_volume;
+        monitor.set_volume(vol);
+        monitor.start(&state.device_manager, dev.as_deref())?;
         Ok(true)
     }
+}
+
+#[tauri::command]
+fn set_output_device(name: Option<String>, state: State<AppState>) -> Result<(), String> {
+    let mut cfg = state.config.lock();
+    cfg.selected_speaker = name.clone();
+    let _ = cfg.save();
+
+    let mut monitor = state.live_monitor.lock();
+    if monitor.get_status().is_active {
+        let vol = cfg.speaker_volume;
+        monitor.set_volume(vol);
+        let _ = monitor.start(&state.device_manager, name.as_deref());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_mic_volume(volume: f32, state: State<AppState>) -> Result<(), String> {
+    let vol = volume.clamp(0.0, 2.0);
+    {
+        let mut cfg = state.config.lock();
+        cfg.mic_volume = vol;
+        let _ = cfg.save();
+    }
+    if let Some(ref ctrl) = *state.stream_controller.lock() {
+        ctrl.set_mic_volume(vol);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_speaker_volume(volume: f32, state: State<AppState>) -> Result<(), String> {
+    let vol = volume.clamp(0.0, 1.0);
+    {
+        let mut cfg = state.config.lock();
+        cfg.speaker_volume = vol;
+        let _ = cfg.save();
+    }
+    state.live_monitor.lock().set_volume(vol);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_auto_sensitivity(enabled: bool, state: State<AppState>) -> Result<(), String> {
+    {
+        let mut cfg = state.config.lock();
+        cfg.auto_sensitivity = enabled;
+        let _ = cfg.save();
+    }
+    if let Some(ref ctrl) = *state.stream_controller.lock() {
+        ctrl.set_auto_sensitivity(enabled);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_sensitivity_threshold(threshold: f32, state: State<AppState>) -> Result<(), String> {
+    let thresh = threshold.clamp(-80.0, 0.0);
+    {
+        let mut cfg = state.config.lock();
+        cfg.sensitivity_threshold = thresh;
+        let _ = cfg.save();
+    }
+    if let Some(ref ctrl) = *state.stream_controller.lock() {
+        ctrl.set_sensitivity_threshold(thresh);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_noise_mode(mode: String, state: State<AppState>) -> Result<(), String> {
+    let mut cfg = state.config.lock();
+    match mode.as_str() {
+        "None" => {
+            cfg.bypass = true;
+        }
+        "Krisp" => {
+            cfg.bypass = false;
+            cfg.mode = "Krisp".to_string();
+        }
+        "Standard" => {
+            cfg.bypass = false;
+            cfg.mode = "Standard".to_string();
+        }
+        _ => {
+            cfg.bypass = false;
+            cfg.mode = mode.clone();
+        }
+    }
+    let _ = cfg.save();
+    restart_audio_stream(&state, &cfg)
+}
+
+#[tauri::command]
+fn set_push_to_talk(enabled: bool, state: State<AppState>) -> Result<(), String> {
+    {
+        let mut cfg = state.config.lock();
+        cfg.push_to_talk = enabled;
+        let _ = cfg.save();
+    }
+    if let Some(ref ctrl) = *state.stream_controller.lock() {
+        ctrl.set_push_to_talk(enabled);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_ptt_key(key: String, state: State<AppState>) -> Result<(), String> {
+    let mut cfg = state.config.lock();
+    cfg.ptt_key = key;
+    let _ = cfg.save();
+    Ok(())
+}
+
+#[tauri::command]
+fn set_ptt_state(active: bool, state: State<AppState>) -> Result<(), String> {
+    if let Some(ref ctrl) = *state.stream_controller.lock() {
+        ctrl.set_ptt_active(active);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -305,6 +433,10 @@ fn restart_audio_stream(state: &AppState, cfg: &AppConfig) -> Result<(), String>
     pipeline.set_strength(cfg.strength);
     pipeline.set_bypass(cfg.bypass);
     pipeline.set_muted(cfg.muted);
+    pipeline.set_mic_gain(cfg.mic_volume);
+    pipeline.set_push_to_talk(cfg.push_to_talk);
+    pipeline.set_auto_sensitivity(cfg.auto_sensitivity);
+    pipeline.set_sensitivity_threshold(cfg.sensitivity_threshold);
     pipeline.set_aec_enabled(cfg.aec_enabled);
     pipeline.set_comfort_noise_enabled(cfg.comfort_noise);
 
@@ -336,6 +468,31 @@ fn restart_audio_stream(state: &AppState, cfg: &AppConfig) -> Result<(), String>
 // ----------------------------------------------------------------------------
 // Application Entry Point
 // ----------------------------------------------------------------------------
+
+#[cfg(windows)]
+fn parse_vk_code(key_name: &str) -> Option<i32> {
+    match key_name.trim().to_lowercase().as_str() {
+        "space" => Some(0x20),
+        "control" | "ctrl" | "leftctrl" => Some(0x11),
+        "shift" | "leftshift" => Some(0x10),
+        "alt" | "leftalt" => Some(0x12),
+        "capslock" | "caps lock" => Some(0x14),
+        "tab" => Some(0x09),
+        "enter" | "return" => Some(0x0D),
+        "mouse4" | "xbutton1" => Some(0x05),
+        "mouse5" | "xbutton2" => Some(0x06),
+        "mbutton" | "middlemouse" => Some(0x04),
+        s if s.len() == 1 => {
+            let c = s.chars().next().unwrap().to_ascii_uppercase();
+            if c.is_ascii_alphanumeric() {
+                Some(c as i32)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -400,6 +557,10 @@ fn main() {
     pipeline.set_strength(config.strength);
     pipeline.set_bypass(config.bypass);
     pipeline.set_muted(config.muted);
+    pipeline.set_mic_gain(config.mic_volume);
+    pipeline.set_push_to_talk(config.push_to_talk);
+    pipeline.set_auto_sensitivity(config.auto_sensitivity);
+    pipeline.set_sensitivity_threshold(config.sensitivity_threshold);
     pipeline.set_aec_enabled(config.aec_enabled);
     pipeline.set_comfort_noise_enabled(config.comfort_noise);
 
@@ -416,6 +577,7 @@ fn main() {
     };
 
     let (live_monitor, live_tap) = LiveMonitorController::new();
+    live_monitor.set_volume(config.speaker_volume);
 
     let initial_controller = match AudioStreamController::start(&device_manager, config.selected_mic.as_deref(), pipeline, speaker_pipe, Some(live_tap)) {
         Ok(ctrl) => Some(ctrl),
@@ -502,6 +664,44 @@ fn main() {
                     .expect("Failed to spawn hot-plug watcher");
             }
 
+            // Spawn Global Push-to-Talk (PTT) Keyboard/Mouse Poller
+            #[cfg(windows)]
+            {
+                let app_handle = app.handle().clone();
+                std::thread::Builder::new()
+                    .name("quietmic-global-ptt".to_string())
+                    .spawn(move || {
+                        use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+                        let mut was_pressed = false;
+                        loop {
+                            std::thread::sleep(std::time::Duration::from_millis(15));
+                            let state = app_handle.state::<AppState>();
+                            let (ptt_enabled, ptt_key) = {
+                                let cfg = state.config.lock();
+                                (cfg.push_to_talk, cfg.ptt_key.clone())
+                            };
+
+                            if ptt_enabled {
+                                if let Some(vk) = parse_vk_code(&ptt_key) {
+                                    let is_down = unsafe { (GetAsyncKeyState(vk) as u16 & 0x8000) != 0 };
+                                    if is_down != was_pressed {
+                                        was_pressed = is_down;
+                                        if let Some(ref ctrl) = *state.stream_controller.lock() {
+                                            ctrl.set_ptt_active(is_down);
+                                        }
+                                    }
+                                }
+                            } else if was_pressed {
+                                was_pressed = false;
+                                if let Some(ref ctrl) = *state.stream_controller.lock() {
+                                    ctrl.set_ptt_active(false);
+                                }
+                            }
+                        }
+                    })
+                    .expect("Failed to spawn global PTT thread");
+            }
+
             // Build System Tray Menu
             let live_test_item = MenuItem::with_id(app, "toggle_live_test", "Live Test: On/Off", true, None::<&str>)?;
             let toggle_item = MenuItem::with_id(app, "toggle_bypass", "Toggle Active/Bypass (Ctrl+Shift+B)", true, None::<&str>)?;
@@ -565,10 +765,19 @@ fn main() {
             get_virtual_status,
             get_config,
             set_mode,
+            set_noise_mode,
             set_strength,
             set_bypass,
             set_muted,
             set_input_device,
+            set_output_device,
+            set_mic_volume,
+            set_speaker_volume,
+            set_auto_sensitivity,
+            set_sensitivity_threshold,
+            set_push_to_talk,
+            set_ptt_key,
+            set_ptt_state,
             set_aec,
             set_comfort_noise,
             set_speaker_denoise,

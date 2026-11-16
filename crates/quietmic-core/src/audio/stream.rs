@@ -49,9 +49,31 @@ impl Default for AudioMetrics {
     }
 }
 
+#[derive(Clone)]
+pub struct AudioStreamControls {
+    pub mic_volume_bits: Arc<AtomicU32>,
+    pub ptt_enabled: Arc<AtomicBool>,
+    pub ptt_active: Arc<AtomicBool>,
+    pub auto_sensitivity: Arc<AtomicBool>,
+    pub sensitivity_threshold_dbfs: Arc<AtomicU32>,
+}
+
+impl Default for AudioStreamControls {
+    fn default() -> Self {
+        Self {
+            mic_volume_bits: Arc::new(AtomicU32::new(1.0f32.to_bits())),
+            ptt_enabled: Arc::new(AtomicBool::new(false)),
+            ptt_active: Arc::new(AtomicBool::new(false)),
+            auto_sensitivity: Arc::new(AtomicBool::new(true)),
+            sensitivity_threshold_dbfs: Arc::new(AtomicU32::new((-50.0f32).to_bits())),
+        }
+    }
+}
+
 pub struct AudioStreamController {
     running: Arc<AtomicBool>,
     metrics: Arc<AudioMetrics>,
+    controls: AudioStreamControls,
     worker_handle: Option<JoinHandle<()>>,
     _capture_stream: Option<cpal::Stream>,
     _render_stream: Option<cpal::Stream>,
@@ -227,8 +249,16 @@ impl AudioStreamController {
         };
 
         // 4. Dedicated Audio Worker Thread (MMCSS Pro Audio)
+        let controls = AudioStreamControls {
+            mic_volume_bits: Arc::new(AtomicU32::new(pipeline.mic_gain().to_bits())),
+            ptt_enabled: Arc::new(AtomicBool::new(pipeline.is_push_to_talk())),
+            ptt_active: Arc::new(AtomicBool::new(pipeline.is_ptt_active())),
+            auto_sensitivity: Arc::new(AtomicBool::new(true)),
+            sensitivity_threshold_dbfs: Arc::new(AtomicU32::new(pipeline.sensitivity_threshold_dbfs().to_bits())),
+        };
         let is_running_worker = Arc::clone(&running);
         let worker_metrics = Arc::clone(&metrics);
+        let worker_controls = controls.clone();
         let mut worker_pipeline = pipeline;
         if let Err(e) = worker_pipeline.update_sample_rates(mic_sample_rate, cable_sample_rate) {
             tracing::warn!("Could not dynamically adapt pipeline resamplers (mic={}, cable={}): {}", mic_sample_rate, cable_sample_rate, e);
@@ -247,6 +277,19 @@ impl AudioStreamController {
                 let mut starvation_counter = 0usize;
 
                 while is_running_worker.load(Ordering::Relaxed) {
+                    // Sync real-time controls to pipeline lock-free
+                    let mic_vol = f32::from_bits(worker_controls.mic_volume_bits.load(Ordering::Relaxed));
+                    worker_pipeline.set_mic_gain(mic_vol);
+
+                    let ptt_en = worker_controls.ptt_enabled.load(Ordering::Relaxed);
+                    let ptt_act = worker_controls.ptt_active.load(Ordering::Relaxed);
+                    worker_pipeline.set_push_to_talk(ptt_en);
+                    worker_pipeline.set_ptt_active(ptt_act);
+
+                    let auto_sens = worker_controls.auto_sensitivity.load(Ordering::Relaxed);
+                    let sens_thresh = f32::from_bits(worker_controls.sensitivity_threshold_dbfs.load(Ordering::Relaxed));
+                    worker_pipeline.set_auto_sensitivity(auto_sens);
+                    worker_pipeline.set_sensitivity_threshold(sens_thresh);
                     // Drain AEC reference samples if loopback is active
                     if let Some(ref mut r_cons) = ref_cons {
                         let mut count = 0;
@@ -356,6 +399,7 @@ impl AudioStreamController {
         Ok(Self {
             running,
             metrics,
+            controls,
             worker_handle: Some(worker_handle),
             _capture_stream: Some(capture_stream),
             _render_stream: render_stream,
@@ -469,6 +513,7 @@ impl AudioStreamController {
         Ok(Self {
             running,
             metrics,
+            controls: AudioStreamControls::default(),
             worker_handle: Some(worker_handle),
             _capture_stream: Some(cap_stream),
             _render_stream: Some(out_stream),
@@ -479,6 +524,30 @@ impl AudioStreamController {
 
     pub fn metrics(&self) -> &AudioMetrics {
         &self.metrics
+    }
+
+    pub fn controls(&self) -> &AudioStreamControls {
+        &self.controls
+    }
+
+    pub fn set_mic_volume(&self, volume: f32) {
+        self.controls.mic_volume_bits.store(volume.to_bits(), Ordering::Relaxed);
+    }
+
+    pub fn set_push_to_talk(&self, enabled: bool) {
+        self.controls.ptt_enabled.store(enabled, Ordering::Relaxed);
+    }
+
+    pub fn set_ptt_active(&self, active: bool) {
+        self.controls.ptt_active.store(active, Ordering::Relaxed);
+    }
+
+    pub fn set_auto_sensitivity(&self, enabled: bool) {
+        self.controls.auto_sensitivity.store(enabled, Ordering::Relaxed);
+    }
+
+    pub fn set_sensitivity_threshold(&self, threshold_dbfs: f32) {
+        self.controls.sensitivity_threshold_dbfs.store(threshold_dbfs.to_bits(), Ordering::Relaxed);
     }
 
     pub fn stop(&mut self) {

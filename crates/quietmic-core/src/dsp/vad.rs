@@ -8,6 +8,8 @@ pub struct SilenceDetector {
     current_hangover: usize,
     is_active: bool,
     pre_trigger_buffer: Vec<f32>,
+    auto_sensitivity: bool,
+    noise_floor_rms: f32,
 }
 
 impl SilenceDetector {
@@ -25,6 +27,8 @@ impl SilenceDetector {
             current_hangover: hangover_frames, // Start active
             is_active: true,
             pre_trigger_buffer: vec![0.0f32; frame_size],
+            auto_sensitivity: false,
+            noise_floor_rms: linear_rms,
         }
     }
 
@@ -32,7 +36,34 @@ impl SilenceDetector {
     /// Uses sensitive -58.0 dBFS threshold (preserves whispers and quiet fricatives)
     /// and 35 frames (350 ms) of hangover to eliminate syllable clipping.
     pub fn default_48k() -> Self {
-        Self::new(-58.0, 35, 480)
+        let mut d = Self::new(-58.0, 35, 480);
+        d.auto_sensitivity = true;
+        d
+    }
+
+    /// Sets manual sensitivity threshold in dBFS.
+    pub fn set_threshold_dbfs(&mut self, threshold_dbfs: f32) {
+        let clamped = threshold_dbfs.clamp(-80.0, 0.0);
+        self.energy_threshold_rms = 10.0f32.powf(clamped / 20.0);
+    }
+
+    /// Toggles automatic sensitivity adjustment.
+    pub fn set_auto_sensitivity(&mut self, enabled: bool) {
+        self.auto_sensitivity = enabled;
+    }
+
+    /// Whether automatic sensitivity adjustment is enabled.
+    pub fn is_auto_sensitivity(&self) -> bool {
+        self.auto_sensitivity
+    }
+
+    /// Returns current sensitivity threshold in dBFS.
+    pub fn threshold_dbfs(&self) -> f32 {
+        if self.energy_threshold_rms > 1e-6 {
+            20.0 * self.energy_threshold_rms.log10()
+        } else {
+            -100.0
+        }
     }
 
     /// Computes RMS energy of a frame and updates activation state.
@@ -41,6 +72,15 @@ impl SilenceDetector {
     pub fn update(&mut self, frame: &[f32]) -> bool {
         let sum_sq: f32 = frame.iter().map(|&x| x * x).sum();
         let rms = (sum_sq / frame.len().max(1) as f32).sqrt();
+
+        if self.auto_sensitivity {
+            if rms < self.noise_floor_rms * 2.0 {
+                self.noise_floor_rms = self.noise_floor_rms * 0.98 + rms * 0.02;
+            } else {
+                self.noise_floor_rms = self.noise_floor_rms * 0.999 + rms * 0.001;
+            }
+            self.energy_threshold_rms = (self.noise_floor_rms * 2.0).clamp(0.0005, 0.08);
+        }
 
         if rms >= self.energy_threshold_rms {
             // Signal above threshold -> immediately activate and reset hangover

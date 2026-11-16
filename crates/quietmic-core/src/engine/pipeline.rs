@@ -39,6 +39,9 @@ pub struct AudioPipeline {
     output_resampler: AudioResampler,
     bypass: bool,
     muted: bool,
+    mic_gain: f32,
+    push_to_talk: bool,
+    ptt_active: bool,
     strength: f32, // 0.0 to 1.0
     frame_size: usize,
     dry_buffer: Vec<f32>,
@@ -77,6 +80,9 @@ impl AudioPipeline {
             output_resampler,
             bypass: false,
             muted: false,
+            mic_gain: 1.0,
+            push_to_talk: false,
+            ptt_active: false,
             strength: 1.0,
             frame_size: Self::FRAME_SAMPLES,
             dry_buffer: vec![0.0f32; Self::FRAME_SAMPLES],
@@ -166,6 +172,48 @@ impl AudioPipeline {
         self.muted
     }
 
+    /// Input microphone gain factor (1.0 = 100%, 0.5 = 50%, 2.0 = 200%).
+    pub fn set_mic_gain(&mut self, gain: f32) {
+        self.mic_gain = gain.clamp(0.0, 4.0);
+    }
+
+    pub fn mic_gain(&self) -> f32 {
+        self.mic_gain
+    }
+
+    /// Push-to-Talk mode toggle.
+    pub fn set_push_to_talk(&mut self, enabled: bool) {
+        self.push_to_talk = enabled;
+    }
+
+    pub fn is_push_to_talk(&self) -> bool {
+        self.push_to_talk
+    }
+
+    /// Updates real-time Push-to-Talk activation status.
+    pub fn set_ptt_active(&mut self, active: bool) {
+        self.ptt_active = active;
+    }
+
+    pub fn is_ptt_active(&self) -> bool {
+        self.ptt_active
+    }
+
+    /// Auto sensitivity adjustment toggle.
+    pub fn set_auto_sensitivity(&mut self, enabled: bool) {
+        self.vad.set_auto_sensitivity(enabled);
+    }
+
+    /// Sets manual sensitivity threshold in dBFS (e.g. -50.0).
+    pub fn set_sensitivity_threshold(&mut self, threshold_dbfs: f32) {
+        self.vad.set_threshold_dbfs(threshold_dbfs);
+    }
+
+    /// Returns current sensitivity threshold in dBFS.
+    pub fn sensitivity_threshold_dbfs(&self) -> f32 {
+        self.vad.threshold_dbfs()
+    }
+
     /// Acoustic Echo Cancellation toggle.
     pub fn set_aec_enabled(&mut self, enabled: bool) {
         self.aec.set_enabled(enabled);
@@ -239,16 +287,17 @@ impl AudioPipeline {
 
         let frame = &in_48k[..self.frame_size];
 
-        // If muted, output complete digital silence
-        if self.muted {
+        // If muted or PTT active-muted, output complete digital silence
+        if self.muted || (self.push_to_talk && !self.ptt_active) {
             output_mono.clear();
             output_mono.resize(self.frame_size, 0.0);
             return Ok(());
         }
 
-        // Save raw dry frame with hardware NaN/Inf sanitization
+        // Save raw dry frame with hardware NaN/Inf sanitization and mic gain scaling
         for (i, &s) in frame.iter().enumerate() {
-            let clean = if s.is_finite() { s.clamp(-1.0, 1.0) } else { 0.0 };
+            let scaled = s * self.mic_gain;
+            let clean = if scaled.is_finite() { scaled.clamp(-1.0, 1.0) } else { 0.0 };
             self.dry_buffer[i] = clean;
             self.wet_buffer[i] = clean;
         }

@@ -2,19 +2,50 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+fn default_mode() -> String { "Krisp".to_string() }
+fn default_strength() -> f32 { 1.0 }
+fn default_true() -> bool { true }
+fn default_volume() -> f32 { 1.0 }
+fn default_sensitivity_threshold() -> f32 { -50.0 }
+fn default_ptt_key() -> String { "Space".to_string() }
+fn default_hotkey() -> String { "Ctrl+Alt+N".to_string() }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
+    #[serde(default = "default_mode")]
     pub mode: String,              // "Krisp" (RNNoise AI), "Standard", "VoiceIsolation"
+    #[serde(default = "default_strength")]
     pub strength: f32,             // 0.0 to 1.0 (default 1.0 = 100%)
+    #[serde(default)]
     pub bypass: bool,              // Master bypass toggle (default false)
+    #[serde(default)]
     pub aec_enabled: bool,         // Acoustic Echo Cancellation (default false)
+    #[serde(default)]
     pub speaker_denoise: bool,     // Speaker denoise pipeline (default false)
+    #[serde(default = "default_true")]
     pub comfort_noise: bool,       // Subtle acoustic floor (default true)
+    #[serde(default)]
     pub selected_mic: Option<String>,
+    #[serde(default)]
+    pub selected_speaker: Option<String>,
+    #[serde(default)]
     pub start_with_windows: bool,  // Registry Run key toggle
+    #[serde(default = "default_hotkey")]
     pub global_hotkey: String,     // e.g. "Ctrl+Alt+N"
     #[serde(default)]
     pub muted: bool,              // Global microphone mute state (default false)
+    #[serde(default = "default_volume")]
+    pub mic_volume: f32,          // Input mic gain (default 1.0 = 100%)
+    #[serde(default = "default_volume")]
+    pub speaker_volume: f32,      // Output speaker/monitor volume (default 1.0 = 100%)
+    #[serde(default = "default_true")]
+    pub auto_sensitivity: bool,   // Automatic input sensitivity toggle (default true)
+    #[serde(default = "default_sensitivity_threshold")]
+    pub sensitivity_threshold: f32, // Input sensitivity threshold in dBFS (default -50.0)
+    #[serde(default)]
+    pub push_to_talk: bool,       // Push to talk toggle (default false)
+    #[serde(default = "default_ptt_key")]
+    pub ptt_key: String,          // Key binding for PTT (default "Space")
 }
 
 impl Default for AppConfig {
@@ -27,9 +58,16 @@ impl Default for AppConfig {
             speaker_denoise: false,
             comfort_noise: true,
             selected_mic: None,
+            selected_speaker: None,
             start_with_windows: false,
             global_hotkey: "Ctrl+Alt+N".to_string(),
             muted: false,
+            mic_volume: 1.0,
+            speaker_volume: 1.0,
+            auto_sensitivity: true,
+            sensitivity_threshold: -50.0,
+            push_to_talk: false,
+            ptt_key: "Space".to_string(),
         }
     }
 }
@@ -164,6 +202,12 @@ mod tests {
         assert_eq!(cfg.strength, deserialized.strength);
         assert_eq!(cfg.bypass, deserialized.bypass);
         assert_eq!(cfg.muted, deserialized.muted);
+        assert_eq!(cfg.mic_volume, deserialized.mic_volume);
+        assert_eq!(cfg.speaker_volume, deserialized.speaker_volume);
+        assert_eq!(cfg.auto_sensitivity, deserialized.auto_sensitivity);
+        assert_eq!(cfg.sensitivity_threshold, deserialized.sensitivity_threshold);
+        assert_eq!(cfg.push_to_talk, deserialized.push_to_talk);
+        assert_eq!(cfg.ptt_key, deserialized.ptt_key);
     }
 
     #[test]
