@@ -6,6 +6,7 @@ use nnnoiseless::DenoiseState;
 pub struct LightEngine {
     state: Box<DenoiseState<'static>>,
     vad_probability: f32,
+    smoothed_vad_gain: f32,
     scratch_in: Box<[f32; Self::FRAME_SIZE]>,
     scratch_out: Box<[f32; Self::FRAME_SIZE]>,
 }
@@ -17,6 +18,7 @@ impl LightEngine {
         Self {
             state: DenoiseState::new(),
             vad_probability: 0.0,
+            smoothed_vad_gain: 1.0,
             scratch_in: Box::new([0.0; Self::FRAME_SIZE]),
             scratch_out: Box::new([0.0; Self::FRAME_SIZE]),
         }
@@ -43,6 +45,7 @@ impl DenoiseEngine for LightEngine {
     fn reset(&mut self) {
         self.state = DenoiseState::new();
         self.vad_probability = 0.0;
+        self.smoothed_vad_gain = 1.0;
         self.scratch_in.fill(0.0);
         self.scratch_out.fill(0.0);
     }
@@ -72,8 +75,27 @@ impl DenoiseEngine for LightEngine {
             &*self.scratch_in,
         );
 
+        // Intelligent VAD-assisted noise gate:
+        // When speech is present (VAD >= 0.15), gate is 100% open with full natural voice clarity.
+        // When speech is absent (VAD < 0.15), smoothly attenuate residual noise artifacts.
+        let target_gate = if self.vad_probability >= 0.15 {
+            1.0f32
+        } else {
+            (self.vad_probability / 0.15).powi(2).clamp(0.01, 1.0)
+        };
+
+        // Smooth gain transition across samples (fast attack ~5ms, gentle release ~45ms)
+        let attack_coeff = 0.04f32;
+        let release_coeff = 0.005f32;
+
         for (i, &s) in self.scratch_out.iter().enumerate() {
-            out_frame[i] = s * SCALE_FROM_16BIT;
+            let coeff = if target_gate > self.smoothed_vad_gain {
+                attack_coeff
+            } else {
+                release_coeff
+            };
+            self.smoothed_vad_gain += (target_gate - self.smoothed_vad_gain) * coeff;
+            out_frame[i] = (s * SCALE_FROM_16BIT) * self.smoothed_vad_gain;
         }
 
         Ok(())

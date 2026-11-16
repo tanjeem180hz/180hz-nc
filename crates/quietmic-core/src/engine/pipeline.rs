@@ -328,9 +328,8 @@ impl AudioPipeline {
 
         if !is_active {
             // Signal is pure background silence -> bypass neural inference to save CPU
-            // Attenuate background silence and apply subtle comfort noise floor
+            // Attenuate background silence (comfort noise will be added once at Step 7)
             self.wet_buffer.fill(0.0);
-            self.comfort_noise.inject_into(&mut self.wet_buffer);
         } else {
             // Step 5: Active speech/noise -> invoke selected Denoise Engine
             let engine_res = match &mut self.active_engine {
