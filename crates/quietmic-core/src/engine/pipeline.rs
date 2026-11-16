@@ -89,6 +89,24 @@ impl AudioPipeline {
         })
     }
 
+    /// Reconfigures input and output sample rates, recreating sinc resamplers dynamically.
+    pub fn update_sample_rates(&mut self, input_sample_rate: u32, output_sample_rate: u32) -> Result<(), String> {
+        let in_chunk_samples = ((input_sample_rate as usize) / 100).max(1);
+        self.input_resampler = AudioResampler::new(input_sample_rate, Self::INTERNAL_RATE, in_chunk_samples)?;
+        self.output_resampler = AudioResampler::new(Self::INTERNAL_RATE, output_sample_rate, Self::FRAME_SAMPLES)?;
+        Ok(())
+    }
+
+    /// Returns the pre-denoised dry 48 kHz buffer.
+    pub fn dry_buffer(&self) -> &[f32] {
+        &self.dry_buffer
+    }
+
+    /// Returns the post-denoised blended 48 kHz buffer.
+    pub fn blended_buffer(&self) -> &[f32] {
+        &self.blended_buffer
+    }
+
     /// Sets operating mode: Light (RNNoise), Standard (DeepFilterNet), or VoiceIsolation.
     /// Lazy-loads the active engine and immediately frees memory of inactive engines.
     pub fn set_mode(&mut self, mode: EngineMode) {

@@ -150,7 +150,7 @@ fn run_pipeline_diagnostics(
     let cfg = state.config.lock();
     let mut pipeline = AudioPipeline::new(48000, 48000)?;
     let mode = match cfg.mode.as_str() {
-        "Light" => EngineMode::Light,
+        "Light" | "Krisp" => EngineMode::Light,
         "VoiceIsolation" => EngineMode::VoiceIsolation,
         _ => EngineMode::Standard,
     };
@@ -297,7 +297,7 @@ fn restart_audio_stream(state: &AppState, cfg: &AppConfig) -> Result<(), String>
 
     let mut pipeline = AudioPipeline::new(48000, 48000)?;
     let mode = match cfg.mode.as_str() {
-        "Light" => EngineMode::Light,
+        "Light" | "Krisp" => EngineMode::Light,
         "VoiceIsolation" => EngineMode::VoiceIsolation,
         _ => EngineMode::Standard,
     };
@@ -392,7 +392,7 @@ fn main() {
     // Initialize initial audio pipeline
     let mut pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline initialization failed");
     let mode = match config.mode.as_str() {
-        "Light" => EngineMode::Light,
+        "Light" | "Krisp" => EngineMode::Light,
         "VoiceIsolation" => EngineMode::VoiceIsolation,
         _ => EngineMode::Standard,
     };

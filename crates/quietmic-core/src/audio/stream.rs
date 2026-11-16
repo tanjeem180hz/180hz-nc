@@ -86,12 +86,12 @@ impl AudioStreamController {
 
         let mic_config = mic_device.default_input_config()
             .map_err(|e| format!("Failed to read mic config: {}", e))?;
-        let _mic_sample_rate = mic_config.sample_rate().0;
+        let mic_sample_rate = mic_config.sample_rate().0;
         let mic_channels = (mic_config.channels() as usize).max(1);
 
         // Try getting VB-CABLE Input (render device)
         let cable_device_res = device_manager.get_virtual_cable_input();
-        let (cable_device, _cable_sample_rate, cable_channels) = match cable_device_res {
+        let (cable_device, cable_sample_rate, cable_channels) = match cable_device_res {
             Ok(dev) => {
                 let name = dev.name().unwrap_or_else(|_| "VB-CABLE".to_string());
                 tracing::info!("Connected to virtual microphone render: {}", name);
@@ -230,6 +230,9 @@ impl AudioStreamController {
         let is_running_worker = Arc::clone(&running);
         let worker_metrics = Arc::clone(&metrics);
         let mut worker_pipeline = pipeline;
+        if let Err(e) = worker_pipeline.update_sample_rates(mic_sample_rate, cable_sample_rate) {
+            tracing::warn!("Could not dynamically adapt pipeline resamplers (mic={}, cable={}): {}", mic_sample_rate, cable_sample_rate, e);
+        }
 
         let worker_handle = std::thread::Builder::new()
             .name("quietmic-audio-dsp".to_string())
@@ -237,7 +240,8 @@ impl AudioStreamController {
                 // Register MMCSS "Pro Audio" priority
                 let _mmcss = MmcssHandle::register_pro_audio();
 
-                let mut in_chunk = vec![0.0f32; AudioPipeline::FRAME_SAMPLES];
+                let in_chunk_samples = ((mic_sample_rate as usize) / 100).max(1);
+                let mut in_chunk = vec![0.0f32; in_chunk_samples];
                 let mut out_chunk = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES + 10);
                 let mut ref_scratch = [0.0f32; AudioPipeline::FRAME_SAMPLES];
                 let mut starvation_counter = 0usize;
@@ -259,8 +263,8 @@ impl AudioStreamController {
                         }
                     }
 
-                    if in_cons.occupied_len() >= AudioPipeline::FRAME_SAMPLES {
-                        // Read exactly 1 frame (10 ms = 480 samples)
+                    if in_cons.occupied_len() >= in_chunk_samples {
+                        // Read exactly 1 frame (10 ms at mic_sample_rate)
                         for sample in in_chunk.iter_mut() {
                             *sample = in_cons.try_pop().unwrap_or(0.0);
                         }
@@ -300,7 +304,8 @@ impl AudioStreamController {
 
                         if res.is_ok() {
                             if let Some(ref mut tap) = live_monitor_tap {
-                                tap.push_frame(&in_chunk, &out_chunk);
+                                // Provide 48 kHz dry (pre-denoise) and blended (post-Krisp) buffers to live monitor
+                                tap.push_frame(worker_pipeline.dry_buffer(), worker_pipeline.blended_buffer());
                             }
                             let mut out_peak = 0.0f32;
                             for &s in &out_chunk {
@@ -313,7 +318,7 @@ impl AudioStreamController {
                             worker_metrics.output_peak_db.store(out_db.to_bits(), Ordering::Relaxed);
                         } else {
                             if let Some(ref mut tap) = live_monitor_tap {
-                                tap.push_frame(&in_chunk, &in_chunk);
+                                tap.push_frame(worker_pipeline.dry_buffer(), worker_pipeline.dry_buffer());
                             }
                             // Engine/resampler fallback: pass-through unprocessed in_chunk
                             for &s in &in_chunk {

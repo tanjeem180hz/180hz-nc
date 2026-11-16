@@ -40,7 +40,7 @@ const recordProgressBar = document.getElementById('recordProgressBar');
 const wavExportNotice = document.getElementById('wavExportNotice');
 
 let currentConfig = {
-  mode: 'Standard',
+  mode: 'Krisp',
   strength: 1.0,
   bypass: false,
   aec_enabled: false,
@@ -188,9 +188,11 @@ function updateVirtualStatus(status) {
 }
 
 function applyConfigToUI(cfg) {
-  // Mode buttons
+  // Mode buttons (maps Krisp or Light to Krisp AI button)
   modeButtons.forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.mode === cfg.mode);
+    const isMatch = (btn.dataset.mode === cfg.mode) ||
+                    (btn.dataset.mode === 'Krisp' && (cfg.mode === 'Light' || cfg.mode === 'Krisp'));
+    btn.classList.toggle('active', isMatch);
   });
 
   // Strength

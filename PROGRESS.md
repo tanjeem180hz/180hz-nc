@@ -26,10 +26,18 @@
 - [x] Noise Cancellation Diagnostic Suite (8-stage WAV dumper, CLI flag, observable pipeline in `DEBUG_REPORT.md`).
 - [x] Bug Fix Phase: Sample scaling in LightEngine, RealFFT STFT in StandardEngine, VAD hangover tuning.
 - [x] Quality Verification: $\ge 15$ dB noise suppression, A/B audio files in `ab_samples/`, loopback verification.
+- [x] Krisp AI Engine Default & Adaptive Dynamic Sample Rate Synchronization in Exe.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 24: Krisp AI Engine Default & Adaptive Dynamic Sample Rate Synchronization in Exe
+- Resolved physical microphone sample rate desynchronization: dynamically reconfigures `input_resampler` and `output_resampler` to the active physical mic and virtual device rates, preventing pitch-shift, buffer starvation, or dropouts when using 44.1 kHz, 16 kHz, or 96 kHz devices.
+- Promoted Krisp AI (RNNoise Recurrent Neural Network) to the primary default engine mode (`mode: 'Krisp'`) in `AppConfig` and GUI.
+- Fixed Live Monitor A/B tap: sends phase-aligned, resampled 48 kHz dry and Krisp-blended buffers directly to `live_monitor_tap`, guaranteeing accurate headphone A/B comparison without pitch or rate mismatch.
+- Rebuilt production standalone executable `QuietMic.exe` and turnkey setup installer `QuietMic-Setup.exe` with complete release optimizations.
+- Verified: all 51 tests pass cleanly; diagnostic sweep achieves 30.7 dB stationary and broadband noise suppression.
 
 ### Commit 17: 8-Stage Pipeline WAV Dumper, CLI Diagnostic Mode & DEBUG_REPORT.md Init
 - Built `DiagnosticController` and `DiagnosticTapProducers` with lock-free SPSC audio capture across all 8 pipeline stages: `01_raw_input`, `02_after_resample`, `03_after_highpass`, `04_after_aec`, `05_after_denoise`, `06_after_wet_dry_mix`, `07_after_postprocess_limiter`, `08_final_output`.

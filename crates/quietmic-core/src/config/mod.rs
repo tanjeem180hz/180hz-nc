@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    pub mode: String,              // "Light", "Standard", "VoiceIsolation"
+    pub mode: String,              // "Krisp" (RNNoise AI), "Standard", "VoiceIsolation"
     pub strength: f32,             // 0.0 to 1.0 (default 1.0 = 100%)
     pub bypass: bool,              // Master bypass toggle (default false)
     pub aec_enabled: bool,         // Acoustic Echo Cancellation (default false)
@@ -20,7 +20,7 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            mode: "Standard".to_string(),
+            mode: "Krisp".to_string(),
             strength: 1.0,
             bypass: false,
             aec_enabled: false,
