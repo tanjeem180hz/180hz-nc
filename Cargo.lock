@@ -2865,7 +2865,9 @@ name = "quietmic-bench"
 version = "0.1.0"
 dependencies = [
  "hound",
+ "num-complex",
  "quietmic-core",
+ "realfft",
  "serde",
  "serde_json",
  "tracing",

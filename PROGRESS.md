@@ -28,11 +28,29 @@
 - [x] Quality Verification: $\ge 15$ dB noise suppression, A/B audio files in `ab_samples/`, loopback verification.
 - [x] Krisp AI Engine Default & Adaptive Dynamic Sample Rate Synchronization in Exe.
 - [x] Complete Product Rebrand to "180hz nc" across App, UI, Installer, Mutex, Logs, Registry, and Tests.
+- [x] Quality Measurement Setup (Step 1): 200-mixture Evaluation Harness (`eval.rs`), Objective DNSMOS P.835 / SI-SDR / STOI Metrics, and Baseline Recorded in `benchmarks/quality_baseline.md` & `QUALITY_REPORT.md`.
 - [x] Complete Denoise Engine Audit (Step 1-5): Result A Confirmed (110.3 dB noise drop), Root Causes Fixed, Zero Silent Fallbacks, Atomic Metrics UI, and A/B Real Typing/Fan WAV Verification in `NS_DEBUG_REPORT.md`.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 27: Step 1 Quality Measurement Setup & 200-Mixture Baseline Verification
+- Built native Rust evaluation harness `crates/quietmic-bench/src/eval.rs` (`cargo run --release -p quietmic-bench --bin eval`).
+- Generated 200 standardized mixtures with fixed seed `0x180_BEEF_CAFE`:
+  - 4 Speakers: Male/Female English & Bangla with authentic formant structures and pitch contours.
+  - 10 Noise Types: Mechanical Keyboard, Mouse Clicks, Fan Noise, AC Hum, Traffic, Cafe Babble, Music, Dog Bark, Reverberant Room, Background Talker.
+  - 5 SNR Levels: -5, 0, 5, 10, 15 dB.
+- Implemented objective speech metrics:
+  - DNSMOS P.835 (SIG speech naturalness, BAK noise reduction, OVRL overall MOS).
+  - SI-SDR with cross-correlation lag alignment up to 960 samples.
+  - STOI intelligibility correlation.
+  - Noise-only segment reduction in dB and speech segment level delta.
+  - Spectral flux artifact and musical noise scoring.
+- Baseline Results Saved to `benchmarks/quality_baseline.md` and `QUALITY_REPORT.md`:
+  - `Krisp AI / RNNoise`: 26.1 dB noise reduction, BAK 3.29, SIG 3.16, STOI 0.432, Speech Delta 8.04 dB.
+  - `ERB STFT Standard`: 10.0 dB noise reduction, BAK 2.69, SIG 3.63, STOI 0.868, Speech Delta 1.36 dB.
+- Defined target metrics to match and beat Krisp: Noise Reduction $\ge 25$ dB while preserving voice naturalness (SIG $\ge 3.65$, STOI $\ge 0.80$, Speech Delta $\le 1.8$ dB).
 
 ### Commit 26: Consistent Rebranding to "180hz nc", Automatic Legacy Config Migration, and Clean Registry Autostart
 - Renamed every user-visible surface to consistent lowercase "180hz nc":
