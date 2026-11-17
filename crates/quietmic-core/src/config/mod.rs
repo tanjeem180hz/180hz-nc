@@ -107,7 +107,14 @@ impl AppConfig {
 
         match fs::read_to_string(&path) {
             Ok(content) => match serde_json::from_str::<AppConfig>(&content) {
-                Ok(cfg) => cfg,
+                Ok(mut cfg) => {
+                    // Ensure comfort noise remains disabled by default to prevent background hiss
+                    if cfg.comfort_noise {
+                        cfg.comfort_noise = false;
+                        let _ = cfg.save();
+                    }
+                    cfg
+                }
                 Err(err) => {
                     tracing::warn!(
                         "Corrupted config.json detected: {}. Resetting to safe defaults.",

@@ -93,6 +93,28 @@ body {
   box-shadow: 0 0 8px #10b981;
 }
 
+.status-pill.bypassed {
+  background-color: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+}
+
+.status-pill.bypassed .status-dot {
+  background-color: #f59e0b;
+  box-shadow: 0 0 8px #f59e0b;
+}
+
+.status-pill.fallback {
+  background-color: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #f87171;
+}
+
+.status-pill.fallback .status-dot {
+  background-color: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+}
+
 .auto-badge {
   font-size: 10px;
   font-weight: 600;

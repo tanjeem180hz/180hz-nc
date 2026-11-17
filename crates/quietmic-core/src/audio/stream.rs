@@ -17,6 +17,11 @@ pub struct AudioMetrics {
     pub output_peak_db: AtomicU32,
     pub underruns: AtomicU64,
     pub overruns: AtomicU64,
+    pub frames_received: AtomicU64,
+    pub frames_processed: AtomicU64,
+    pub frames_passthrough: AtomicU64,
+    pub fallback_active: AtomicBool,
+    pub noise_reduction_db: AtomicU32, // Bitwise float representation
 }
 
 impl AudioMetrics {
@@ -27,6 +32,11 @@ impl AudioMetrics {
             output_peak_db: AtomicU32::new((-100.0f32).to_bits()),
             underruns: AtomicU64::new(0),
             overruns: AtomicU64::new(0),
+            frames_received: AtomicU64::new(0),
+            frames_processed: AtomicU64::new(0),
+            frames_passthrough: AtomicU64::new(0),
+            fallback_active: AtomicBool::new(false),
+            noise_reduction_db: AtomicU32::new(0.0f32.to_bits()),
         }
     }
 
@@ -40,6 +50,26 @@ impl AudioMetrics {
 
     pub fn get_output_peak_db(&self) -> f32 {
         f32::from_bits(self.output_peak_db.load(Ordering::Relaxed))
+    }
+
+    pub fn get_frames_received(&self) -> u64 {
+        self.frames_received.load(Ordering::Relaxed)
+    }
+
+    pub fn get_frames_processed(&self) -> u64 {
+        self.frames_processed.load(Ordering::Relaxed)
+    }
+
+    pub fn get_frames_passthrough(&self) -> u64 {
+        self.frames_passthrough.load(Ordering::Relaxed)
+    }
+
+    pub fn is_fallback_active(&self) -> bool {
+        self.fallback_active.load(Ordering::Relaxed)
+    }
+
+    pub fn get_noise_reduction_db(&self) -> f32 {
+        f32::from_bits(self.noise_reduction_db.load(Ordering::Relaxed))
     }
 }
 
@@ -385,6 +415,7 @@ impl AudioStreamController {
                             in_peak = in_peak.max(s.abs());
                         }
                         let in_db = if in_peak > 1e-5 { 20.0 * in_peak.log10() } else { -100.0 };
+                        worker_metrics.frames_received.fetch_add(1, Ordering::Relaxed);
                         worker_metrics.input_peak_db.store(in_db.to_bits(), Ordering::Relaxed);
 
                         // High resolution frame processing timing
@@ -412,28 +443,43 @@ impl AudioStreamController {
                             starvation_counter = starvation_counter.saturating_sub(1);
                         }
 
-                        if res.is_ok() {
-                            if let Some(ref mut tap) = live_monitor_tap {
-                                // Provide 48 kHz dry (pre-denoise) and blended (post-Krisp) buffers to live monitor
-                                tap.push_frame(worker_pipeline.dry_buffer(), worker_pipeline.blended_buffer());
-                            }
-                            let mut out_peak = 0.0f32;
-                            for &s in &out_chunk {
-                                out_peak = out_peak.max(s.abs());
-                                if out_prod.try_push(s).is_err() {
-                                    worker_metrics.overruns.fetch_add(1, Ordering::Relaxed);
+                        match res {
+                            Ok(()) => {
+                                worker_metrics.frames_processed.fetch_add(1, Ordering::Relaxed);
+                                worker_metrics.fallback_active.store(false, Ordering::Relaxed);
+
+                                if let Some(ref mut tap) = live_monitor_tap {
+                                    // Provide 48 kHz dry (pre-denoise) and blended (post-Krisp) buffers to live monitor
+                                    tap.push_frame(worker_pipeline.dry_buffer(), worker_pipeline.blended_buffer());
                                 }
+                                let mut out_peak = 0.0f32;
+                                for &s in &out_chunk {
+                                    out_peak = out_peak.max(s.abs());
+                                    if out_prod.try_push(s).is_err() {
+                                        worker_metrics.overruns.fetch_add(1, Ordering::Relaxed);
+                                    }
+                                }
+                                let out_db = if out_peak > 1e-5 { 20.0 * out_peak.log10() } else { -100.0 };
+                                worker_metrics.output_peak_db.store(out_db.to_bits(), Ordering::Relaxed);
+
+                                // Compute real-time noise reduction estimate in dB
+                                let nr_db = (in_db - out_db).clamp(0.0, 80.0);
+                                worker_metrics.noise_reduction_db.store(nr_db.to_bits(), Ordering::Relaxed);
                             }
-                            let out_db = if out_peak > 1e-5 { 20.0 * out_peak.log10() } else { -100.0 };
-                            worker_metrics.output_peak_db.store(out_db.to_bits(), Ordering::Relaxed);
-                        } else {
-                            if let Some(ref mut tap) = live_monitor_tap {
-                                tap.push_frame(worker_pipeline.dry_buffer(), worker_pipeline.dry_buffer());
-                            }
-                            // Engine/resampler fallback: pass-through unprocessed in_chunk
-                            for &s in &in_chunk {
-                                if out_prod.try_push(s).is_err() {
-                                    worker_metrics.overruns.fetch_add(1, Ordering::Relaxed);
+                            Err(err_msg) => {
+                                tracing::error!("Audio DSP pipeline failure! Silent pass-through active: {}", err_msg);
+                                worker_metrics.frames_passthrough.fetch_add(1, Ordering::Relaxed);
+                                worker_metrics.fallback_active.store(true, Ordering::Relaxed);
+                                worker_metrics.noise_reduction_db.store(0.0f32.to_bits(), Ordering::Relaxed);
+
+                                if let Some(ref mut tap) = live_monitor_tap {
+                                    tap.push_frame(worker_pipeline.dry_buffer(), worker_pipeline.dry_buffer());
+                                }
+                                // Engine/resampler fallback: pass-through unprocessed in_chunk
+                                for &s in &in_chunk {
+                                    if out_prod.try_push(s).is_err() {
+                                        worker_metrics.overruns.fetch_add(1, Ordering::Relaxed);
+                                    }
                                 }
                             }
                         }

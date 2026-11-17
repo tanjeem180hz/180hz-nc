@@ -166,8 +166,8 @@ impl DenoiseEngine for StandardEngine {
 
         for (b, &(start, end)) in self.band_bin_ranges.iter().enumerate() {
             let mut sum_power = 0.0f32;
-            for k in start..end {
-                sum_power += self.complex_spectrum[k].norm_sqr();
+            for spec in &self.complex_spectrum[start..end] {
+                sum_power += spec.norm_sqr();
             }
             let count = (end - start).max(1) as f32;
             let band_power = (sum_power * FFT_NORM_SQ / count).max(1e-10);
@@ -180,8 +180,8 @@ impl DenoiseEngine for StandardEngine {
             let noise = self.noise_estimate[b];
 
             // Ambient noise floor ceiling: stationary fan hum / keyboard / room noise floor
-            // up to -27 dBFS (1e-3 power). Speech syllables (amplitude 0.2-0.5, power 0.03-0.12) are > 50x higher.
-            const MAX_NOISE_FLOOR: f32 = 1e-3;
+            // up to -17 dBFS (0.02 power). Prevents loud fan/clicks from being falsely classified as speech.
+            const MAX_NOISE_FLOOR: f32 = 0.02;
 
             if is_startup {
                 self.noise_estimate[b] += 0.40 * (band_power.min(MAX_NOISE_FLOOR) - noise);
@@ -215,8 +215,8 @@ impl DenoiseEngine for StandardEngine {
             let tuned_gain = 1.0 - self.suppression_factor * (1.0 - raw_gain);
             let band_gain = tuned_gain.clamp(0.0001, 1.0);
 
-            for k in start..end {
-                self.complex_spectrum[k] *= band_gain;
+            for spec in &mut self.complex_spectrum[start..end] {
+                *spec *= band_gain;
             }
         }
 

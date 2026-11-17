@@ -33,6 +33,14 @@ async function invoke(cmd, args) {
   return fn(cmd, args);
 }
 
+// UI Elements - Engine Status & Diagnostics
+const engineStatusPill = document.getElementById('engineStatusPill');
+const engineStatusText = document.getElementById('engineStatusText');
+const noiseReductionBadge = document.getElementById('noiseReductionBadge');
+const framesProcessedText = document.getElementById('framesProcessedText');
+const framesPassthroughText = document.getElementById('framesPassthroughText');
+const dspLatencyText = document.getElementById('dspLatencyText');
+
 // UI Elements - Live Voice Tester
 const liveVoiceBtn = document.getElementById('liveVoiceBtn');
 const liveVoiceIconOff = document.getElementById('liveVoiceIconOff');
@@ -471,8 +479,46 @@ async function pollMetrics() {
       const clamped = Math.max(-60, Math.min(0, inDb));
       const pct = Math.round(((clamped + 60) / 60) * 100);
 
-      micMeterFill.style.width = `${pct}%`;
-      micMeterDb.textContent = inDb > -58 ? `${Math.round(inDb)} dB` : '-60 dB';
+      if (micMeterFill) micMeterFill.style.width = `${pct}%`;
+      if (micMeterDb) micMeterDb.textContent = inDb > -58 ? `${Math.round(inDb)} dB` : '-60 dB';
+
+      const nrDb = Math.round(metrics.noise_reduction_db || 0);
+
+      if (framesProcessedText) framesProcessedText.textContent = metrics.frames_processed || 0;
+      if (framesPassthroughText) {
+        framesPassthroughText.textContent = metrics.frames_passthrough || 0;
+        framesPassthroughText.style.color = (metrics.frames_passthrough > 0) ? '#f87171' : '#cbd5e1';
+      }
+      if (dspLatencyText) dspLatencyText.textContent = `${metrics.frame_time_us || 0} µs`;
+
+      if (noiseReductionBadge) {
+        if (!metrics.suppression_active) {
+          noiseReductionBadge.textContent = 'Bypassed (0 dB)';
+          noiseReductionBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+          noiseReductionBadge.style.color = '#fbbf24';
+        } else if (metrics.fallback_active) {
+          noiseReductionBadge.textContent = 'Fallback Error';
+          noiseReductionBadge.style.background = 'rgba(239, 68, 68, 0.2)';
+          noiseReductionBadge.style.color = '#f87171';
+        } else {
+          noiseReductionBadge.textContent = nrDb > 2 ? `Suppression: -${nrDb} dB` : 'Suppression Active';
+          noiseReductionBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+          noiseReductionBadge.style.color = '#34d399';
+        }
+      }
+
+      if (engineStatusPill && engineStatusText) {
+        if (metrics.fallback_active) {
+          engineStatusPill.className = 'status-pill fallback';
+          engineStatusText.textContent = 'Fallback Pass-Through';
+        } else if (metrics.suppression_active) {
+          engineStatusPill.className = 'status-pill active';
+          engineStatusText.textContent = nrDb > 2 ? `Krisp Active (-${nrDb} dB)` : 'Krisp AI Active';
+        } else {
+          engineStatusPill.className = 'status-pill bypassed';
+          engineStatusText.textContent = 'Suppression Bypassed';
+        }
+      }
     }
 
     const liveStatus = await invoke('get_live_test_status');

@@ -180,14 +180,23 @@ All metrics below were measured using the offline test harness (`quietmic-bench`
 
 ---
 
-## ❓ Troubleshooting
+## ❓ Troubleshooting & Diagnostics
 
 | Issue | Cause | Solution |
 | :--- | :--- | :--- |
+| **Noise sounds unchanged or hiss persists** | Background hiss or fallback pass-through active | Check the **Noise Suppression badge** and **Pass-through counter** in settings. If badge displays `Bypassed (0 dB)`, click **Krisp** or press `Ctrl+Shift+B` to re-engage suppression. If `Pass-through` counter is non-zero, check `180Hz-NC.log` for audio device buffer errors. |
 | **No audio in Zoom/Discord** | Virtual mic not selected in target app | Ensure the communication app's microphone input is explicitly set to **"CABLE Output"**. |
-| **Audible echo on loudspeakers** | Loudspeaker sound bleeding into mic | Toggle **AEC (Echo Cancellation)** ON in 180Hz NC settings. |
-| **High CPU on battery** | High sampling rate or background tasks | Switch engine mode from Standard to **Light (RNNoise)** for < 1% CPU usage. |
+| **Audible echo on loudspeakers** | Loudspeaker sound bleeding into mic | Toggle **Echo Cancellation (AEC)** ON in 180Hz NC settings. |
+| **High CPU on battery** | High sampling rate or background tasks | Switch engine mode from Standard to **Krisp** (< 1% CPU usage with SIMD-accelerated inference). |
 | **Bluetooth Headset (HFP 16 kHz)** | Windows hands-free profile limitation | 180Hz NC automatically detects 16 kHz sample rate and applies Sinc upsampling to 48 kHz. |
+
+### Real-Time Diagnostics & Fallback Indicators
+
+The Noise Suppression panel in 180Hz NC provides live atomic status feedback:
+- **`Suppression: -XX dB` (Green)**: The DSP neural pipeline is actively processing audio frames in real time and attenuating ambient noise.
+- **`Bypassed (0 dB)` (Amber)**: Suppression is paused by user hotkey (`Ctrl+Shift+B`), the tray menu, or input sensitivity gating.
+- **`Fallback Error` (Red)**: Indicates the audio driver passed an incomplete or corrupted buffer; 180Hz NC automatically passed dry audio through to ensure your call was never dropped.
+- **`Processed` vs `Pass-through` Counters**: Under normal operation, `Processed` increments by 100 frames/sec (10 ms frames) while `Pass-through` remains strictly `0`.
 
 ---
 

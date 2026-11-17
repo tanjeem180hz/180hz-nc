@@ -92,11 +92,19 @@
 
     <!-- Noise Suppression: Krisp, Standard, None -->
     <section class="card">
-      <span class="card-label">Noise Suppression</span>
+      <div class="card-row">
+        <span class="card-label">Noise Suppression</span>
+        <span id="noiseReductionBadge" class="auto-badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">Active (0 dB)</span>
+      </div>
       <div class="segmented-control">
         <button type="button" class="seg-btn active" data-mode="Krisp">Krisp</button>
         <button type="button" class="seg-btn" data-mode="Standard">Standard</button>
         <button type="button" class="seg-btn" data-mode="None">None</button>
+      </div>
+      <div class="stat-row" style="display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; margin-top: 8px;">
+        <span>Processed: <strong id="framesProcessedText" style="color: #cbd5e1;">0</strong></span>
+        <span>Pass-through: <strong id="framesPassthroughText" style="color: #cbd5e1;">0</strong></span>
+        <span>DSP: <strong id="dspLatencyText" style="color: #cbd5e1;">0 µs</strong></span>
       </div>
     </section>
 

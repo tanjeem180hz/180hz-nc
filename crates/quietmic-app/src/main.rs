@@ -34,6 +34,12 @@ pub struct MetricsDto {
     pub output_peak_db: f32,
     pub underruns: u64,
     pub overruns: u64,
+    pub frames_received: u64,
+    pub frames_processed: u64,
+    pub frames_passthrough: u64,
+    pub fallback_active: bool,
+    pub noise_reduction_db: f32,
+    pub suppression_active: bool,
 }
 
 pub struct AppState {
@@ -402,6 +408,10 @@ fn set_autostart(enabled: bool, state: State<AppState>) -> Result<(), String> {
 #[tauri::command]
 fn get_metrics(state: State<AppState>) -> MetricsDto {
     let lock = state.stream_controller.lock();
+    let cfg = state.config.lock();
+    let suppression_active = !cfg.bypass && !cfg.muted;
+    drop(cfg);
+
     if let Some(ref ctrl) = *lock {
         let m = ctrl.metrics();
         MetricsDto {
@@ -410,6 +420,12 @@ fn get_metrics(state: State<AppState>) -> MetricsDto {
             output_peak_db: m.get_output_peak_db(),
             underruns: m.underruns.load(Ordering::Relaxed),
             overruns: m.overruns.load(Ordering::Relaxed),
+            frames_received: m.get_frames_received(),
+            frames_processed: m.get_frames_processed(),
+            frames_passthrough: m.get_frames_passthrough(),
+            fallback_active: m.is_fallback_active(),
+            noise_reduction_db: m.get_noise_reduction_db(),
+            suppression_active: suppression_active && !m.is_fallback_active(),
         }
     } else {
         MetricsDto {
@@ -418,6 +434,12 @@ fn get_metrics(state: State<AppState>) -> MetricsDto {
             output_peak_db: -100.0,
             underruns: 0,
             overruns: 0,
+            frames_received: 0,
+            frames_processed: 0,
+            frames_passthrough: 0,
+            fallback_active: false,
+            noise_reduction_db: 0.0,
+            suppression_active: false,
         }
     }
 }
@@ -562,7 +584,7 @@ fn main() {
 
     // Automatically detect and select default physical microphone
     let input_devices = device_manager.list_input_devices().unwrap_or_default();
-    let mic_exists = config.selected_mic.as_ref().map_or(false, |m| {
+    let mic_exists = config.selected_mic.as_ref().is_some_and(|m| {
         input_devices.iter().any(|d| d.name == *m)
     });
     if !mic_exists {
@@ -573,7 +595,7 @@ fn main() {
 
     // Automatically detect and select default physical headphones / speakers
     let output_devices = device_manager.list_output_devices().unwrap_or_default();
-    let spk_exists = config.selected_speaker.as_ref().map_or(false, |s| {
+    let spk_exists = config.selected_speaker.as_ref().is_some_and(|s| {
         output_devices.iter().any(|d| d.name == *s)
     });
     if !spk_exists {
@@ -692,7 +714,7 @@ fn main() {
                                 if last_dev_count != 0 && count != last_dev_count {
                                     tracing::info!("Audio device hot-plug detected: count changed from {} to {}", last_dev_count, count);
                                     let mut cfg = state.config.lock();
-                                    let mic_exists = cfg.selected_mic.as_ref().map_or(false, |m| {
+                                    let mic_exists = cfg.selected_mic.as_ref().is_some_and(|m| {
                                         devs.iter().any(|d| d.name == *m)
                                     });
                                     if !mic_exists {
@@ -701,7 +723,7 @@ fn main() {
                                         }
                                     }
                                     if let Ok(spks) = state.device_manager.list_output_devices() {
-                                        let spk_exists = cfg.selected_speaker.as_ref().map_or(false, |s| {
+                                        let spk_exists = cfg.selected_speaker.as_ref().is_some_and(|s| {
                                             spks.iter().any(|d| d.name == *s)
                                         });
                                         if !spk_exists {

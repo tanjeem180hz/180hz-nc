@@ -266,8 +266,19 @@ impl AudioPipeline {
             diag.push_stage(0, input_mono);
         }
 
+        if input_mono.is_empty() {
+            output_mono.clear();
+            return Err("Input buffer is empty".to_string());
+        }
+
         // Step 1: Resample input to 48 kHz if needed
         self.input_resampler.process(input_mono, &mut self.scratch_in)?;
+
+        // If resampler has initial group delay during warmup, pad to full frame size
+        if !self.scratch_in.is_empty() && self.scratch_in.len() < self.frame_size {
+            self.scratch_in.resize(self.frame_size, 0.0);
+        }
+
         let in_48k = if self.scratch_in.is_empty() {
             input_mono
         } else {
@@ -282,7 +293,11 @@ impl AudioPipeline {
         if in_48k.len() < self.frame_size {
             output_mono.clear();
             output_mono.extend_from_slice(input_mono);
-            return Ok(());
+            return Err(format!(
+                "Insufficient input samples: got {}, expected at least {}",
+                in_48k.len(),
+                self.frame_size
+            ));
         }
 
         let frame = &in_48k[..self.frame_size];
@@ -323,43 +338,45 @@ impl AudioPipeline {
             diag.push_stage(3, &self.wet_buffer);
         }
 
-        // Step 4: Silence Detection with Hangover (Auto-Bypass for CPU savings)
+        // Step 4: Input Sensitivity Detection (Silence & Noise Gate)
         let is_active = self.vad.update(&self.wet_buffer);
 
-        if !is_active {
-            // Signal is pure background silence -> bypass neural inference to save CPU
-            // Attenuate background silence (comfort noise will be added once at Step 7)
-            self.wet_buffer.fill(0.0);
-        } else {
-            // Step 5: Active speech/noise -> invoke selected Denoise Engine
-            let engine_res = match &mut self.active_engine {
-                ActiveEngine::Light(e) => {
-                    let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
-                    if res.is_ok() {
-                        self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
-                    }
-                    res
+        // Step 5: Process through Denoise Engine
+        // Neural & subband engines continuously process frames to maintain adapted recurrent state
+        let engine_res = match &mut self.active_engine {
+            ActiveEngine::Light(e) => {
+                let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
+                if res.is_ok() {
+                    self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
                 }
-                ActiveEngine::Standard(e) => {
-                    let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
-                    if res.is_ok() {
-                        self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
-                    }
-                    res
-                }
-                ActiveEngine::VoiceIsolation(e) => {
-                    let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
-                    if res.is_ok() {
-                        self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
-                    }
-                    res
-                }
-            };
-
-            // Engine failure rule: "Engine failure => automatic pass-through, never silence."
-            if engine_res.is_err() {
-                self.wet_buffer.copy_from_slice(&self.dry_buffer);
+                res
             }
+            ActiveEngine::Standard(e) => {
+                let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
+                if res.is_ok() {
+                    self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
+                }
+                res
+            }
+            ActiveEngine::VoiceIsolation(e) => {
+                let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
+                if res.is_ok() {
+                    self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
+                }
+                res
+            }
+        };
+
+        // Engine failure rule: "Engine failure => automatic pass-through, never silence."
+        if let Err(ref err) = engine_res {
+            tracing::error!("Denoise engine execution error (falling back to dry audio): {}", err);
+            self.wet_buffer.copy_from_slice(&self.dry_buffer);
+        }
+
+        // Step 5b: Apply Sensitivity Gating
+        // If signal is below input sensitivity threshold, gate to digital silence
+        if !is_active {
+            self.wet_buffer.fill(0.0);
         }
 
         // Stage 4: After Denoise

@@ -7,6 +7,7 @@
 
 # Audio test outputs & models
 *.wav
+!ab_samples/*.wav
 *.onnx
 *.bin
 *.zip
