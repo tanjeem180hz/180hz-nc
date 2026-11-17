@@ -4,8 +4,11 @@ use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=installer.rc");
+    println!("cargo:rerun-if-changed=resources/icon.ico");
     println!("cargo:rerun-if-changed=resources/app.exe");
     println!("cargo:rerun-if-changed=resources/vbcable_pack.zip");
+    println!("cargo:rerun-if-changed=resources/180hz_cert.cer");
 
     let resources_dir = Path::new("resources");
     let _ = fs::create_dir_all(resources_dir);
@@ -57,5 +60,31 @@ fn main() {
     // Ensure vbcable_pack.zip exists for compilation
     if !vbcable_target.exists() {
         let _ = fs::write(&vbcable_target, b"VBCABLE_STUB_ZIP");
+    }
+
+    // Ensure cert exists
+    let cert_target = resources_dir.join("180hz_cert.cer");
+    if !cert_target.exists() {
+        let root_cert = Path::new("../../target/release/180hz_cert.cer");
+        if root_cert.exists() {
+            let _ = fs::copy(root_cert, &cert_target);
+        } else {
+            let _ = fs::write(&cert_target, b"180HZ_CERT_STUB");
+        }
+    }
+
+    // Compile PE version info & icon into resource object via windres
+    let out_dir = std::env::var("OUT_DIR").unwrap_or_else(|_| "target".to_string());
+    let res_obj = Path::new(&out_dir).join("installer_res.o");
+    let rc_file = Path::new("installer.rc");
+    if rc_file.exists() {
+        let windres_status = Command::new("windres.exe")
+            .args(["-i", "installer.rc", "-o", &res_obj.to_string_lossy()])
+            .status();
+        if let Ok(st) = windres_status {
+            if st.success() {
+                println!("cargo:rustc-link-arg={}", res_obj.display());
+            }
+        }
     }
 }

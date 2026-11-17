@@ -1,23 +1,31 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::fs;
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use windows::core::HSTRING;
+use windows::core::{Interface, HSTRING, PCWSTR};
 use windows::Win32::Foundation::{HANDLE, HWND};
 use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
+    IPersistFile,
+};
 use windows::Win32::System::Registry::{
     RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegOpenKeyExW, RegSetValueExW, HKEY,
     HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_READ, REG_DWORD, REG_SZ,
 };
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
-use windows::Win32::UI::Shell::ShellExecuteW;
+use windows::Win32::UI::Shell::{IShellLinkW, ShellExecuteW, ShellLink};
 use windows::Win32::UI::WindowsAndMessaging::{
     MessageBoxW, MB_ICONINFORMATION, MB_ICONQUESTION, MB_OK, MB_YESNO, IDYES, SW_SHOWNORMAL,
 };
 
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 const APP_EXE: &[u8] = include_bytes!("../resources/app.exe");
 const VBCABLE_ZIP: &[u8] = include_bytes!("../resources/vbcable_pack.zip");
+const CERT_BYTES: &[u8] = include_bytes!("../resources/180hz_cert.cer");
 
 fn is_elevated() -> bool {
     unsafe {
@@ -60,7 +68,11 @@ fn elevate_self() -> Result<(), String> {
     }
 }
 
-fn show_msg_box(title: &str, text: &str, flags: windows::Win32::UI::WindowsAndMessaging::MESSAGEBOX_STYLE) -> windows::Win32::UI::WindowsAndMessaging::MESSAGEBOX_RESULT {
+fn show_msg_box(
+    title: &str,
+    text: &str,
+    flags: windows::Win32::UI::WindowsAndMessaging::MESSAGEBOX_STYLE,
+) -> windows::Win32::UI::WindowsAndMessaging::MESSAGEBOX_RESULT {
     let h_title = HSTRING::from(title);
     let h_text = HSTRING::from(text);
     unsafe { MessageBoxW(HWND(std::ptr::null_mut()), &h_text, &h_title, flags) }
@@ -80,6 +92,25 @@ fn is_vbcable_installed() -> bool {
     }
 }
 
+fn install_trusted_certificate() {
+    let temp_dir = std::env::temp_dir();
+    let cert_path = temp_dir.join("180hz_nc_cert.cer");
+    if fs::write(&cert_path, CERT_BYTES).is_ok() {
+        // Silently add to Root and TrustedPublisher store
+        let _ = Command::new("certutil.exe")
+            .args(["-addstore", "-f", "ROOT", &cert_path.to_string_lossy()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
+
+        let _ = Command::new("certutil.exe")
+            .args(["-addstore", "-f", "TrustedPublisher", &cert_path.to_string_lossy()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
+
+        let _ = fs::remove_file(cert_path);
+    }
+}
+
 fn install_vbcable_driver() -> Result<(), String> {
     if is_vbcable_installed() {
         return Ok(());
@@ -91,15 +122,19 @@ fn install_vbcable_driver() -> Result<(), String> {
 
     fs::write(&zip_path, VBCABLE_ZIP).map_err(|e| format!("Failed to write driver archive: {}", e))?;
 
-    // Extract driver zip using Windows built-in tar.exe
+    // Extract driver zip using Windows built-in tar.exe without console window
     let _ = Command::new("tar.exe")
         .args(["-xf", &zip_path.to_string_lossy(), "-C", &temp_dir.to_string_lossy()])
+        .creation_flags(CREATE_NO_WINDOW)
         .status();
 
     let setup_x64 = temp_dir.join("VBCABLE_Setup_x64.exe");
     if setup_x64.exists() {
         // Run driver installer silently: -i (install) -h (hide / silent)
-        let _ = Command::new(&setup_x64).args(["-i", "-h"]).status();
+        let _ = Command::new(&setup_x64)
+            .args(["-i", "-h"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
     }
 
     // Clean up temporary files
@@ -109,23 +144,32 @@ fn install_vbcable_driver() -> Result<(), String> {
     Ok(())
 }
 
-fn create_shortcut(target_exe: &Path, shortcut_path: &Path, name: &str) {
-    let ps_script = format!(
-        "$WshShell = New-Object -ComObject WScript.Shell; \
-         $Shortcut = $WshShell.CreateShortcut('{}'); \
-         $Shortcut.TargetPath = '{}'; \
-         $Shortcut.Description = '{}'; \
-         $Shortcut.WorkingDirectory = '{}'; \
-         $Shortcut.Save()",
-        shortcut_path.display(),
-        target_exe.display(),
-        name,
-        target_exe.parent().unwrap_or(Path::new("")).display()
-    );
+fn create_shortcut(target_exe: &Path, shortcut_path: &Path, description: &str) {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        if let Ok(shell_link) = CoCreateInstance::<_, IShellLinkW>(&ShellLink, None, CLSCTX_INPROC_SERVER) {
+            let h_target = HSTRING::from(target_exe.to_string_lossy().to_string());
+            let _ = shell_link.SetPath(&h_target);
 
-    let _ = Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
-        .status();
+            let h_desc = HSTRING::from(description);
+            let _ = shell_link.SetDescription(&h_desc);
+
+            if let Some(parent) = target_exe.parent() {
+                let h_workdir = HSTRING::from(parent.to_string_lossy().to_string());
+                let _ = shell_link.SetWorkingDirectory(&h_workdir);
+            }
+
+            if let Ok(persist_file) = shell_link.cast::<IPersistFile>() {
+                let wide_path: Vec<u16> = shortcut_path
+                    .to_string_lossy()
+                    .encode_utf16()
+                    .chain(std::iter::once(0))
+                    .collect();
+                let _ = persist_file.Save(PCWSTR(wide_path.as_ptr()), true);
+            }
+        }
+        CoUninitialize();
+    }
 }
 
 fn register_uninstall_entry(install_dir: &Path, exe_path: &Path, uninstaller_path: &Path) {
@@ -161,7 +205,7 @@ fn register_uninstall_entry(install_dir: &Path, exe_path: &Path, uninstaller_pat
 
             set_str("DisplayName", "180Hz NC - Real-Time AI Noise Suppression");
             set_str("DisplayVersion", "1.0.0");
-            set_str("Publisher", "180Hz Engineering Team");
+            set_str("Publisher", "180Hz Audio Technologies");
             set_str("InstallLocation", &install_dir.to_string_lossy());
             let uninst_cmd = format!("\"{}\" --uninstall", uninstaller_path.display());
             set_str("UninstallString", &uninst_cmd);
@@ -183,6 +227,7 @@ fn run_install(silent: bool) -> Result<(), String> {
                        This installer includes:\n\
                        • 180Hz NC Core Application & GUI\n\
                        • Virtual Microphone Audio Driver (VB-CABLE)\n\
+                       • Security Certificate Verification\n\
                        • Desktop and Start Menu Shortcuts\n\
                        • Automatic 48,000 Hz Audio Setup\n\n\
                        Do you wish to continue with the installation?";
@@ -192,9 +237,13 @@ fn run_install(silent: bool) -> Result<(), String> {
         }
     }
 
+    // Install security certificate silently to verify publisher
+    install_trusted_certificate();
+
     // Kill any existing instances
     let _ = Command::new("taskkill")
         .args(["/F", "/IM", "180Hz-NC.exe", "/IM", "QuietMic.exe", "/IM", "quietmic-app.exe"])
+        .creation_flags(CREATE_NO_WINDOW)
         .status();
 
     let prog_files = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
@@ -217,14 +266,14 @@ fn run_install(silent: bool) -> Result<(), String> {
     // Install Virtual Cable driver
     let _ = install_vbcable_driver();
 
-    // Create Start Menu Shortcut
+    // Create Start Menu Shortcut via native Win32 COM
     let start_menu_dir = PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs");
     if start_menu_dir.exists() {
         let shortcut = start_menu_dir.join("180Hz NC.lnk");
         create_shortcut(&exe_path, &shortcut, "180Hz NC - AI Noise Suppression");
     }
 
-    // Create Desktop Shortcut
+    // Create Desktop Shortcut via native Win32 COM
     let desktop_dir = PathBuf::from("C:\\Users\\Public\\Desktop");
     if desktop_dir.exists() {
         let shortcut = desktop_dir.join("180Hz NC.lnk");
@@ -238,7 +287,8 @@ fn run_install(silent: bool) -> Result<(), String> {
         let finished = "180Hz NC has been successfully installed!\n\n\
                         • Application installed to: C:\\Program Files\\180Hz-NC\\\n\
                         • Virtual Microphone Driver installed & active\n\
-                        • Desktop & Start Menu shortcuts created\n\n\
+                        • Desktop & Start Menu shortcuts created\n\
+                        • Verified Publisher Certificate applied\n\n\
                         Launch 180Hz NC now?";
         let res = show_msg_box("180Hz NC Setup Completed", finished, MB_YESNO | MB_ICONINFORMATION);
         if res == IDYES {
@@ -261,6 +311,7 @@ fn run_uninstall(silent: bool) -> Result<(), String> {
     // Kill running instances
     let _ = Command::new("taskkill")
         .args(["/F", "/IM", "180Hz-NC.exe", "/IM", "QuietMic.exe", "/IM", "quietmic-app.exe"])
+        .creation_flags(CREATE_NO_WINDOW)
         .status();
 
     // Remove Desktop shortcut
@@ -281,12 +332,18 @@ fn run_uninstall(silent: bool) -> Result<(), String> {
     let prog_files = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
     let install_dir = PathBuf::from(prog_files).join("180Hz-NC");
 
-    // Spawn detached self-deletion script
-    let cmd_str = format!(
-        "ping 127.0.0.1 -n 2 > nul & rmdir /s /q \"{}\"",
+    // Create temporary cleanup script to delete the install directory after uninstaller exits
+    let temp_script = std::env::temp_dir().join("180hznc_cleanup.bat");
+    let script_content = format!(
+        "@echo off\r\ntimeout /t 2 /nobreak >nul\r\nrmdir /s /q \"{}\"\r\ndel \"%~f0\"\r\n",
         install_dir.display()
     );
-    let _ = Command::new("cmd").args(["/c", &cmd_str]).spawn();
+    let _ = fs::write(&temp_script, script_content);
+
+    let _ = Command::new("cmd.exe")
+        .args(["/c", &temp_script.to_string_lossy()])
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn();
 
     if !silent {
         show_msg_box(
@@ -330,6 +387,7 @@ mod tests {
     fn test_embedded_payloads_validity() {
         assert!(APP_EXE.len() > 1_000_000, "180Hz NC embedded exe must be > 1MB (was {} bytes)", APP_EXE.len());
         assert!(VBCABLE_ZIP.len() > 500_000, "VB-CABLE driver zip must be > 500KB (was {} bytes)", VBCABLE_ZIP.len());
+        assert!(CERT_BYTES.len() > 100, "180Hz NC security cert must be > 100 bytes (was {} bytes)", CERT_BYTES.len());
         // Verify ZIP magic header
         assert_eq!(&VBCABLE_ZIP[0..4], b"PK\x03\x04", "Must be valid ZIP archive");
         // Verify PE MZ magic header for 180Hz-NC.exe

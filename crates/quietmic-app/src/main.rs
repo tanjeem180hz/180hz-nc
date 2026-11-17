@@ -722,7 +722,7 @@ fn main() {
                     .expect("Failed to spawn hot-plug watcher");
             }
 
-            // Spawn Global Push-to-Talk (PTT) Keyboard/Mouse Poller
+            // Spawn Global Push-to-Talk (PTT) Keyboard/Mouse Poller (Active only when PTT is enabled)
             #[cfg(windows)]
             {
                 let app_handle = app.handle().clone();
@@ -730,16 +730,16 @@ fn main() {
                     .name("180hznc-global-ptt".to_string())
                     .spawn(move || {
                         use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+                        let state = app_handle.state::<AppState>();
                         let mut was_pressed = false;
                         loop {
-                            std::thread::sleep(std::time::Duration::from_millis(15));
-                            let state = app_handle.state::<AppState>();
                             let (ptt_enabled, ptt_key) = {
                                 let cfg = state.config.lock();
                                 (cfg.push_to_talk, cfg.ptt_key.clone())
                             };
 
                             if ptt_enabled {
+                                std::thread::sleep(std::time::Duration::from_millis(15));
                                 if let Some(vk) = parse_vk_code(&ptt_key) {
                                     let is_down = unsafe { (GetAsyncKeyState(vk) as u16 & 0x8000) != 0 };
                                     if is_down != was_pressed {
@@ -749,11 +749,14 @@ fn main() {
                                         }
                                     }
                                 }
-                            } else if was_pressed {
-                                was_pressed = false;
-                                if let Some(ref ctrl) = *state.stream_controller.lock() {
-                                    ctrl.set_ptt_active(false);
+                            } else {
+                                if was_pressed {
+                                    was_pressed = false;
+                                    if let Some(ref ctrl) = *state.stream_controller.lock() {
+                                        ctrl.set_ptt_active(false);
+                                    }
                                 }
+                                std::thread::sleep(std::time::Duration::from_millis(250));
                             }
                         }
                     })
