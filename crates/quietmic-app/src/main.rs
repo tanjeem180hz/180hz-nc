@@ -78,8 +78,22 @@ fn toggle_live_test(device_name: Option<String>, state: State<AppState>) -> Resu
         monitor.stop();
         Ok(false)
     } else {
-        let dev = if device_name.is_some() {
-            device_name
+        // Ensure main audio capture pipeline is active so mic frames are fed to monitor
+        {
+            let ctrl_lock = state.stream_controller.lock();
+            if ctrl_lock.is_none() {
+                drop(ctrl_lock);
+                let cfg = state.config.lock().clone();
+                let _ = restart_audio_stream(&state, &cfg);
+            }
+        }
+
+        let dev = if let Some(ref d) = device_name {
+            if !d.trim().is_empty() {
+                Some(d.clone())
+            } else {
+                state.config.lock().selected_speaker.clone()
+            }
         } else {
             state.config.lock().selected_speaker.clone()
         };
@@ -543,8 +557,31 @@ fn main() {
     let _log_guard = init_logging();
     tracing::info!("Starting 180Hz NC application");
 
-    let config = AppConfig::load();
+    let mut config = AppConfig::load();
     let device_manager = DeviceManager::new();
+
+    // Automatically detect and select default physical microphone
+    let input_devices = device_manager.list_input_devices().unwrap_or_default();
+    let mic_exists = config.selected_mic.as_ref().map_or(false, |m| {
+        input_devices.iter().any(|d| d.name == *m)
+    });
+    if !mic_exists {
+        if let Some(default_mic) = input_devices.iter().find(|d| d.is_default).or_else(|| input_devices.first()) {
+            config.selected_mic = Some(default_mic.name.clone());
+        }
+    }
+
+    // Automatically detect and select default physical headphones / speakers
+    let output_devices = device_manager.list_output_devices().unwrap_or_default();
+    let spk_exists = config.selected_speaker.as_ref().map_or(false, |s| {
+        output_devices.iter().any(|d| d.name == *s)
+    });
+    if !spk_exists {
+        if let Some(default_spk) = output_devices.iter().find(|d| d.is_default).or_else(|| output_devices.first()) {
+            config.selected_speaker = Some(default_spk.name.clone());
+        }
+    }
+    let _ = config.save();
 
     // Initialize initial audio pipeline
     let mut pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline initialization failed");
@@ -654,8 +691,29 @@ fn main() {
                                 let count = devs.len();
                                 if last_dev_count != 0 && count != last_dev_count {
                                     tracing::info!("Audio device hot-plug detected: count changed from {} to {}", last_dev_count, count);
-                                    let cfg = state.config.lock().clone();
-                                    let _ = restart_audio_stream(&state, &cfg);
+                                    let mut cfg = state.config.lock();
+                                    let mic_exists = cfg.selected_mic.as_ref().map_or(false, |m| {
+                                        devs.iter().any(|d| d.name == *m)
+                                    });
+                                    if !mic_exists {
+                                        if let Some(def_mic) = devs.iter().find(|d| d.is_default).or_else(|| devs.first()) {
+                                            cfg.selected_mic = Some(def_mic.name.clone());
+                                        }
+                                    }
+                                    if let Ok(spks) = state.device_manager.list_output_devices() {
+                                        let spk_exists = cfg.selected_speaker.as_ref().map_or(false, |s| {
+                                            spks.iter().any(|d| d.name == *s)
+                                        });
+                                        if !spk_exists {
+                                            if let Some(def_spk) = spks.iter().find(|d| d.is_default).or_else(|| spks.first()) {
+                                                cfg.selected_speaker = Some(def_spk.name.clone());
+                                            }
+                                        }
+                                    }
+                                    let _ = cfg.save();
+                                    let cfg_clone = cfg.clone();
+                                    drop(cfg);
+                                    let _ = restart_audio_stream(&state, &cfg_clone);
                                 }
                                 last_dev_count = count;
                             }

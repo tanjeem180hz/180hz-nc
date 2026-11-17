@@ -8,24 +8,26 @@
 </head>
 <body>
   <div class="app-container">
-    <!-- Header with Live Voice Tester -->
+    <!-- Header -->
     <header class="header">
       <div class="brand">
         <h1 class="brand-title">180Hz NC</h1>
+        <span class="brand-subtitle">AI Noise Suppression</span>
       </div>
-      <button id="liveTestBtn" class="live-test-btn" type="button" title="Hear your voice live in headphones">
-        <span class="mic-icon">🎙️</span>
-        <span id="liveTestText">Test Voice</span>
-      </button>
+      <div class="status-pill active" id="engineStatusPill">
+        <span class="status-dot"></span>
+        <span id="engineStatusText">Krisp AI Active</span>
+      </div>
     </header>
 
     <!-- Microphone & Input Volume -->
     <section class="card">
       <div class="card-row">
         <label for="micSelect" class="card-label">Microphone</label>
+        <span class="auto-badge" id="micAutoBadge">Auto Detected</span>
       </div>
       <select id="micSelect" class="dropdown">
-        <option value="">Default Microphone</option>
+        <option value="">Detecting microphone...</option>
       </select>
 
       <div class="slider-row">
@@ -46,10 +48,11 @@
     <!-- Speaker & Output Volume -->
     <section class="card">
       <div class="card-row">
-        <label for="speakerSelect" class="card-label">Speaker</label>
+        <label for="speakerSelect" class="card-label">Speaker / Headphones</label>
+        <span class="auto-badge" id="spkAutoBadge">Auto Detected</span>
       </div>
       <select id="speakerSelect" class="dropdown">
-        <option value="">Default Speaker / Headphones</option>
+        <option value="">Detecting speaker...</option>
       </select>
 
       <div class="slider-row">
@@ -57,6 +60,44 @@
         <span id="speakerVolText" class="slider-val">100%</span>
       </div>
       <input type="range" id="speakerVolumeSlider" min="0" max="100" value="100" class="slider">
+    </section>
+
+    <!-- Live Voice Tester (Middle Point) -->
+    <section class="card live-test-card">
+      <div class="live-test-center">
+        <button id="liveVoiceBtn" class="live-voice-circle-btn" type="button" title="Click to test your voice live in headphones">
+          <!-- Non-active / Slashed Mic Icon (Off state) -->
+          <svg id="liveVoiceIconOff" class="voice-icon icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="1" y1="1" x2="23" y2="23"></line>
+            <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path>
+            <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
+            <line x1="12" y1="19" x2="12" y2="23"></line>
+            <line x1="8" y1="23" x2="16" y2="23"></line>
+          </svg>
+          <!-- Active Live Mic Icon with waves (On state) -->
+          <svg id="liveVoiceIconOn" class="voice-icon icon-on" style="display: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="23"></line>
+            <line x1="8" y1="23" x2="16" y2="23"></line>
+          </svg>
+        </button>
+
+        <div class="live-test-info">
+          <div id="liveVoiceTitle" class="live-voice-title">Test Your Voice Live</div>
+          <div id="liveVoiceDesc" class="live-voice-desc">Click icon to hear your voice live in headphones</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Noise Suppression: Krisp, Standard, None -->
+    <section class="card">
+      <span class="card-label">Noise Suppression</span>
+      <div class="segmented-control">
+        <button type="button" class="seg-btn active" data-mode="Krisp">Krisp</button>
+        <button type="button" class="seg-btn" data-mode="Standard">Standard</button>
+        <button type="button" class="seg-btn" data-mode="None">None</button>
+      </div>
     </section>
 
     <!-- Automatic Adjust Input Sensitivity -->
@@ -74,16 +115,6 @@
           <span id="sensitivityText" class="slider-val">-50 dB</span>
         </div>
         <input type="range" id="sensitivitySlider" min="-80" max="-10" value="-50" class="slider" disabled>
-      </div>
-    </section>
-
-    <!-- Noise Suppression: Krisp, Standard, None -->
-    <section class="card">
-      <span class="card-label">Noise Suppression</span>
-      <div class="segmented-control">
-        <button type="button" class="seg-btn active" data-mode="Krisp">Krisp</button>
-        <button type="button" class="seg-btn" data-mode="Standard">Standard</button>
-        <button type="button" class="seg-btn" data-mode="None">None</button>
       </div>
     </section>
 

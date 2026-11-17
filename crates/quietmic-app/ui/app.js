@@ -1,10 +1,14 @@
 // 180Hz NC UI Controller
 const invoke = window.__TAURI__ ? (window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.invoke) : null;
 
-// UI Elements
-const liveTestBtn = document.getElementById('liveTestBtn');
-const liveTestText = document.getElementById('liveTestText');
+// UI Elements - Live Voice Tester
+const liveVoiceBtn = document.getElementById('liveVoiceBtn');
+const liveVoiceIconOff = document.getElementById('liveVoiceIconOff');
+const liveVoiceIconOn = document.getElementById('liveVoiceIconOn');
+const liveVoiceTitle = document.getElementById('liveVoiceTitle');
+const liveVoiceDesc = document.getElementById('liveVoiceDesc');
 
+// UI Elements - Audio Devices & Controls
 const micSelect = document.getElementById('micSelect');
 const micVolumeSlider = document.getElementById('micVolumeSlider');
 const micVolText = document.getElementById('micVolText');
@@ -35,21 +39,23 @@ let isPttPressed = false;
 let isLiveTestActive = false;
 
 // ----------------------------------------------------------------------------
-// Initialization
+// Initialization & Automatic Device Detection
 // ----------------------------------------------------------------------------
 
 async function init() {
   if (!invoke) return;
 
   try {
-    // 1. Load Audio Devices
-    await loadDevices();
-
-    // 2. Load Current Configuration
+    // 1. Load Current Configuration first
     const cfg = await invoke('get_config');
+
+    // 2. Load & Auto-Detect Audio Devices
+    await loadDevices(cfg);
+
+    // 3. Apply Remaining Config
     applyConfig(cfg);
 
-    // 3. Load Live Test Status
+    // 4. Load Live Test Status
     const liveStatus = await invoke('get_live_test_status');
     updateLiveTestUI(liveStatus.is_active);
   } catch (err) {
@@ -58,54 +64,93 @@ async function init() {
 
   // Start polling for VU meters and status
   setInterval(pollMetrics, 60);
-  setInterval(loadDevices, 4000);
+  setInterval(() => loadDevices(), 4000);
 }
 
-async function loadDevices() {
+async function loadDevices(cachedCfg) {
   if (!invoke) return;
   try {
     const inputDevs = await invoke('get_input_devices');
-    populateDropdown(micSelect, inputDevs, 'Default Microphone');
-
     const outputDevs = await invoke('get_output_devices');
-    populateDropdown(speakerSelect, outputDevs, 'Default Speaker / Headphones');
-  } catch (e) {}
+    const cfg = cachedCfg || (await invoke('get_config'));
+
+    autoSelectAndPopulateMic(inputDevs, cfg ? cfg.selected_mic : null);
+    autoSelectAndPopulateSpeaker(outputDevs, cfg ? cfg.selected_speaker : null);
+  } catch (e) {
+    console.error('Error loading devices:', e);
+  }
 }
 
-function populateDropdown(selectEl, devices, defaultLabel) {
-  const currentVal = selectEl.value;
-  selectEl.innerHTML = '';
-
-  const defOpt = document.createElement('option');
-  defOpt.value = '';
-  defOpt.textContent = defaultLabel;
-  selectEl.appendChild(defOpt);
-
-  if (Array.isArray(devices)) {
-    devices.forEach((d) => {
-      // Exclude virtual cables from monitor speaker dropdown
-      if (selectEl === speakerSelect) {
-        const lower = (d.name || '').toLowerCase();
-        if (lower.includes('cable') || lower.includes('vb-audio')) return;
-      }
-      const opt = document.createElement('option');
-      opt.value = d.name;
-      opt.textContent = d.name + (d.is_default ? ' (System Default)' : '');
-      selectEl.appendChild(opt);
-    });
+function autoSelectAndPopulateMic(devices, savedMicName) {
+  if (!Array.isArray(devices) || devices.length === 0) {
+    micSelect.innerHTML = '<option value="">No microphone detected</option>';
+    return;
   }
 
-  if (currentVal) {
-    selectEl.value = currentVal;
+  // Find preferred microphone: saved device if valid, otherwise system default, otherwise first available
+  const hasSaved = savedMicName && devices.some((d) => d.name === savedMicName);
+  const defaultDev = devices.find((d) => d.is_default) || devices[0];
+  const targetMic = hasSaved ? savedMicName : defaultDev.name;
+
+  micSelect.innerHTML = '';
+  devices.forEach((d) => {
+    const opt = document.createElement('option');
+    opt.value = d.name;
+    opt.textContent = d.name + (d.is_default ? ' (Default)' : '');
+    if (d.name === targetMic) {
+      opt.selected = true;
+    }
+    micSelect.appendChild(opt);
+  });
+
+  micSelect.value = targetMic;
+
+  // If saved config was missing or stale, persist newly detected microphone
+  if (!hasSaved && targetMic) {
+    invoke('set_input_device', { name: targetMic });
+  }
+}
+
+function autoSelectAndPopulateSpeaker(devices, savedSpkName) {
+  if (!Array.isArray(devices)) return;
+
+  // Filter out VB-CABLE devices (monitor audio must only go to physical headphones/speakers)
+  const physicalDevs = devices.filter((d) => {
+    const lower = (d.name || '').toLowerCase();
+    return !lower.contains || (!lower.includes('cable') && !lower.includes('vb-audio'));
+  });
+
+  if (physicalDevs.length === 0) {
+    speakerSelect.innerHTML = '<option value="">No headphones/speakers detected</option>';
+    return;
+  }
+
+  // Find preferred speaker: saved device if valid, otherwise system default, otherwise first available
+  const hasSaved = savedSpkName && physicalDevs.some((d) => d.name === savedSpkName);
+  const defaultDev = physicalDevs.find((d) => d.is_default) || physicalDevs[0];
+  const targetSpk = hasSaved ? savedSpkName : defaultDev.name;
+
+  speakerSelect.innerHTML = '';
+  physicalDevs.forEach((d) => {
+    const opt = document.createElement('option');
+    opt.value = d.name;
+    opt.textContent = d.name + (d.is_default ? ' (Default)' : '');
+    if (d.name === targetSpk) {
+      opt.selected = true;
+    }
+    speakerSelect.appendChild(opt);
+  });
+
+  speakerSelect.value = targetSpk;
+
+  // If saved config was missing or stale, persist newly detected speaker
+  if (!hasSaved && targetSpk) {
+    invoke('set_output_device', { name: targetSpk });
   }
 }
 
 function applyConfig(cfg) {
   if (!cfg) return;
-
-  // Mic & Speaker
-  if (cfg.selected_mic) micSelect.value = cfg.selected_mic;
-  if (cfg.selected_speaker) speakerSelect.value = cfg.selected_speaker;
 
   // Volumes
   const micPct = Math.round((cfg.mic_volume || 1.0) * 100);
@@ -151,28 +196,34 @@ function applyConfig(cfg) {
 }
 
 // ----------------------------------------------------------------------------
-// Live Voice Tester
+// Live Voice Tester (Middle Point Icon Button)
 // ----------------------------------------------------------------------------
 
 function updateLiveTestUI(active) {
   isLiveTestActive = !!active;
   if (isLiveTestActive) {
-    liveTestBtn.classList.add('active');
-    liveTestText.textContent = 'Testing Voice';
+    liveVoiceBtn.classList.add('active');
+    liveVoiceIconOff.style.display = 'none';
+    liveVoiceIconOn.style.display = 'block';
+    liveVoiceTitle.innerHTML = '<span class="live-pulse-dot">●</span> Live Voice: ON';
+    liveVoiceDesc.textContent = 'Hearing yourself live in headphones. Click again to turn off.';
   } else {
-    liveTestBtn.classList.remove('active');
-    liveTestText.textContent = 'Test Voice';
+    liveVoiceBtn.classList.remove('active');
+    liveVoiceIconOff.style.display = 'block';
+    liveVoiceIconOn.style.display = 'none';
+    liveVoiceTitle.textContent = 'Test Your Voice Live';
+    liveVoiceDesc.textContent = 'Click icon to hear your voice live in headphones';
   }
 }
 
-liveTestBtn.addEventListener('click', async () => {
+liveVoiceBtn.addEventListener('click', async () => {
   if (!invoke) return;
   try {
     const spkName = speakerSelect.value || null;
     const active = await invoke('toggle_live_test', { deviceName: spkName });
     updateLiveTestUI(active);
   } catch (err) {
-    console.error('Failed to toggle live test:', err);
+    console.error('Failed to toggle live voice tester:', err);
   }
 });
 

@@ -186,20 +186,54 @@ impl DeviceManager {
 
     /// Finds a named output device or falls back to system default.
     pub fn get_output_device(&self, name_opt: Option<&str>) -> Result<cpal::Device, String> {
+        self.get_monitoring_output_device(name_opt)
+    }
+
+    /// Finds a physical output device for live headphone monitoring.
+    /// Strictly excludes VB-CABLE to prevent audio feedback loops.
+    pub fn get_monitoring_output_device(&self, name_opt: Option<&str>) -> Result<cpal::Device, String> {
         let host = cpal::default_host();
         if let Some(target_name) = name_opt {
-            if let Ok(outputs) = host.output_devices() {
-                for dev in outputs {
-                    if let Ok(name) = dev.name() {
-                        if name == target_name {
-                            return Ok(dev);
+            let target_trimmed = target_name.trim();
+            if !target_trimmed.is_empty() {
+                if let Ok(outputs) = host.output_devices() {
+                    for dev in outputs {
+                        if let Ok(name) = dev.name() {
+                            if name == target_trimmed {
+                                let lower = name.to_lowercase();
+                                if !lower.contains("cable input") && !lower.contains("cable output") && !lower.contains("vb-audio") {
+                                    return Ok(dev);
+                                }
+                            }
                         }
                     }
                 }
             }
         }
 
-        self.get_default_output_device()
+        // 1. Try system default output device if it is not VB-CABLE
+        if let Some(default_dev) = host.default_output_device() {
+            if let Ok(name) = default_dev.name() {
+                let lower = name.to_lowercase();
+                if !lower.contains("cable input") && !lower.contains("cable output") && !lower.contains("vb-audio") {
+                    return Ok(default_dev);
+                }
+            }
+        }
+
+        // 2. Fallback to first non-cable physical output device
+        if let Ok(outputs) = host.output_devices() {
+            for dev in outputs {
+                if let Ok(name) = dev.name() {
+                    let lower = name.to_lowercase();
+                    if !lower.contains("cable input") && !lower.contains("cable output") && !lower.contains("vb-audio") {
+                        return Ok(dev);
+                    }
+                }
+            }
+        }
+
+        Err("No physical speaker or headphone device found for live monitoring.".to_string())
     }
 }
 

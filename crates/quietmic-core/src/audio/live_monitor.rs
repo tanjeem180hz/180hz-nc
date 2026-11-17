@@ -4,7 +4,7 @@ use crate::dsp::howling::HowlingDetector;
 use crate::dsp::limiter::SoftLimiter;
 use crate::dsp::resampler::AudioResampler;
 use cpal::traits::{DeviceTrait, StreamTrait};
-use ringbuf::traits::{Consumer, Producer, Split};
+use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use ringbuf::HeapRb;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -184,7 +184,7 @@ impl LiveMonitorController {
         self.stop();
 
         // 1. Resolve output device
-        let dev = device_manager.get_output_device(output_device_name)?;
+        let dev = device_manager.get_monitoring_output_device(output_device_name)?;
         let name = dev.name().unwrap_or_else(|_| "Default Audio Output".to_string());
 
         // Safety verification: Exclude VB-CABLE from ever receiving monitor audio
@@ -212,6 +212,7 @@ impl LiveMonitorController {
             .map_err(|e| format!("Failed to read monitor device configuration: {}", e))?;
         let target_sample_rate = config.sample_rate().0;
         let channels = (config.channels() as usize).max(1);
+        let sample_format = config.sample_format();
 
         // 3. Setup DSP helpers
         let mut crossfade = CrossfadeSwitch::new(Self::SAMPLE_RATE_48K as f32, 15.0);
@@ -240,180 +241,281 @@ impl LiveMonitorController {
         let raw_cons_cb = Arc::clone(&self.raw_cons);
         let clean_cons_cb = Arc::clone(&self.clean_cons);
 
-        let mut scratch_raw = vec![0.0f32; 480];
-        let mut scratch_clean = vec![0.0f32; 480];
-        let mut scratch_blended = vec![0.0f32; 480];
-        let mut scratch_resampled = Vec::with_capacity(1000);
+        const MAX_SCRATCH: usize = 4096;
+        let mut scratch_raw = vec![0.0f32; MAX_SCRATCH];
+        let mut scratch_clean = vec![0.0f32; MAX_SCRATCH];
+        let mut scratch_blended = vec![0.0f32; MAX_SCRATCH];
+        let mut scratch_resampled = Vec::with_capacity(MAX_SCRATCH * 2);
 
         // 4. Build Output Stream
         let err_cb_active = Arc::clone(&self.is_active);
         let err_cb_error = Arc::clone(&self.last_error);
 
-        let stream = dev.build_output_stream(
-            &config.into(),
-            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                if !is_active_cb.load(Ordering::Relaxed) {
-                    data.fill(0.0);
-                    return;
-                }
+        let stream = match sample_format {
+            cpal::SampleFormat::I16 => {
+                dev.build_output_stream(
+                    &config.into(),
+                    move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
+                        if !is_active_cb.load(Ordering::Relaxed) || feedback_cb.load(Ordering::Relaxed) {
+                            data.fill(0);
+                            return;
+                        }
 
-                // If feedback was detected, instantly mute output for safety
-                if feedback_cb.load(Ordering::Relaxed) {
-                    data.fill(0.0);
-                    is_active_cb.store(false, Ordering::Relaxed);
-                    return;
-                }
+                        let volume = f32::from_bits(volume_bits_cb.load(Ordering::Relaxed));
 
-                let volume = f32::from_bits(volume_bits_cb.load(Ordering::Relaxed));
+                        let num_frames_needed = (data.len() / channels).min(MAX_SCRATCH);
+                        let target_ab = if ab_mode_cb.load(Ordering::Relaxed) == 1 {
+                            CrossfadeMode::Original
+                        } else {
+                            CrossfadeMode::Cleaned
+                        };
+                        crossfade.set_mode(target_ab);
 
-                // A. Replay Mode Audio
-                if is_replaying_cb.load(Ordering::Relaxed) {
-                    if let Some(rec) = record_state_cb.try_lock() {
-                        let raw_len = rec.raw_samples.len();
-                        let clean_len = rec.clean_samples.len();
-                        let total_len = raw_len + clean_len;
-                        let mut cursor = replay_cursor_cb.load(Ordering::Relaxed);
+                        let input_needed = if resampler.is_some() {
+                            ((num_frames_needed as f64 * (Self::SAMPLE_RATE_48K as f64 / target_sample_rate as f64)).ceil() as usize).clamp(1, MAX_SCRATCH)
+                        } else {
+                            num_frames_needed
+                        };
 
-                        if total_len == 0 || cursor >= total_len {
-                            is_replaying_cb.store(false, Ordering::Relaxed);
-                            replay_cursor_cb.store(0, Ordering::Relaxed);
+                        let mut samples_read = 0usize;
+                        if let (Some(mut r_lock), Some(mut c_lock)) = (raw_cons_cb.try_lock(), clean_cons_cb.try_lock()) {
+                            let avail = r_lock.occupied_len().min(c_lock.occupied_len());
+                            let to_read = input_needed.min(avail);
+                            for i in 0..to_read {
+                                scratch_raw[i] = r_lock.try_pop().unwrap_or(0.0);
+                                scratch_clean[i] = c_lock.try_pop().unwrap_or(0.0);
+                            }
+                            samples_read = to_read;
+                        }
+
+                        if samples_read < input_needed {
+                            scratch_raw[samples_read..input_needed].fill(0.0);
+                            scratch_clean[samples_read..input_needed].fill(0.0);
+                        }
+
+                        crossfade.process_frame(
+                            &scratch_raw[..input_needed],
+                            &scratch_clean[..input_needed],
+                            &mut scratch_blended[..input_needed],
+                        );
+
+                        if howling_detector.detect(&scratch_blended[..input_needed]) {
+                            feedback_cb.store(true, Ordering::Relaxed);
+                            *last_error_cb.lock() = Some(
+                                "Acoustic feedback (howling) detected! Monitor was automatically muted to protect your hearing. Please use headphones.".to_string()
+                            );
+                            data.fill(0);
+                            is_active_cb.store(false, Ordering::Relaxed);
+                            return;
+                        }
+
+                        for s in scratch_blended[..input_needed].iter_mut() {
+                            *s *= volume;
+                        }
+                        limiter.process_slice(&mut scratch_blended[..input_needed]);
+
+                        let out_slice: &[f32] = if let Some(ref mut rs) = resampler {
+                            scratch_resampled.clear();
+                            if rs.process(&scratch_blended[..input_needed], &mut scratch_resampled).is_ok() {
+                                &scratch_resampled
+                            } else {
+                                &scratch_blended[..input_needed]
+                            }
+                        } else {
+                            &scratch_blended[..input_needed]
+                        };
+
+                        for (out_idx, frame) in data.chunks_exact_mut(channels).enumerate() {
+                            let sample_f = if out_idx < out_slice.len() {
+                                out_slice[out_idx]
+                            } else {
+                                0.0
+                            };
+                            let sample_i16 = (sample_f.clamp(-1.0, 1.0) * 32767.0) as i16;
+                            for ch in frame.iter_mut() {
+                                *ch = sample_i16;
+                            }
+                        }
+                    },
+                    move |err| {
+                        tracing::warn!("Monitor playback stream error: {}", err);
+                        err_cb_active.store(false, Ordering::Relaxed);
+                        *err_cb_error.lock() = Some(format!("Monitor device error: {}", err));
+                    },
+                    None,
+                )
+            }
+            _ => {
+                dev.build_output_stream(
+                    &config.into(),
+                    move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                        if !is_active_cb.load(Ordering::Relaxed) {
                             data.fill(0.0);
                             return;
                         }
 
-                        for frame in data.chunks_exact_mut(channels) {
-                            if cursor < raw_len {
-                                replay_is_cleaned_cb.store(false, Ordering::Relaxed);
-                                let s = rec.raw_samples[cursor] * volume;
-                                for ch in frame.iter_mut() {
-                                    *ch = s;
+                        if feedback_cb.load(Ordering::Relaxed) {
+                            data.fill(0.0);
+                            is_active_cb.store(false, Ordering::Relaxed);
+                            return;
+                        }
+
+                        let volume = f32::from_bits(volume_bits_cb.load(Ordering::Relaxed));
+
+                        // Replay Mode Audio
+                        if is_replaying_cb.load(Ordering::Relaxed) {
+                            if let Some(rec) = record_state_cb.try_lock() {
+                                let raw_len = rec.raw_samples.len();
+                                let clean_len = rec.clean_samples.len();
+                                let total_len = raw_len + clean_len;
+                                let mut cursor = replay_cursor_cb.load(Ordering::Relaxed);
+
+                                if total_len == 0 || cursor >= total_len {
+                                    is_replaying_cb.store(false, Ordering::Relaxed);
+                                    replay_cursor_cb.store(0, Ordering::Relaxed);
+                                    data.fill(0.0);
+                                    return;
                                 }
-                                cursor += 1;
-                            } else if cursor < total_len {
-                                replay_is_cleaned_cb.store(true, Ordering::Relaxed);
-                                let s = rec.clean_samples[cursor - raw_len] * volume;
-                                for ch in frame.iter_mut() {
-                                    *ch = s;
+
+                                for frame in data.chunks_exact_mut(channels) {
+                                    if cursor < raw_len {
+                                        replay_is_cleaned_cb.store(false, Ordering::Relaxed);
+                                        let s = rec.raw_samples[cursor] * volume;
+                                        for ch in frame.iter_mut() {
+                                            *ch = s;
+                                        }
+                                        cursor += 1;
+                                    } else if cursor < total_len {
+                                        replay_is_cleaned_cb.store(true, Ordering::Relaxed);
+                                        let s = rec.clean_samples[cursor - raw_len] * volume;
+                                        for ch in frame.iter_mut() {
+                                            *ch = s;
+                                        }
+                                        cursor += 1;
+                                    } else {
+                                        for ch in frame.iter_mut() {
+                                            *ch = 0.0;
+                                        }
+                                    }
                                 }
-                                cursor += 1;
+                                replay_cursor_cb.store(cursor, Ordering::Relaxed);
+                                if cursor >= total_len {
+                                    is_replaying_cb.store(false, Ordering::Relaxed);
+                                    replay_cursor_cb.store(0, Ordering::Relaxed);
+                                }
                             } else {
-                                for ch in frame.iter_mut() {
-                                    *ch = 0.0;
-                                }
+                                data.fill(0.0);
                             }
+                            return;
                         }
-                        replay_cursor_cb.store(cursor, Ordering::Relaxed);
-                        if cursor >= total_len {
-                            is_replaying_cb.store(false, Ordering::Relaxed);
-                            replay_cursor_cb.store(0, Ordering::Relaxed);
+
+                        // Live Capture Monitor Audio (continuous streaming)
+                        let num_frames_needed = (data.len() / channels).min(MAX_SCRATCH);
+
+                        let target_ab = if ab_mode_cb.load(Ordering::Relaxed) == 1 {
+                            CrossfadeMode::Original
+                        } else {
+                            CrossfadeMode::Cleaned
+                        };
+                        crossfade.set_mode(target_ab);
+
+                        let input_needed = if resampler.is_some() {
+                            ((num_frames_needed as f64 * (Self::SAMPLE_RATE_48K as f64 / target_sample_rate as f64)).ceil() as usize).clamp(1, MAX_SCRATCH)
+                        } else {
+                            num_frames_needed
+                        };
+
+                        let mut samples_read = 0usize;
+                        if let (Some(mut r_lock), Some(mut c_lock)) = (raw_cons_cb.try_lock(), clean_cons_cb.try_lock()) {
+                            let avail = r_lock.occupied_len().min(c_lock.occupied_len());
+                            let to_read = input_needed.min(avail);
+                            for i in 0..to_read {
+                                scratch_raw[i] = r_lock.try_pop().unwrap_or(0.0);
+                                scratch_clean[i] = c_lock.try_pop().unwrap_or(0.0);
+                            }
+                            samples_read = to_read;
                         }
-                    } else {
-                        data.fill(0.0);
-                    }
-                    return;
-                }
 
-                // B. Live Capture Monitor Audio (10 ms chunks)
-                let num_samples_needed = data.len() / channels;
+                        if samples_read < input_needed {
+                            scratch_raw[samples_read..input_needed].fill(0.0);
+                            scratch_clean[samples_read..input_needed].fill(0.0);
+                        }
 
-                // Check A/B mode setting
-                let target_ab = if ab_mode_cb.load(Ordering::Relaxed) == 1 {
-                    CrossfadeMode::Original
-                } else {
-                    CrossfadeMode::Cleaned
-                };
-                crossfade.set_mode(target_ab);
-
-                // Drain from raw and cleaned SPSC queues
-                let mut samples_read = 0usize;
-                if let (Some(mut r_lock), Some(mut c_lock)) = (raw_cons_cb.try_lock(), clean_cons_cb.try_lock()) {
-                    while samples_read < 480 && samples_read < num_samples_needed {
-                        let r = r_lock.try_pop().unwrap_or(0.0);
-                        let c = c_lock.try_pop().unwrap_or(0.0);
-                        scratch_raw[samples_read] = r;
-                        scratch_clean[samples_read] = c;
-                        samples_read += 1;
-                    }
-                }
-
-                if samples_read == 0 {
-                    data.fill(0.0);
-                    return;
-                }
-
-                // Record frames if recording is active
-                if is_recording_cb.load(Ordering::Relaxed) {
-                    let current_count = recording_count_cb.load(Ordering::Relaxed);
-                    if current_count < Self::MAX_RECORD_SAMPLES {
-                        if let Some(mut rec) = record_state_cb.try_lock() {
-                            rec.raw_samples.extend_from_slice(&scratch_raw[..samples_read]);
-                            rec.clean_samples.extend_from_slice(&scratch_clean[..samples_read]);
-                            let new_total = rec.raw_samples.len();
-                            recording_count_cb.store(new_total, Ordering::Relaxed);
-                            if new_total >= Self::MAX_RECORD_SAMPLES {
+                        // Record frames if recording is active
+                        if is_recording_cb.load(Ordering::Relaxed) {
+                            let current_count = recording_count_cb.load(Ordering::Relaxed);
+                            if current_count < Self::MAX_RECORD_SAMPLES {
+                                if let Some(mut rec) = record_state_cb.try_lock() {
+                                    rec.raw_samples.extend_from_slice(&scratch_raw[..input_needed]);
+                                    rec.clean_samples.extend_from_slice(&scratch_clean[..input_needed]);
+                                    let new_total = rec.raw_samples.len();
+                                    recording_count_cb.store(new_total, Ordering::Relaxed);
+                                    if new_total >= Self::MAX_RECORD_SAMPLES {
+                                        is_recording_cb.store(false, Ordering::Relaxed);
+                                    }
+                                }
+                            } else {
                                 is_recording_cb.store(false, Ordering::Relaxed);
                             }
                         }
-                    } else {
-                        is_recording_cb.store(false, Ordering::Relaxed);
-                    }
-                }
 
-                // Perform smooth click-free A/B crossfade
-                crossfade.process_frame(
-                    &scratch_raw[..samples_read],
-                    &scratch_clean[..samples_read],
-                    &mut scratch_blended[..samples_read],
-                );
+                        // Perform smooth click-free A/B crossfade
+                        crossfade.process_frame(
+                            &scratch_raw[..input_needed],
+                            &scratch_clean[..input_needed],
+                            &mut scratch_blended[..input_needed],
+                        );
 
-                // Run Howling / Acoustic Feedback Detection
-                if howling_detector.detect(&scratch_blended[..samples_read]) {
-                    feedback_cb.store(true, Ordering::Relaxed);
-                    *last_error_cb.lock() = Some(
-                        "Acoustic feedback (howling) detected! Monitor was automatically muted to protect your hearing. Please use headphones.".to_string()
-                    );
-                    data.fill(0.0);
-                    is_active_cb.store(false, Ordering::Relaxed);
-                    return;
-                }
+                        // Run Howling / Acoustic Feedback Detection
+                        if howling_detector.detect(&scratch_blended[..input_needed]) {
+                            feedback_cb.store(true, Ordering::Relaxed);
+                            *last_error_cb.lock() = Some(
+                                "Acoustic feedback (howling) detected! Monitor was automatically muted to protect your hearing. Please use headphones.".to_string()
+                            );
+                            data.fill(0.0);
+                            is_active_cb.store(false, Ordering::Relaxed);
+                            return;
+                        }
 
-                // Apply volume scaling and ear-protection soft limiter
-                for s in scratch_blended[..samples_read].iter_mut() {
-                    *s *= volume;
-                }
-                limiter.process_slice(&mut scratch_blended[..samples_read]);
+                        // Apply volume scaling and ear-protection soft limiter
+                        for s in scratch_blended[..input_needed].iter_mut() {
+                            *s *= volume;
+                        }
+                        limiter.process_slice(&mut scratch_blended[..input_needed]);
 
-                // Resample to device native rate if needed
-                let out_slice: &[f32] = if let Some(ref mut rs) = resampler {
-                    scratch_resampled.clear();
-                    if rs.process(&scratch_blended[..samples_read], &mut scratch_resampled).is_ok() {
-                        &scratch_resampled
-                    } else {
-                        &scratch_blended[..samples_read]
-                    }
-                } else {
-                    &scratch_blended[..samples_read]
-                };
+                        // Resample to device native rate if needed
+                        let out_slice: &[f32] = if let Some(ref mut rs) = resampler {
+                            scratch_resampled.clear();
+                            if rs.process(&scratch_blended[..input_needed], &mut scratch_resampled).is_ok() {
+                                &scratch_resampled
+                            } else {
+                                &scratch_blended[..input_needed]
+                            }
+                        } else {
+                            &scratch_blended[..input_needed]
+                        };
 
-                // Interleave into output buffer
-                for (out_idx, frame) in data.chunks_exact_mut(channels).enumerate() {
-                    let sample = if out_idx < out_slice.len() {
-                        out_slice[out_idx]
-                    } else {
-                        0.0
-                    };
-                    for ch in frame.iter_mut() {
-                        *ch = sample;
-                    }
-                }
-            },
-            move |err| {
-                tracing::warn!("Monitor playback stream error (device may have disconnected): {}", err);
-                err_cb_active.store(false, Ordering::Relaxed);
-                *err_cb_error.lock() = Some(format!("Monitor device error: {}", err));
-            },
-            None,
-        ).map_err(|e| format!("Failed to create monitor playback stream: {}", e))?;
+                        // Interleave into output buffer
+                        for (out_idx, frame) in data.chunks_exact_mut(channels).enumerate() {
+                            let sample = if out_idx < out_slice.len() {
+                                out_slice[out_idx]
+                            } else {
+                                0.0
+                            };
+                            for ch in frame.iter_mut() {
+                                *ch = sample;
+                            }
+                        }
+                    },
+                    move |err| {
+                        tracing::warn!("Monitor playback stream error (device may have disconnected): {}", err);
+                        err_cb_active.store(false, Ordering::Relaxed);
+                        *err_cb_error.lock() = Some(format!("Monitor device error: {}", err));
+                    },
+                    None,
+                )
+            }
+        }.map_err(|e| format!("Failed to create monitor playback stream: {}", e))?;
 
         stream.play().map_err(|e| format!("Failed to start monitor stream: {}", e))?;
         self.stream = Some(stream);
