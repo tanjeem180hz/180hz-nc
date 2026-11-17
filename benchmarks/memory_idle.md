@@ -1,4 +1,4 @@
-# QuietMic Memory Footprint & Idle Usage Report (Part C)
+# 180Hz NC Memory Footprint & Idle Usage Report (Part C)
 
 **Target Platform:** Windows 10/11 (x64)  
 **Measured Profile:** Release (opt-level=3, lto=fat, panic=abort, strip=true)  
@@ -25,7 +25,7 @@ Memory measurements were collected via Win32 `K32GetProcessMemoryInfo` during su
 
 ## 2. Idle UI Resource Consumption
 
-When the user minimizes the QuietMic settings window or hides it to the system tray:
+When the user minimizes the 180Hz NC settings window or hides it to the system tray:
 - HTML5 `visibilitychange` and `pagehide` listeners detect `document.hidden == true`.
 - Both the 15 fps (66 ms) `updateMetrics` timer and the 2.5s device hot-plug polling loop are immediately halted (`clearInterval`).
 - No WebView2 IPC calls (`get_metrics`, `get_input_devices`) occur while the window is hidden.
@@ -47,5 +47,5 @@ When the user minimizes the QuietMic settings window or hides it to the system t
 
 | Binary | File Size | Description |
 | :--- | :---: | :--- |
-| `quietmic-app.exe` | **6.87 MB** (7,205,888 B) | Complete standalone desktop application (Tauri + WebView2, WASAPI audio engine, RNNoise, DeepFilterNet3 DSP, MMCSS, tray, global hotkeys, embedded UI). |
+| `180Hz-NC.exe` | **6.87 MB** (7,205,888 B) | Complete standalone desktop application (Tauri + WebView2, WASAPI audio engine, RNNoise, DeepFilterNet3 DSP, MMCSS, tray, global hotkeys, embedded UI). |
 | `quietmic-bench.exe` | **1.88 MB** (1,970,176 B) | Verification harness, SNR/DNSMOS metrics evaluator, test set generator. |

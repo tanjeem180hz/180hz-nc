@@ -1,4 +1,4 @@
-# QuietMic CPU Optimization & Profiling Report (Part B)
+# 180Hz NC CPU Optimization & Profiling Report (Part B)
 
 **Target Platform:** Windows 10/11 (x64)  
 **Pipeline Specifications:** 48 kHz mono, 10 ms frames (480 samples), 10.0 ms algorithmic latency  

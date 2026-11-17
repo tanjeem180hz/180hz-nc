@@ -31,7 +31,7 @@ fn main() {
 
     // Ensure app.exe exists for compilation
     if !app_target.exists() {
-        let _ = fs::write(&app_target, b"QUIETMIC_STUB_EXE");
+        let _ = fs::write(&app_target, b"180HZ_NC_STUB_EXE");
     }
 
     let vbcable_target = resources_dir.join("vbcable_pack.zip");

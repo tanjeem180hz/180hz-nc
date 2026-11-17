@@ -73,11 +73,19 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
-    /// Returns the standard config directory in %APPDATA%/QuietMic
+    /// Returns the standard config directory in %APPDATA%/180Hz-NC
     pub fn config_dir() -> PathBuf {
         let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-        let dir = PathBuf::from(appdata).join("QuietMic");
+        let dir = PathBuf::from(appdata.clone()).join("180Hz-NC");
         let _ = fs::create_dir_all(&dir);
+
+        // Seamless migration from legacy QuietMic path
+        let legacy_config = PathBuf::from(appdata).join("QuietMic").join("config.json");
+        let new_config = dir.join("config.json");
+        if legacy_config.exists() && !new_config.exists() {
+            let _ = fs::copy(&legacy_config, &new_config);
+        }
+
         dir
     }
 
@@ -153,7 +161,7 @@ impl AppConfig {
                 return Err("Failed to open Registry Run key".to_string());
             }
 
-            let app_name = HSTRING::from("QuietMic");
+            let app_name = HSTRING::from("180Hz-NC");
 
             if enable {
                 if let Ok(exe_path) = std::env::current_exe() {

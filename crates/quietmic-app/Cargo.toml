@@ -2,8 +2,8 @@
 name = "quietmic-app"
 version = "0.1.0"
 edition = "2021"
-authors = ["QuietMic Engineering Team"]
-description = "QuietMic - Real-time AI noise cancellation for Windows"
+authors = ["180Hz Engineering Team"]
+description = "180Hz NC - Real-time AI noise cancellation for Windows"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -11,7 +11,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 quietmic-core = { path = "../quietmic-core" }
 tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-shell = "2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1"

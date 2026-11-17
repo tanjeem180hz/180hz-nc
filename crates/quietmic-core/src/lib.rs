@@ -15,12 +15,12 @@ pub use engine::{
     StageMetrics, StandardEngine, VoiceIsolationEngine, STAGE_NAMES,
 };
 
-/// Initializes rotating file logger in %APPDATA%/QuietMic/logs/quietmic.log
+/// Initializes rotating file logger in %APPDATA%/180Hz-NC/logs/180hz-nc.log
 pub fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
     let log_dir = AppConfig::config_dir().join("logs");
     let _ = std::fs::create_dir_all(&log_dir);
 
-    let file_appender = tracing_appender::rolling::daily(log_dir, "quietmic.log");
+    let file_appender = tracing_appender::rolling::daily(log_dir, "180hz-nc.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
     let subscriber = tracing_subscriber::fmt()

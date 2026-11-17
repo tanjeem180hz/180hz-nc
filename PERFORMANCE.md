@@ -1,4 +1,4 @@
-# QuietMic Comprehensive Performance & Optimization Report
+# 180Hz NC Comprehensive Performance & Optimization Report
 
 **Repository:** [tanjeem180hz/180hz-nc](https://github.com/tanjeem180hz/180hz-nc)  
 **Target Platform:** Windows 10/11 (64-bit)  
@@ -102,11 +102,11 @@ Evaluated across 16 acoustic scenarios using standard objective SNR improvement 
 ## 6. Honest Known Limitations
 
 1. **VB-CABLE Driver Prerequisite**:
-   - Because Windows userland applications cannot create virtual WASAPI capture devices without a kernel audio driver, QuietMic routes output through VB-CABLE. If missing, QuietMic warns the user with a 1-click download button.
+   - Because Windows userland applications cannot create virtual WASAPI capture devices without a kernel audio driver, 180Hz NC routes output through VB-CABLE. If missing, 180Hz NC warns the user with a 1-click download button.
 2. **Extreme Non-Linear Loudspeaker Distortion in AEC**:
    - The linear NLMS adaptive echo filter eliminates linear room acoustic reflections. If a laptop speaker is driven into heavy physical saturation or harmonic rattling, non-linear distortion components cannot be cancelled by linear FIR filtering.
 3. **Bluetooth Hands-Free Profile (16 kHz SCO Link)**:
-   - When Windows connects to Bluetooth headsets in bidirectional communication mode, the Bluetooth stack restricts audio bandwidth to 16 kHz mono. QuietMic cleanly upsamples to 48 kHz for processing, but high-frequency harmonics above 8 kHz cannot be restored.
+   - When Windows connects to Bluetooth headsets in bidirectional communication mode, the Bluetooth stack restricts audio bandwidth to 16 kHz mono. 180Hz NC cleanly upsamples to 48 kHz for processing, but high-frequency harmonics above 8 kHz cannot be restored.
 4. **Voice Isolation Enrollment Quality**:
    - Clean 10-second enrollment speech is required. If background talkers speak during enrollment, their vocal timbre will be partially embedded into the user's reference voiceprint.
 

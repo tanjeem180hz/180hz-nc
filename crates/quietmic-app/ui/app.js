@@ -1,4 +1,4 @@
-// QuietMic UI Controller
+// 180Hz NC UI Controller
 const invoke = window.__TAURI__ ? (window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.invoke) : null;
 
 // UI Elements

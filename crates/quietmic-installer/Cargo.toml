@@ -2,11 +2,11 @@
 name = "quietmic-installer"
 version = "1.0.0"
 edition = "2021"
-authors = ["QuietMic Engineering Team"]
-description = "All-in-One Automated Installer for QuietMic and Virtual Audio Cable"
+authors = ["180Hz Engineering Team"]
+description = "All-in-One Automated Installer for 180Hz NC and Virtual Audio Cable"
 
 [[bin]]
-name = "QuietMic-Setup"
+name = "180Hz-NC-Setup"
 path = "src/main.rs"
 
 [dependencies]

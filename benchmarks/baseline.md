@@ -1,4 +1,4 @@
-# QuietMic Baseline Performance Benchmark
+# 180Hz NC Baseline Performance Benchmark
 
 **Target Platform:** Windows 10/11 (x64)  
 **Pipeline Specifications:** 48 kHz mono, 10 ms frames (480 samples), 10.0 ms algorithmic latency  

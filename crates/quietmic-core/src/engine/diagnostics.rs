@@ -187,7 +187,7 @@ impl DiagnosticController {
         })?;
 
         let handle = thread::Builder::new()
-            .name("quietmic-diagnostic-writer".to_string())
+            .name("180hznc-diagnostic-writer".to_string())
             .spawn(move || {
                 let spec = hound::WavSpec {
                     channels: 1,
@@ -326,7 +326,7 @@ mod tests {
     #[test]
     fn test_diagnostic_controller_dumps_all_8_stages() {
         let dump_dir = std::env::temp_dir().join(format!(
-            "quietmic_diag_{}",
+            "180hznc_diag_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

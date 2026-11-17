@@ -1,4 +1,4 @@
-# QuietMic Stress & Soak Test Report (Part D)
+# 180Hz NC Stress & Soak Test Report (Part D)
 
 **Target Platform:** Windows 10/11 (x64)  
 **Test Suite:** Automated Mock Harness & DSP Property Fuzzing  

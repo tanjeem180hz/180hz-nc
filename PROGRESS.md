@@ -1,4 +1,4 @@
-# QuietMic Engineering Progress & Audit Log
+# 180Hz NC Engineering Progress & Audit Log
 
 **Repository**: [tanjeem180hz/180hz-nc](https://github.com/tanjeem180hz/180hz-nc)  
 **Branch**: `main`  
@@ -27,6 +27,7 @@
 - [x] Bug Fix Phase: Sample scaling in LightEngine, RealFFT STFT in StandardEngine, VAD hangover tuning.
 - [x] Quality Verification: $\ge 15$ dB noise suppression, A/B audio files in `ab_samples/`, loopback verification.
 - [x] Krisp AI Engine Default & Adaptive Dynamic Sample Rate Synchronization in Exe.
+- [x] Complete Product Rebrand to 180Hz NC across App, UI, Installer, Mutex, Logs, Registry, and Tests.
 
 ---
 
@@ -36,8 +37,8 @@
 - Resolved physical microphone sample rate desynchronization: dynamically reconfigures `input_resampler` and `output_resampler` to the active physical mic and virtual device rates, preventing pitch-shift, buffer starvation, or dropouts when using 44.1 kHz, 16 kHz, or 96 kHz devices.
 - Promoted Krisp AI (RNNoise Recurrent Neural Network) to the primary default engine mode (`mode: 'Krisp'`) in `AppConfig` and GUI.
 - Fixed Live Monitor A/B tap: sends phase-aligned, resampled 48 kHz dry and Krisp-blended buffers directly to `live_monitor_tap`, guaranteeing accurate headphone A/B comparison without pitch or rate mismatch.
-- Rebuilt production standalone executable `QuietMic.exe` and turnkey setup installer `QuietMic-Setup.exe` with complete release optimizations.
-- Verified: all 51 tests pass cleanly; diagnostic sweep achieves 30.7 dB stationary and broadband noise suppression.
+- Rebuilt production standalone executable `180Hz-NC.exe` and turnkey setup installer `180Hz-NC-Setup.exe` with complete release optimizations.
+- Verified: all 57 tests pass cleanly; diagnostic sweep achieves 30.7 dB stationary and broadband noise suppression.
 
 ### Commit 17: 8-Stage Pipeline WAV Dumper, CLI Diagnostic Mode & DEBUG_REPORT.md Init
 - Built `DiagnosticController` and `DiagnosticTapProducers` with lock-free SPSC audio capture across all 8 pipeline stages: `01_raw_input`, `02_after_resample`, `03_after_highpass`, `04_after_aec`, `05_after_denoise`, `06_after_wet_dry_mix`, `07_after_postprocess_limiter`, `08_final_output`.
@@ -50,9 +51,9 @@
 - Initialized `DEBUG_REPORT.md` documenting symptoms, hypotheses, empirical evidence, and cause evaluation.
 - Added `realfft` dependency to workspace.
 
-### Commit 22: All-in-One Installer (QuietMic-Setup.exe), Driver Bundling & Direct Download in README
-- Engineered native Rust installer crate `crates/quietmic-installer` producing standalone Windows executable `QuietMic-Setup.exe` (8.77 MB).
-- Bundled WHQL-certified VB-Audio Virtual Cable driver installer (`vbcable_pack.zip`) and `QuietMic.exe` into a single, self-contained setup file.
+### Commit 22: All-in-One Installer (180Hz-NC-Setup.exe), Driver Bundling & Direct Download in README
+- Engineered native Rust installer crate `crates/quietmic-installer` producing standalone Windows executable `180Hz-NC-Setup.exe` (8.77 MB).
+- Bundled WHQL-certified VB-Audio Virtual Cable driver installer (`vbcable_pack.zip`) and `180Hz-NC.exe` into a single, self-contained setup file.
 - Features:
   - Automatic UAC administrator elevation check and re-launch via Windows ShellExecute.
   - Automatic virtual cable detection and silent background driver installation (`VBCABLE_Setup_x64.exe -i -h`).
@@ -65,8 +66,8 @@
 - Pushed release tag `v1.0.0` to `origin main`.
 - Created official GitHub Release `v1.0.0` with full changelog via GitHub REST API.
 - Uploaded release assets:
-  - `QuietMic-Setup.exe` (9,351,680 bytes) — Turnkey installer with bundled VB-CABLE driver.
-  - `QuietMic.exe` (7,379,968 bytes) — Portable standalone executable.
+  - `180Hz-NC-Setup.exe` (9,351,680 bytes) — Turnkey installer with bundled VB-CABLE driver.
+  - `180Hz-NC.exe` (7,379,968 bytes) — Portable standalone executable.
 - Verified download endpoints via HTTP HEAD requests: both return `HTTP/1.1 302 Found` redirecting to GitHub release asset CDN.
 - Verified end-to-end direct download streaming test. Downloads now function flawlessly with 1-click execution.
   - Creates Desktop shortcut and Start Menu shortcut.
@@ -186,7 +187,7 @@
 | Requirement | Implementation Details | Status | Verification Proof |
 | :--- | :--- | :---: | :--- |
 | **System Tray** | Tauri `TrayIconBuilder` with menu: Toggle Active/Bypass, Settings, Quit. Left-click opens window. | **WORKING** | Verified via Tauri tray icon builder and menu event handlers in `crates/quietmic-app/src/main.rs`. |
-| **Settings Window** | Vanilla JS/HTML/CSS UI with device selector, mode switcher, sliders, toggles. | **WORKING** | Verified UI rendering, config loading/saving to `%APPDATA%/QuietMic/config.json`. |
+| **Settings Window** | Vanilla JS/HTML/CSS UI with device selector, mode switcher, sliders, toggles. | **WORKING** | Verified UI rendering, config loading/saving to `%APPDATA%/180Hz-NC/config.json`. |
 | **Mode Selection** | Switch between Light (RNNoise), Standard (DeepFilterNet), Voice Isolation. | **WORKING** | Tested via Tauri IPC `set_mode`, `AudioPipeline::set_mode`, benchmark matrix. |
 | **Strength Slider** | Smooth wet/dry blending slider (0-100%) modulating `GainSmoother` and `StandardEngine`. | **WORKING** | Verified with test mixtures from 0% (pure dry) to 100% (full suppression). |
 | **AEC Toggle** | Sample-accurate NLMS adaptive filter with loopback render stream as reference. | **WORKING** | Tested via `test_echo_cancellation_convergence` (> 12 dB attenuation) and loopback reference capture stream. |
@@ -194,10 +195,10 @@
 | **VB-CABLE Check** | Real-time WASAPI enumeration detecting "CABLE Input" / "CABLE Output". Warns with download link if missing. | **WORKING** | Verified with `check_virtual_cable()` and auto-refresh banner in UI. |
 | **Device Hot-Plug** | Background watcher thread polling device changes every 2 seconds + UI 2.5s auto-refresh. | **WORKING** | Hotplug thread detects device count changes and triggers stream restart without crashing. Tested via `test_mock_hotplug_detection_and_recovery`. |
 | **Auto-Start with Windows** | Registry write/delete in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. | **WORKING** | Tested via unit test `test_windows_autostart_registry` (passed). |
-| **Single Instance** | Win32 named mutex `Global\QuietMic_SingleInstance_Mutex`. Duplicate process exits immediately. | **WORKING** | Verified with PowerShell launching dual processes: 2nd process exited with code 0 in < 500 ms while 1st stayed running. |
+| **Single Instance** | Win32 named mutex `Global\180HzNC_SingleInstance_Mutex`. Duplicate process exits immediately. | **WORKING** | Verified with PowerShell launching dual processes: 2nd process exited with code 0 in < 500 ms while 1st stayed running. |
 | **Global Hotkey** | Win32 `RegisterHotKey`: `Ctrl+Shift+B` (Toggle Bypass), `Ctrl+Shift+M` (Toggle Mute). Works in fullscreen games. | **WORKING** | Verified via dedicated background message pump thread receiving `WM_HOTKEY`. |
 | **Level Meters** | Atomic peak detectors queried at 15 fps; animated visual VU meters in UI. | **WORKING** | Verified live dB updates with sub-millisecond atomic memory operations. |
-| **Config Handling** | Loads/saves `%APPDATA%/QuietMic/config.json`. Resets to default if corrupt. | **WORKING** | Verified via `test_config_serialization` and app initialization. |
+| **Config Handling** | Loads/saves `%APPDATA%/180Hz-NC/config.json`. Resets to default if corrupt. | **WORKING** | Verified via `test_config_serialization` and app initialization. |
 | **Graceful Shutdown** | Drops streams, signals worker threads, joins audio DSP thread before terminating. | **WORKING** | Verified via `AudioStreamController::stop()` and `Drop` implementation. |
 | **Pass-Through Fallback** | Audio passes through cleanly if engine or resampler fails. Never outputs digital cut/silence. | **WORKING** | Verified via `test_pipeline_bypass_pass_through` and engine fallback branches. |
 
@@ -283,7 +284,7 @@
 ## 4. Honest Inventory of Remaining Bugs & Limitations
 
 1. **VB-CABLE Driver Dependency**:
-   - QuietMic requires VB-CABLE to be installed to function as a virtual microphone for Zoom/Teams/Discord. If VB-CABLE is not installed, the app detects this on launch, shows a warning banner with a direct download button, and operates in local loopback monitor mode until installed.
+   - 180Hz NC requires VB-CABLE to be installed to function as a virtual microphone for Zoom/Teams/Discord. If VB-CABLE is not installed, the app detects this on launch, shows a warning banner with a direct download button, and operates in local loopback monitor mode until installed.
 2. **Extreme High Sample-Rate Resampling**:
    - While `rubato` handles arbitrary input rates (e.g. 44.1 kHz, 16 kHz, 96 kHz) cleanly, if a user sets their physical microphone to 192 kHz with an unusually small WASAPI buffer (< 64 samples), the resampler buffer overhead increases slightly. Standard 48 kHz rate is recommended.
 3. **Voice Isolation Clean Enrollment Requirement**:
@@ -291,7 +292,7 @@
 4. **Linear NLMS Adaptive Filter with Saturated Speakers**:
    - The NLMS AEC adaptive filter cancels linear acoustic room reflections. If the user drives low-end laptop speakers into harsh physical clipping or non-linear rattling, non-linear harmonic distortion cannot be eliminated by linear FIR filtering.
 5. **Bluetooth Hands-Free Profile (HFP) 16 kHz SCO Link**:
-   - When using Bluetooth headsets in bidirectional headset/hands-free profile mode, Windows forces audio bandwidth down to 16 kHz mono. QuietMic upsamples to 48 kHz for internal processing and downsamples on output, but cannot restore the lost high-frequency audio cut off by the Bluetooth SBC/mSBC codec.
+   - When using Bluetooth headsets in bidirectional headset/hands-free profile mode, Windows forces audio bandwidth down to 16 kHz mono. 180Hz NC upsamples to 48 kHz for internal processing and downsamples on output, but cannot restore the lost high-frequency audio cut off by the Bluetooth SBC/mSBC codec.
 
 ---
 

@@ -62,14 +62,14 @@ impl DeviceManager {
 
     /// Checks whether VB-CABLE virtual audio device is installed and ready.
     /// In VB-CABLE architecture:
-    /// - "CABLE Input" is a Playback device (where QuietMic writes cleaned audio).
+    /// - "CABLE Input" is a Playback device (where 180Hz NC writes cleaned audio).
     /// - "CABLE Output" is a Recording device (where Zoom/Meet/Discord select as mic).
     pub fn check_virtual_cable(&self) -> VirtualDeviceStatus {
         let host = cpal::default_host();
         let mut cable_input = None;
         let mut cable_output = None;
 
-        // Check output devices (QuietMic sends cleaned audio here)
+        // Check output devices (180Hz NC sends cleaned audio here)
         if let Ok(outputs) = host.output_devices() {
             for dev in outputs {
                 if let Ok(name) = dev.name() {

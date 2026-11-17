@@ -2,8 +2,8 @@
 name = "quietmic-bench"
 version = "0.1.0"
 edition = "2021"
-authors = ["QuietMic Engineering Team"]
-description = "Offline test harness, objective speech quality benchmarking (DNSMOS, SI-SDR, SNR), and A/B WAV generator"
+authors = ["180Hz Engineering Team"]
+description = "180Hz NC - Offline test harness, objective speech quality benchmarking (DNSMOS, SI-SDR, SNR), and A/B WAV generator"
 
 [dependencies]
 quietmic-core = { path = "../quietmic-core" }

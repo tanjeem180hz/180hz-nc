@@ -176,7 +176,7 @@ fn main() {
     quietmic_core::audio::mmcss::enable_ftz_daz();
 
     println!("================================================================================");
-    println!(" QuietMic DSP & ML Verification Harness");
+    println!(" 180Hz NC DSP & ML Verification Harness");
     println!(" Benchmarking Light, Standard, and Voice Isolation (with & without AEC)");
     println!("================================================================================");
 
@@ -298,7 +298,7 @@ fn main() {
 
 fn generate_cpu_optimization_markdown(results: &[BenchmarkResult], path: &Path) {
     let mut md = String::new();
-    md.push_str("# QuietMic CPU Optimization & Profiling Report (Part B)\n\n");
+    md.push_str("# 180Hz NC CPU Optimization & Profiling Report (Part B)\n\n");
     md.push_str("**Target Platform:** Windows 10/11 (x64)  \n");
     md.push_str("**Pipeline Specifications:** 48 kHz mono, 10 ms frames (480 samples), 10.0 ms algorithmic latency  \n");
     md.push_str("**Real-Time Budget:** 10,000 µs (10 ms) per frame  \n\n");
@@ -355,7 +355,7 @@ fn generate_cpu_optimization_markdown(results: &[BenchmarkResult], path: &Path) 
 
 fn generate_baseline_markdown(results: &[BenchmarkResult], path: &Path) {
     let mut md = String::new();
-    md.push_str("# QuietMic Baseline Performance Benchmark\n\n");
+    md.push_str("# 180Hz NC Baseline Performance Benchmark\n\n");
     md.push_str("**Target Platform:** Windows 10/11 (x64)  \n");
     md.push_str("**Pipeline Specifications:** 48 kHz mono, 10 ms frames (480 samples), 10.0 ms algorithmic latency  \n");
     md.push_str("**Real-Time Budget:** 10,000 µs (10 ms) per frame  \n\n");

@@ -1,4 +1,4 @@
-# QuietMic (180Hz Noise Cancelator)
+# 180Hz NC (Real-Time AI Noise Suppression)
 
 > **Real-Time Audio DSP + Machine Learning Noise Suppression Desktop App for Windows**  
 > Targets voice quality equal to or better than Krisp, with minimal CPU/RAM footprint for 24/7 background operation on low, mid, and high-end PCs.
@@ -7,31 +7,31 @@
 
 ## 💾 Direct Download & 1-Click Install
 
-[![Download QuietMic Setup](https://img.shields.io/badge/Download-QuietMic%20v1.0.0%20Installer%20(Windows%20x64)-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/QuietMic-Setup.exe)
-[![Download Portable EXE](https://img.shields.io/badge/Portable-QuietMic.exe-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/QuietMic.exe)
+[![Download 180Hz NC Setup](https://img.shields.io/badge/Download-180Hz%20NC%20v1.0.0%20Installer%20(Windows%20x64)-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/180Hz-NC-Setup.exe)
+[![Download Portable EXE](https://img.shields.io/badge/Portable-180Hz--NC.exe-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/180Hz-NC.exe)
 
 ### 📥 Available Packages:
 | Package | File | Description | Download |
 | :--- | :--- | :--- | :---: |
-| **All-in-One Installer (Recommended)** | `QuietMic-Setup.exe` (8.7 MB) | **Turnkey setup:** Installs QuietMic + bundled Virtual Audio Cable Driver (VB-CABLE) + Start Menu & Desktop shortcuts. Everything needed to run out-of-the-box is included. | [**Direct Download**](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/QuietMic-Setup.exe) |
-| **Portable Executable** | `QuietMic.exe` (7.3 MB) | **Zero install:** Standalone executable with embedded UI, DSP, and AI models. Run directly from any folder or USB drive. | [**Direct Download**](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/QuietMic.exe) |
+| **All-in-One Installer (Recommended)** | `180Hz-NC-Setup.exe` (8.7 MB) | **Turnkey setup:** Installs 180Hz NC + bundled Virtual Audio Cable Driver (VB-CABLE) + Start Menu & Desktop shortcuts. Everything needed to run out-of-the-box is included. | [**Direct Download**](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/180Hz-NC-Setup.exe) |
+| **Portable Executable** | `180Hz-NC.exe` (7.3 MB) | **Zero install:** Standalone executable with embedded UI, DSP, and AI models. Run directly from any folder or USB drive. | [**Direct Download**](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/180Hz-NC.exe) |
 | **Release Page** | `v1.0.0 Release` | Full release notes, checksums, benchmark reports, and source archives. | [**View Releases**](https://github.com/tanjeem180hz/180hz-nc/releases) |
 
 ---
 
 ### 📦 What is Included in the All-in-One Installer?
-Everything required for QuietMic to function perfectly is bundled into `QuietMic-Setup.exe`:
-1. **QuietMic Core Engine & Tauri UI**: High-performance DSP noise canceler written in Rust with embedded HTML5/CSS/JS frontend.
+Everything required for 180Hz NC to function perfectly is bundled into `180Hz-NC-Setup.exe`:
+1. **180Hz NC Core Engine & Tauri UI**: High-performance DSP noise canceler written in Rust with embedded HTML5/CSS/JS frontend.
 2. **Bundled Virtual Audio Cable Driver (VB-CABLE Pack)**: Automatically installs and registers the virtual audio driver so third-party software (Discord, Zoom, Google Meet, Microsoft Teams, OBS, Skype, Games) can immediately use `CABLE Output` as their microphone.
 3. **Automatic 48,000 Hz Clock Alignment**: Configures audio devices to the studio standard 48 kHz rate for bit-perfect streaming with zero resampling latency.
-4. **Desktop & Start Menu Shortcuts**: Pre-configured with tray icon and global hotkey toggle (`Ctrl+Alt+N`).
+4. **Desktop & Start Menu Shortcuts**: Pre-configured with tray icon and global hotkey toggle (`Ctrl+Shift+B` for Bypass, `Ctrl+Shift+M` for Mute).
 5. **Clean Uninstaller**: Registered in Windows Control Panel / Settings (Apps & Features) for full removal at any time.
 
 ---
 
 ### ⚡ Quick Start (3 Steps):
-1. **Download & Run**: Download and double-click `QuietMic-Setup.exe`. Click **Yes** on the UAC prompt to install.
-2. **Launch QuietMic**: Open QuietMic from your Desktop or Start Menu. Select your real microphone from the dropdown (or leave as Default).
+1. **Download & Run**: Download and double-click `180Hz-NC-Setup.exe`. Click **Yes** on the UAC prompt to install.
+2. **Launch 180Hz NC**: Open 180Hz NC from your Desktop or Start Menu. Select your real microphone from the dropdown (or leave as Default).
 3. **Configure Your Meeting Apps**: Open Discord, Zoom, Meet, Teams, or OBS, and set your **Microphone / Audio Input Device** to **`CABLE Output (VB-Audio Virtual Cable)`**.
    > [!TIP]
    > Remember to turn off the built-in noise suppression inside Discord (Krisp) or Zoom to avoid double-processing.
@@ -40,13 +40,13 @@ Everything required for QuietMic to function perfectly is bundled into `QuietMic
 
 ## 🌟 Overview & Architecture
 
-**QuietMic** is an ultra-low latency, real-time audio enhancement application engineered exclusively in **Rust** with a lightweight **Tauri** frontend (plain HTML/CSS/JS, no heavy frontend frameworks).
+**180Hz NC** is an ultra-low latency, real-time audio enhancement application engineered exclusively in **Rust** with a lightweight **Tauri** frontend (plain HTML/CSS/JS, no heavy frontend frameworks).
 
 It captures audio from your physical microphone via **WASAPI**, processes each **10 ms frame (480 samples @ 48 kHz)** through a multi-stage DSP and neural network pipeline, and routes the crystal-clear voice stream to a virtual microphone (**VB-CABLE**) accessible by any conferencing, streaming, or gaming application.
 
 ```
 +-------------------------------------------------------------------------------------------------+
-|                                    QuietMic Processing Pipeline                                 |
+|                                     180Hz NC Processing Pipeline                                |
 +-------------------------------------------------------------------------------------------------+
 | [Physical Mic]                                                                                  |
 |       |                                                                                         |
@@ -84,29 +84,29 @@ It captures audio from your physical microphone via **WASAPI**, processes each *
    - **Standard Mode (DeepFilterNet3 Architecture)**: Full-band 48 kHz spectral enhancement with Equivalent Rectangular Bandwidth (ERB) subband analysis and complex gain filtering. Preserves natural voice harmonics while eliminating fan hum, keyboard clicks, cafe chatter, and traffic.
    - **Voice Isolation Mode (Experimental)**: Enrolls a 10-second voiceprint profile and attenuates background voices using spectral cosine similarity.
 2. **Acoustic Echo Cancellation (AEC)**: Cancels loudspeaker feedback when talking without headphones.
-3. **Adaptive Clock Drift Compensation**: Crystal oscillators on physical microphones and virtual soundcards drift (5–30 ppm). QuietMic dynamically tracks buffer levels and imperceptibly nudges samples to prevent latency accumulation, clicks, or dropouts during 24/7 runs.
+3. **Adaptive Clock Drift Compensation**: Crystal oscillators on physical microphones and virtual soundcards drift (5–30 ppm). 180Hz NC dynamically tracks buffer levels and imperceptibly nudges samples to prevent latency accumulation, clicks, or dropouts during 24/7 runs.
 4. **Instant Wake-Up Silence Gate**: When no speech is present, neural inference is bypassed to conserve battery and CPU. A 200 ms hangover and circular pre-trigger history guarantee zero syllable truncation on voice onset.
 5. **Soft Peak Limiter & Comfort Noise**: Eliminates harsh digital clipping and injects a subtle -68 dBFS acoustic floor to avoid the eerie "dead silence" feeling.
 6. **Windows Native Integration**:
    - High-priority MMCSS **"Pro Audio"** scheduling (`AvSetMmThreadCharacteristicsW`).
    - System tray controls (Active/Bypass toggle, mode switcher, mic selector, quit).
-   - Global hotkey toggle (`Ctrl+Alt+N`).
+   - Global hotkey toggle (`Ctrl+Shift+B` for Bypass, `Ctrl+Shift+M` for Mute).
    - Auto-start with Windows via registry (`HKCU\...\Run`).
 
 ---
 
 ## 🎧 How to Use the Real-Time "Live Test" Feature
 
-QuietMic includes an integrated real-time audio monitor allowing you to audition the noise cancellation engine and compare raw vs. cleaned voice through your headphones before joining calls.
+180Hz NC includes an integrated real-time audio monitor allowing you to audition the noise cancellation engine and compare raw vs. cleaned voice through your headphones before joining calls.
 
 ### 1. Headphone Safety First
 > [!WARNING]
 > Always use headphones when activating Live Test! If you use open laptop or desktop speakers while monitoring your live microphone, acoustic feedback (a high-pitched howling loop) will occur.
 >
-> QuietMic includes an automated **Acoustic Howling & Feedback Detector** and **Soft Peak Limiter**. If feedback resonance or sudden loud noises occur, QuietMic instantly cuts and mutes the monitor playback, safeguarding your hearing.
+> 180Hz NC includes an automated **Acoustic Howling & Feedback Detector** and **Soft Peak Limiter**. If feedback resonance or sudden loud noises occur, 180Hz NC instantly cuts and mutes the monitor playback, safeguarding your hearing.
 
 ### 2. Live Monitoring Steps
-1. Open the QuietMic window from the system tray icon.
+1. Open the 180Hz NC window from the system tray icon.
 2. Select your headphones in the **Monitor Headphones / Speakers** dropdown. (Virtual devices such as VB-CABLE are filtered out to prevent feedback loops).
 3. Click the **Start Live Test** button. A red pulsing `● LIVE` badge indicates real-time monitoring is active.
 4. Speak normally into your microphone to hear your voice processed by the active noise cancellation engine.
@@ -119,8 +119,8 @@ QuietMic includes an integrated real-time audio monitor allowing you to audition
 
 ### 4. 10-Second Record & Replay
 If you prefer not to listen to yourself speaking in real time:
-1. Click **Record 10s Sample**. QuietMic records 10 seconds of synchronized raw dry audio and AI-cleaned audio.
-2. Click **Play Replay (A/B)**. QuietMic plays back the 10 seconds of raw microphone audio followed immediately by the 10 seconds of AI-cleaned audio.
+1. Click **Record 10s Sample**. 180Hz NC records 10 seconds of synchronized raw dry audio and AI-cleaned audio.
+2. Click **Play Replay (A/B)**. 180Hz NC plays back the 10 seconds of raw microphone audio followed immediately by the 10 seconds of AI-cleaned audio.
 3. Click **Export WAVs** to save `live_test_original_raw.wav` and `live_test_noise_cancelled.wav` to your disk for external auditing.
 
 ### 5. Automatic Inactivity Auto-Stop & Zero CPU Overhead
@@ -169,9 +169,9 @@ All metrics below were measured using the offline test harness (`quietmic-bench`
 - [VB-CABLE Virtual Audio Device](https://vb-audio.com/Cable/) (Free standard virtual audio driver).
 
 ### 2. Guided Setup (30 Seconds)
-1. Download and run the **QuietMic** installer (`quietmic-setup.exe` or `.msi`).
-2. If VB-CABLE is not detected, QuietMic will display a setup dialog with a one-click button to install VB-CABLE.
-3. Open QuietMic Settings from the system tray icon.
+1. Download and run the **180Hz NC** installer (`180Hz-NC-Setup.exe`).
+2. If VB-CABLE is not detected, 180Hz NC will display a setup dialog with a one-click button to install VB-CABLE.
+3. Open 180Hz NC Settings from the system tray icon.
 4. Set **Microphone Input** to your physical microphone (e.g. `Microphone (USB Audio Device)`).
 5. In your conferencing and streaming apps:
    - **Discord**: Settings -> Voice & Video -> Input Device -> Select **"CABLE Output (VB-Audio Virtual Cable)"**.
@@ -185,9 +185,9 @@ All metrics below were measured using the offline test harness (`quietmic-bench`
 | Issue | Cause | Solution |
 | :--- | :--- | :--- |
 | **No audio in Zoom/Discord** | Virtual mic not selected in target app | Ensure the communication app's microphone input is explicitly set to **"CABLE Output"**. |
-| **Audible echo on loudspeakers** | Loudspeaker sound bleeding into mic | Toggle **AEC (Echo Cancellation)** ON in QuietMic settings. |
+| **Audible echo on loudspeakers** | Loudspeaker sound bleeding into mic | Toggle **AEC (Echo Cancellation)** ON in 180Hz NC settings. |
 | **High CPU on battery** | High sampling rate or background tasks | Switch engine mode from Standard to **Light (RNNoise)** for < 1% CPU usage. |
-| **Bluetooth Headset (HFP 16 kHz)** | Windows hands-free profile limitation | QuietMic automatically detects 16 kHz sample rate and applies Sinc upsampling to 48 kHz. |
+| **Bluetooth Headset (HFP 16 kHz)** | Windows hands-free profile limitation | 180Hz NC automatically detects 16 kHz sample rate and applies Sinc upsampling to 48 kHz. |
 
 ---
 
@@ -195,7 +195,7 @@ All metrics below were measured using the offline test harness (`quietmic-bench`
 
 In Phase 2, bundling an open-source virtual audio driver (such as a SysVAD-based virtual audio driver) directly into the installer was evaluated:
 - **Windows Kernel-Mode Signing Requirements**: Windows 10 and 11 enforce mandatory **WHQL (Windows Hardware Quality Labs)** or **Extended Validation (EV) Code Signing Certificates** with Microsoft Cross-Signing for kernel drivers (`.sys`). Self-signed or un-attested kernel drivers fail to load unless the user enables Windows Test Mode (`bcdedit /set testsigning on`), which poses severe security risks and triggers anti-cheat blocks in video games.
-- **Architectural Conclusion**: Leveraging the established, WHQL-certified **VB-CABLE** virtual device driver ensures seamless compatibility with Windows security policies, anti-cheat mechanisms, and zero driver installation failures. QuietMic provides built-in automated detection and guided setup.
+- **Architectural Conclusion**: Leveraging the established, WHQL-certified **VB-CABLE** virtual device driver ensures seamless compatibility with Windows security policies, anti-cheat mechanisms, and zero driver installation failures. 180Hz NC provides built-in automated detection and guided setup.
 
 ---
 
@@ -217,9 +217,10 @@ cargo run --release -p quietmic-bench
 
 # Build production Windows application
 cargo build --release -p quietmic-app
+cp target/release/quietmic-app.exe target/release/180Hz-NC.exe
 
-# Build all-in-one standalone installer (QuietMic-Setup.exe)
-cargo build --release --bin QuietMic-Setup
+# Build all-in-one standalone installer (180Hz-NC-Setup.exe)
+cargo build --release -p quietmic-installer
 ```
 
 ---

@@ -265,7 +265,7 @@ impl AudioStreamController {
         }
 
         let worker_handle = std::thread::Builder::new()
-            .name("quietmic-audio-dsp".to_string())
+            .name("180hznc-audio-dsp".to_string())
             .spawn(move || {
                 // Register MMCSS "Pro Audio" priority
                 let _mmcss = MmcssHandle::register_pro_audio();
@@ -481,7 +481,7 @@ impl AudioStreamController {
         let is_running_worker = Arc::clone(&running);
         let mut worker_pipeline = pipeline;
         let worker_handle = std::thread::Builder::new()
-            .name("quietmic-speaker-dsp".to_string())
+            .name("180hznc-speaker-dsp".to_string())
             .spawn(move || {
                 let _mmcss = MmcssHandle::register_pro_audio();
                 let mut in_chunk = vec![0.0f32; AudioPipeline::FRAME_SAMPLES];

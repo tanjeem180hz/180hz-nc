@@ -16,7 +16,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     MessageBoxW, MB_ICONINFORMATION, MB_ICONQUESTION, MB_OK, MB_YESNO, IDYES, SW_SHOWNORMAL,
 };
 
-const QUIETMIC_EXE: &[u8] = include_bytes!("../resources/app.exe");
+const APP_EXE: &[u8] = include_bytes!("../resources/app.exe");
 const VBCABLE_ZIP: &[u8] = include_bytes!("../resources/vbcable_pack.zip");
 
 fn is_elevated() -> bool {
@@ -55,7 +55,7 @@ fn elevate_self() -> Result<(), String> {
         if res.0 as isize > 32 {
             std::process::exit(0);
         } else {
-            Err("Administrator privileges are required to install QuietMic and audio drivers.".to_string())
+            Err("Administrator privileges are required to install 180Hz NC and audio drivers.".to_string())
         }
     }
 }
@@ -85,7 +85,7 @@ fn install_vbcable_driver() -> Result<(), String> {
         return Ok(());
     }
 
-    let temp_dir = std::env::temp_dir().join("quietmic_driver_setup");
+    let temp_dir = std::env::temp_dir().join("180hz_nc_driver_setup");
     let _ = fs::create_dir_all(&temp_dir);
     let zip_path = temp_dir.join("vbcable.zip");
 
@@ -130,7 +130,7 @@ fn create_shortcut(target_exe: &Path, shortcut_path: &Path, name: &str) {
 
 fn register_uninstall_entry(install_dir: &Path, exe_path: &Path, uninstaller_path: &Path) {
     unsafe {
-        let subkey = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\QuietMic");
+        let subkey = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\180Hz-NC");
         let mut hkey = HKEY::default();
         if RegCreateKeyExW(
             HKEY_LOCAL_MACHINE,
@@ -159,9 +159,9 @@ fn register_uninstall_entry(install_dir: &Path, exe_path: &Path, uninstaller_pat
                 let _ = RegSetValueExW(hkey, &h_name, 0, REG_DWORD, Some(&bytes));
             };
 
-            set_str("DisplayName", "QuietMic - Real-Time AI Noise Suppression");
+            set_str("DisplayName", "180Hz NC - Real-Time AI Noise Suppression");
             set_str("DisplayVersion", "1.0.0");
-            set_str("Publisher", "QuietMic Engineering Team");
+            set_str("Publisher", "180Hz Engineering Team");
             set_str("InstallLocation", &install_dir.to_string_lossy());
             let uninst_cmd = format!("\"{}\" --uninstall", uninstaller_path.display());
             set_str("UninstallString", &uninst_cmd);
@@ -178,40 +178,40 @@ fn register_uninstall_entry(install_dir: &Path, exe_path: &Path, uninstaller_pat
 
 fn run_install(silent: bool) -> Result<(), String> {
     if !silent {
-        let welcome = "Welcome to QuietMic Setup!\n\n\
-                       QuietMic is a real-time AI noise cancellation desktop app targeting quality equal to or better than Krisp with minimal CPU usage.\n\n\
+        let welcome = "Welcome to 180Hz NC Setup!\n\n\
+                       180Hz NC is a real-time AI noise cancellation desktop app targeting quality equal to or better than Krisp with minimal CPU usage.\n\n\
                        This installer includes:\n\
-                       • QuietMic Core Application & GUI\n\
+                       • 180Hz NC Core Application & GUI\n\
                        • Virtual Microphone Audio Driver (VB-CABLE)\n\
                        • Desktop and Start Menu Shortcuts\n\
                        • Automatic 48,000 Hz Audio Setup\n\n\
                        Do you wish to continue with the installation?";
-        let res = show_msg_box("QuietMic Setup", welcome, MB_YESNO | MB_ICONQUESTION);
+        let res = show_msg_box("180Hz NC Setup", welcome, MB_YESNO | MB_ICONQUESTION);
         if res != IDYES {
             return Ok(());
         }
     }
 
-    // Kill any existing QuietMic process
+    // Kill any existing instances
     let _ = Command::new("taskkill")
-        .args(["/F", "/IM", "QuietMic.exe", "/IM", "quietmic-app.exe"])
+        .args(["/F", "/IM", "180Hz-NC.exe", "/IM", "QuietMic.exe", "/IM", "quietmic-app.exe"])
         .status();
 
     let prog_files = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
-    let install_dir = PathBuf::from(prog_files).join("QuietMic");
+    let install_dir = PathBuf::from(prog_files).join("180Hz-NC");
     fs::create_dir_all(&install_dir).map_err(|e| format!("Failed to create install folder: {}", e))?;
 
-    let exe_path = install_dir.join("QuietMic.exe");
+    let exe_path = install_dir.join("180Hz-NC.exe");
     let uninst_path = install_dir.join("Uninstall.exe");
 
-    // Write QuietMic application executable
-    fs::write(&exe_path, QUIETMIC_EXE).map_err(|e| format!("Failed to install QuietMic.exe: {}", e))?;
+    // Write application executable
+    fs::write(&exe_path, APP_EXE).map_err(|e| format!("Failed to install 180Hz-NC.exe: {}", e))?;
 
     // Copy installer executable as Uninstaller
     if let Ok(current_exe) = std::env::current_exe() {
         let _ = fs::copy(&current_exe, &uninst_path);
     } else {
-        let _ = fs::write(&uninst_path, QUIETMIC_EXE);
+        let _ = fs::write(&uninst_path, APP_EXE);
     }
 
     // Install Virtual Cable driver
@@ -220,27 +220,27 @@ fn run_install(silent: bool) -> Result<(), String> {
     // Create Start Menu Shortcut
     let start_menu_dir = PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs");
     if start_menu_dir.exists() {
-        let shortcut = start_menu_dir.join("QuietMic.lnk");
-        create_shortcut(&exe_path, &shortcut, "QuietMic - AI Noise Suppression");
+        let shortcut = start_menu_dir.join("180Hz NC.lnk");
+        create_shortcut(&exe_path, &shortcut, "180Hz NC - AI Noise Suppression");
     }
 
     // Create Desktop Shortcut
     let desktop_dir = PathBuf::from("C:\\Users\\Public\\Desktop");
     if desktop_dir.exists() {
-        let shortcut = desktop_dir.join("QuietMic.lnk");
-        create_shortcut(&exe_path, &shortcut, "QuietMic - AI Noise Suppression");
+        let shortcut = desktop_dir.join("180Hz NC.lnk");
+        create_shortcut(&exe_path, &shortcut, "180Hz NC - AI Noise Suppression");
     }
 
     // Register Add/Remove Programs entry
     register_uninstall_entry(&install_dir, &exe_path, &uninst_path);
 
     if !silent {
-        let finished = "QuietMic has been successfully installed!\n\n\
-                        • Application installed to: C:\\Program Files\\QuietMic\\\n\
+        let finished = "180Hz NC has been successfully installed!\n\n\
+                        • Application installed to: C:\\Program Files\\180Hz-NC\\\n\
                         • Virtual Microphone Driver installed & active\n\
                         • Desktop & Start Menu shortcuts created\n\n\
-                        Launch QuietMic now?";
-        let res = show_msg_box("QuietMic Setup Completed", finished, MB_YESNO | MB_ICONINFORMATION);
+                        Launch 180Hz NC now?";
+        let res = show_msg_box("180Hz NC Setup Completed", finished, MB_YESNO | MB_ICONINFORMATION);
         if res == IDYES {
             let _ = Command::new(&exe_path).spawn();
         }
@@ -251,8 +251,8 @@ fn run_install(silent: bool) -> Result<(), String> {
 
 fn run_uninstall(silent: bool) -> Result<(), String> {
     if !silent {
-        let confirm = "Are you sure you want to completely uninstall QuietMic from your computer?";
-        let res = show_msg_box("Uninstall QuietMic", confirm, MB_YESNO | MB_ICONQUESTION);
+        let confirm = "Are you sure you want to completely uninstall 180Hz NC from your computer?";
+        let res = show_msg_box("Uninstall 180Hz NC", confirm, MB_YESNO | MB_ICONQUESTION);
         if res != IDYES {
             return Ok(());
         }
@@ -260,26 +260,26 @@ fn run_uninstall(silent: bool) -> Result<(), String> {
 
     // Kill running instances
     let _ = Command::new("taskkill")
-        .args(["/F", "/IM", "QuietMic.exe", "/IM", "quietmic-app.exe"])
+        .args(["/F", "/IM", "180Hz-NC.exe", "/IM", "QuietMic.exe", "/IM", "quietmic-app.exe"])
         .status();
 
     // Remove Desktop shortcut
-    let desktop_shortcut = PathBuf::from("C:\\Users\\Public\\Desktop\\QuietMic.lnk");
+    let desktop_shortcut = PathBuf::from("C:\\Users\\Public\\Desktop\\180Hz NC.lnk");
     let _ = fs::remove_file(desktop_shortcut);
 
     // Remove Start Menu shortcut
     let start_menu_shortcut =
-        PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\QuietMic.lnk");
+        PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\180Hz NC.lnk");
     let _ = fs::remove_file(start_menu_shortcut);
 
     // Remove Registry Uninstall Entry
     unsafe {
-        let subkey = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\QuietMic");
+        let subkey = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\180Hz-NC");
         let _ = RegDeleteKeyW(HKEY_LOCAL_MACHINE, &subkey);
     }
 
     let prog_files = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
-    let install_dir = PathBuf::from(prog_files).join("QuietMic");
+    let install_dir = PathBuf::from(prog_files).join("180Hz-NC");
 
     // Spawn detached self-deletion script
     let cmd_str = format!(
@@ -290,8 +290,8 @@ fn run_uninstall(silent: bool) -> Result<(), String> {
 
     if !silent {
         show_msg_box(
-            "QuietMic Uninstalled",
-            "QuietMic has been successfully removed from your computer.",
+            "180Hz NC Uninstalled",
+            "180Hz NC has been successfully removed from your computer.",
             MB_OK | MB_ICONINFORMATION,
         );
     }
@@ -328,11 +328,11 @@ mod tests {
 
     #[test]
     fn test_embedded_payloads_validity() {
-        assert!(QUIETMIC_EXE.len() > 1_000_000, "QuietMic embedded exe must be > 1MB (was {} bytes)", QUIETMIC_EXE.len());
+        assert!(APP_EXE.len() > 1_000_000, "180Hz NC embedded exe must be > 1MB (was {} bytes)", APP_EXE.len());
         assert!(VBCABLE_ZIP.len() > 500_000, "VB-CABLE driver zip must be > 500KB (was {} bytes)", VBCABLE_ZIP.len());
         // Verify ZIP magic header
         assert_eq!(&VBCABLE_ZIP[0..4], b"PK\x03\x04", "Must be valid ZIP archive");
-        // Verify PE MZ magic header for QuietMic.exe
-        assert_eq!(&QUIETMIC_EXE[0..2], b"MZ", "Must be valid Windows PE executable");
+        // Verify PE MZ magic header for 180Hz-NC.exe
+        assert_eq!(&APP_EXE[0..2], b"MZ", "Must be valid Windows PE executable");
     }
 }

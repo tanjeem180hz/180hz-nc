@@ -548,7 +548,7 @@ mod tests {
         assert!(controller.start_recording().is_ok());
 
         // Test RecordReplayState and WAV export
-        let temp_dir = std::env::temp_dir().join(format!("quietmic_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!("180hznc_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         
         let spec = hound::WavSpec {
             channels: 1,

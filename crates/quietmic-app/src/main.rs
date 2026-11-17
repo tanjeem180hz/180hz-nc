@@ -504,7 +504,7 @@ fn main() {
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| std::path::PathBuf::from("diagnostics_output"));
 
-        println!("QuietMic Diagnostic Mode Active");
+        println!("180Hz NC Diagnostic Mode Active");
         println!("Writing 8-stage WAV dumps to: {}", out_dir.display());
         let _ = std::fs::create_dir_all(&out_dir);
 
@@ -533,15 +533,15 @@ fn main() {
 
     #[cfg(windows)]
     unsafe {
-        let _mutex = CreateMutexW(None, true, w!("Global\\QuietMic_SingleInstance_Mutex"));
+        let _mutex = CreateMutexW(None, true, w!("Global\\180HzNC_SingleInstance_Mutex"));
         if GetLastError() == ERROR_ALREADY_EXISTS {
-            eprintln!("QuietMic is already running. Another instance cannot be started.");
+            eprintln!("180Hz NC is already running. Another instance cannot be started.");
             return;
         }
     }
 
     let _log_guard = init_logging();
-    tracing::info!("Starting QuietMic application");
+    tracing::info!("Starting 180Hz NC application");
 
     let config = AppConfig::load();
     let device_manager = DeviceManager::new();
@@ -608,7 +608,7 @@ fn main() {
             {
                 let app_handle = app.handle().clone();
                 std::thread::Builder::new()
-                    .name("quietmic-hotkeys".to_string())
+                    .name("180hznc-hotkeys".to_string())
                     .spawn(move || unsafe {
                         let _ = RegisterHotKey(HWND::default(), 1, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x42);
                         let _ = RegisterHotKey(HWND::default(), 2, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4D);
@@ -644,7 +644,7 @@ fn main() {
             {
                 let app_handle = app.handle().clone();
                 std::thread::Builder::new()
-                    .name("quietmic-hotplug-watcher".to_string())
+                    .name("180hznc-hotplug-watcher".to_string())
                     .spawn(move || {
                         let mut last_dev_count = 0usize;
                         loop {
@@ -669,7 +669,7 @@ fn main() {
             {
                 let app_handle = app.handle().clone();
                 std::thread::Builder::new()
-                    .name("quietmic-global-ptt".to_string())
+                    .name("180hznc-global-ptt".to_string())
                     .spawn(move || {
                         use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
                         let mut was_pressed = false;
@@ -706,13 +706,13 @@ fn main() {
             let live_test_item = MenuItem::with_id(app, "toggle_live_test", "Live Test: On/Off", true, None::<&str>)?;
             let toggle_item = MenuItem::with_id(app, "toggle_bypass", "Toggle Active/Bypass (Ctrl+Shift+B)", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "open_settings", "Settings...", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit QuietMic", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit 180Hz NC", true, None::<&str>)?;
 
             let menu = Menu::with_items(app, &[&live_test_item, &toggle_item, &settings_item, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
                 .menu(&menu)
-                .tooltip("QuietMic - Real-Time AI Noise Suppression")
+                .tooltip("180Hz NC - Real-Time AI Noise Suppression")
                 .on_menu_event(|app, event| {
                     match event.id().as_ref() {
                         "toggle_live_test" => {
@@ -797,5 +797,5 @@ fn main() {
             open_url
         ])
         .run(tauri::generate_context!())
-        .expect("Error running QuietMic application");
+        .expect("Error running 180Hz NC application");
 }

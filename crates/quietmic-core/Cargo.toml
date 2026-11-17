@@ -2,8 +2,8 @@
 name = "quietmic-core"
 version = "0.1.0"
 edition = "2021"
-authors = ["QuietMic Engineering Team"]
-description = "High-performance, ultra-low latency audio DSP & ML noise suppression engine for Windows"
+authors = ["180Hz Engineering Team"]
+description = "180Hz NC - High-performance, ultra-low latency audio DSP & ML noise suppression engine for Windows"
 
 [dependencies]
 ringbuf = "0.4"

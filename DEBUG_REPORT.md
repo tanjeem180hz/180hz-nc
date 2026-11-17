@@ -1,4 +1,4 @@
-# QuietMic Diagnostic & Debugging Report: Root-Cause Analysis and Fixes
+# 180Hz NC Diagnostic & Debugging Report: Root-Cause Analysis and Fixes
 
 **Repository**: [tanjeem180hz/180hz-nc](https://github.com/tanjeem180hz/180hz-nc)  
 **Branch**: `main`  
@@ -8,7 +8,7 @@
 ---
 
 ## 1. Symptom Statement & Initial Observations
-- **Reported Symptom**: Noise cancellation in QuietMic is not suppressing background noise properly in real-world usage. Specifically, keyboard clicks and fan noise remain audible in Light mode, voice sound quality has high-frequency buzz or distortion in Standard mode, and syllables are occasionally cut off during low-volume speech.
+- **Reported Symptom**: Noise cancellation in 180Hz NC is not suppressing background noise properly in real-world usage. Specifically, keyboard clicks and fan noise remain audible in Light mode, voice sound quality has high-frequency buzz or distortion in Standard mode, and syllables are occasionally cut off during low-volume speech.
 - **Goal**: Identify the exact root causes using empirical evidence and quantitative measurements across all 8 pipeline stages. Fix every identified bug with zero regressions, maintaining $\ge 15$ dB stationary noise reduction, $< 1$ dB speech distortion, zero memory allocations in the audio thread, and push all commits to `origin main`.
 
 ---
@@ -59,7 +59,7 @@ Evaluated on a standardized 3-second test signal combining stationary fan hum (6
 
 ### Cause 1: Sample Scaling
 - **Status**: **FIXED & PROVEN (Bug #1 Resolved)**
-- **Hypothesis**: RNNoise (`nnnoiseless`) assumes 16-bit float amplitude range ($[-32768.0, 32767.0]$), whereas the QuietMic pipeline operates in normalized float range ($[-1.0, 1.0]$).
+- **Hypothesis**: RNNoise (`nnnoiseless`) assumes 16-bit float amplitude range ($[-32768.0, 32767.0]$), whereas the 180Hz NC pipeline operates in normalized float range ($[-1.0, 1.0]$).
 - **Test**: Created unit test `test_nnnoiseless_scaling_behavior` feeding identical sine waves in $[-1.0, 1.0]$ vs scaled $[-32768.0, 32767.0]$ into `nnnoiseless::DenoiseState`.
 - **Result Pre-Fix**:
   - Input $[-1.0, 1.0]$: $\text{VAD} = 0.0037$ (99.6% silence detection). The recurrent network treated the input as digital floor noise under 1 LSB and applied no filtering.
@@ -155,7 +155,7 @@ Evaluated on a standardized 3-second test signal combining stationary fan hum (6
 
 ### Cause 9: Third-Party Meeting App Conflicts
 - **Status**: **RESOLVED & UI GUIDANCE ADDED**
-- **Resolution**: Discord, Zoom, and Teams have their own built-in noise suppression (Krisp/RNNoise). When both QuietMic and meeting apps run AI denoisers simultaneously, double-filtering causes muffled/underwater audio. Added a prominent UI tip card in the settings window: *"Meeting Apps Tip (Discord, Zoom, Teams): Disable built-in noise suppression inside Discord, Zoom, or Teams. Running two AI noise cancellers at once causes double-filtering and muffled audio."*
+- **Resolution**: Discord, Zoom, and Teams have their own built-in noise suppression (Krisp/RNNoise). When both 180Hz NC and meeting apps run AI denoisers simultaneously, double-filtering causes muffled/underwater audio. Added a prominent UI tip card in the settings window: *"Meeting Apps Tip (Discord, Zoom, Teams): Disable built-in noise suppression inside Discord, Zoom, or Teams. Running two AI noise cancellers at once causes double-filtering and muffled audio."*
 
 ---
 
