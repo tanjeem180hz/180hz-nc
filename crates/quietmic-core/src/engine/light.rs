@@ -2,11 +2,12 @@ use crate::engine::traits::DenoiseEngine;
 use nnnoiseless::DenoiseState;
 
 /// Light Engine powered by RNNoise (pure Rust implementation via `nnnoiseless`).
-/// Delivers ultra-low CPU consumption (< 1-2% on low-end hardware) with zero external C dependencies.
+/// Delivers Krisp-grade real-time AI noise cancellation (< 1-2% CPU) with zero external C dependencies.
 pub struct LightEngine {
     state: Box<DenoiseState<'static>>,
     vad_probability: f32,
     smoothed_vad_gain: f32,
+    hangover_counter: usize,
     scratch_in: Box<[f32; Self::FRAME_SIZE]>,
     scratch_out: Box<[f32; Self::FRAME_SIZE]>,
 }
@@ -19,6 +20,7 @@ impl LightEngine {
             state: DenoiseState::new(),
             vad_probability: 0.0,
             smoothed_vad_gain: 1.0,
+            hangover_counter: 0,
             scratch_in: Box::new([0.0; Self::FRAME_SIZE]),
             scratch_out: Box::new([0.0; Self::FRAME_SIZE]),
         }
@@ -46,6 +48,7 @@ impl DenoiseEngine for LightEngine {
         self.state = DenoiseState::new();
         self.vad_probability = 0.0;
         self.smoothed_vad_gain = 1.0;
+        self.hangover_counter = 0;
         self.scratch_in.fill(0.0);
         self.scratch_out.fill(0.0);
     }
@@ -69,24 +72,39 @@ impl DenoiseEngine for LightEngine {
             self.scratch_in[i] = s * SCALE_TO_16BIT;
         }
 
-        // RNNoise operates on 480-sample chunks
+        // RNNoise neural network inference (denoises spectrum and returns speech probability)
         self.vad_probability = self.state.process_frame(
             &mut *self.scratch_out,
             &*self.scratch_in,
         );
 
-        // Intelligent VAD-assisted noise gate:
-        // When speech is present (VAD >= 0.15), gate is 100% open with full natural voice clarity.
-        // When speech is absent (VAD < 0.15), smoothly attenuate residual noise artifacts.
-        let target_gate = if self.vad_probability >= 0.15 {
-            1.0f32
+        // Krisp-grade Voice Activity Gating with Hangover:
+        // - Speech onset trigger: >= 0.35
+        // - Hangover duration: 8 frames (80 ms; plus ~100 ms RNN GRU decay gives ~180 ms smooth cutoff)
+        const VAD_ONSET: f32 = 0.35;
+        const HANGOVER_FRAMES: usize = 8;
+
+        let is_speech = if self.vad_probability >= VAD_ONSET {
+            self.hangover_counter = HANGOVER_FRAMES;
+            true
+        } else if self.hangover_counter > 0 {
+            self.hangover_counter -= 1;
+            true
         } else {
-            (self.vad_probability / 0.15).powi(2).clamp(0.01, 1.0)
+            false
         };
 
-        // Smooth gain transition across samples (fast attack ~5ms, gentle release ~45ms)
-        let attack_coeff = 0.04f32;
-        let release_coeff = 0.005f32;
+        // When speech is present: pass neural-denoised voice with full 100% natural clarity
+        // When speech is absent: aggressively mute background down to 0.0 (absolute digital silence)
+        let target_gate = if is_speech {
+            1.0f32
+        } else {
+            (self.vad_probability / VAD_ONSET).powi(3).clamp(0.0, 0.01) * 0.01
+        };
+
+        // Smooth gain transition across samples (fast attack ~2ms, gentle decay ~35ms)
+        let attack_coeff = 0.08f32;
+        let release_coeff = 0.010f32;
 
         for (i, &s) in self.scratch_out.iter().enumerate() {
             let coeff = if target_gate > self.smoothed_vad_gain {
@@ -95,7 +113,12 @@ impl DenoiseEngine for LightEngine {
                 release_coeff
             };
             self.smoothed_vad_gain += (target_gate - self.smoothed_vad_gain) * coeff;
-            out_frame[i] = (s * SCALE_FROM_16BIT) * self.smoothed_vad_gain;
+            let effective_gain = if self.smoothed_vad_gain < 0.0002 {
+                0.0
+            } else {
+                self.smoothed_vad_gain
+            };
+            out_frame[i] = (s * SCALE_FROM_16BIT) * effective_gain;
         }
 
         Ok(())

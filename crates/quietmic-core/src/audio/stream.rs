@@ -132,64 +132,131 @@ impl AudioStreamController {
         // Create lock-free ring buffers
         let input_rb = HeapRb::<f32>::new(Self::RB_CAPACITY);
         let output_rb = HeapRb::<f32>::new(Self::RB_CAPACITY);
+        #[allow(unused_mut)]
         let (mut in_prod, mut in_cons) = input_rb.split();
+        #[allow(unused_mut)]
         let (mut out_prod, mut out_cons) = output_rb.split();
 
-        // 1. Microphone Capture Stream Callback
+        // 1. Microphone Capture Stream Callback (Universal F32 and I16 support)
         let is_running_capture = Arc::clone(&running);
-        let capture_stream = mic_device.build_input_stream(
-            &mic_config.into(),
-            move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                if !is_running_capture.load(Ordering::Relaxed) {
-                    return;
-                }
-                // Downmix to mono if multi-channel
-                if mic_channels > 1 {
-                    for frame in data.chunks_exact(mic_channels) {
-                        let mono = frame.iter().sum::<f32>() / mic_channels as f32;
-                        let _ = in_prod.try_push(mono);
-                    }
-                } else {
-                    for &sample in data {
-                        let _ = in_prod.try_push(sample);
-                    }
-                }
-            },
-            |err| tracing::error!("Microphone capture stream error: {}", err),
-            None,
-        ).map_err(|e| format!("Failed to build mic capture stream: {}", e))?;
+        let capture_stream = match mic_config.sample_format() {
+            cpal::SampleFormat::I16 => {
+                let mut in_prod = in_prod;
+                let is_running = Arc::clone(&is_running_capture);
+                mic_device.build_input_stream(
+                    &mic_config.into(),
+                    move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                        if !is_running.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        if mic_channels > 1 {
+                            for frame in data.chunks_exact(mic_channels) {
+                                let mono = frame.iter().map(|&s| s as f32).sum::<f32>() / (mic_channels as f32 * 32768.0);
+                                let _ = in_prod.try_push(mono);
+                            }
+                        } else {
+                            for &sample in data {
+                                let mono = (sample as f32) / 32768.0;
+                                let _ = in_prod.try_push(mono);
+                            }
+                        }
+                    },
+                    |err| tracing::error!("Microphone capture stream error: {}", err),
+                    None,
+                )
+            }
+            _ => {
+                let mut in_prod = in_prod;
+                let is_running = Arc::clone(&is_running_capture);
+                mic_device.build_input_stream(
+                    &mic_config.into(),
+                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                        if !is_running.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        if mic_channels > 1 {
+                            for frame in data.chunks_exact(mic_channels) {
+                                let mono = frame.iter().sum::<f32>() / mic_channels as f32;
+                                let _ = in_prod.try_push(mono);
+                            }
+                        } else {
+                            for &sample in data {
+                                let _ = in_prod.try_push(sample);
+                            }
+                        }
+                    },
+                    |err| tracing::error!("Microphone capture stream error: {}", err),
+                    None,
+                )
+            }
+        }.map_err(|e| format!("Failed to build mic capture stream: {}", e))?;
 
         capture_stream.play().map_err(|e| format!("Failed to start capture stream: {}", e))?;
 
-        // 2. Virtual Cable Output Render Stream Callback
+        // 2. Virtual Cable Output Render Stream Callback (Universal F32 and I16 support)
         let is_running_render = Arc::clone(&running);
         let render_stream = if let Some(ref dev) = cable_device {
             let out_cfg = dev.default_output_config()
                 .map_err(|e| format!("Failed to get output config: {}", e))?;
 
-            let stream = dev.build_output_stream(
-                &out_cfg.into(),
-                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    if !is_running_render.load(Ordering::Relaxed) {
-                        data.fill(0.0);
-                        return;
-                    }
-                    if cable_channels > 1 {
-                        for frame in data.chunks_exact_mut(cable_channels) {
-                            let sample = out_cons.try_pop().unwrap_or(0.0);
-                            for ch in frame.iter_mut() {
-                                *ch = sample;
+            let stream = match out_cfg.sample_format() {
+                cpal::SampleFormat::I16 => {
+                    let mut out_cons = out_cons;
+                    let is_running = Arc::clone(&is_running_render);
+                    dev.build_output_stream(
+                        &out_cfg.into(),
+                        move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
+                            if !is_running.load(Ordering::Relaxed) {
+                                data.fill(0);
+                                return;
                             }
-                        }
-                    } else {
-                        for sample in data.iter_mut() {
-                            *sample = out_cons.try_pop().unwrap_or(0.0);
-                        }
-                    }
-                },
-                |err| tracing::error!("Virtual mic render stream error: {}", err),
-                None,
-            ).map_err(|e| format!("Failed to build render stream: {}", e))?;
+                            if cable_channels > 1 {
+                                for frame in data.chunks_exact_mut(cable_channels) {
+                                    let sample_f = out_cons.try_pop().unwrap_or(0.0);
+                                    let sample_i = (sample_f.clamp(-1.0, 1.0) * 32767.0) as i16;
+                                    for ch in frame.iter_mut() {
+                                        *ch = sample_i;
+                                    }
+                                }
+                            } else {
+                                for sample in data.iter_mut() {
+                                    let sample_f = out_cons.try_pop().unwrap_or(0.0);
+                                    *sample = (sample_f.clamp(-1.0, 1.0) * 32767.0) as i16;
+                                }
+                            }
+                        },
+                        |err| tracing::error!("Virtual mic render stream error: {}", err),
+                        None,
+                    )
+                }
+                _ => {
+                    let mut out_cons = out_cons;
+                    let is_running = Arc::clone(&is_running_render);
+                    dev.build_output_stream(
+                        &out_cfg.into(),
+                        move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                            if !is_running.load(Ordering::Relaxed) {
+                                data.fill(0.0);
+                                return;
+                            }
+                            if cable_channels > 1 {
+                                for frame in data.chunks_exact_mut(cable_channels) {
+                                    let sample = out_cons.try_pop().unwrap_or(0.0);
+                                    for ch in frame.iter_mut() {
+                                        *ch = sample;
+                                    }
+                                }
+                            } else {
+                                for sample in data.iter_mut() {
+                                    *sample = out_cons.try_pop().unwrap_or(0.0);
+                                }
+                            }
+                        },
+                        |err| tracing::error!("Virtual mic render stream error: {}", err),
+                        None,
+                    )
+                }
+            }.map_err(|e| format!("Failed to build render stream: {}", e))?;
 
             stream.play().map_err(|e| format!("Failed to start render stream: {}", e))?;
             Some(stream)
@@ -424,7 +491,9 @@ impl AudioStreamController {
 
         let input_rb = HeapRb::<f32>::new(Self::RB_CAPACITY);
         let output_rb = HeapRb::<f32>::new(Self::RB_CAPACITY);
+        #[allow(unused_mut)]
         let (mut in_prod, mut in_cons) = input_rb.split();
+        #[allow(unused_mut)]
         let (mut out_prod, mut out_cons) = output_rb.split();
 
         let is_running_cap = Arc::clone(&running);

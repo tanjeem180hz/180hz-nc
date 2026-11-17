@@ -210,10 +210,10 @@ impl DenoiseEngine for StandardEngine {
             let raw_gain = if snr > 2.0 {
                 ((snr - 1.0) / snr).sqrt()
             } else {
-                0.02
+                0.0001
             };
             let tuned_gain = 1.0 - self.suppression_factor * (1.0 - raw_gain);
-            let band_gain = tuned_gain.clamp(0.02, 1.0);
+            let band_gain = tuned_gain.clamp(0.0001, 1.0);
 
             for k in start..end {
                 self.complex_spectrum[k] *= band_gain;

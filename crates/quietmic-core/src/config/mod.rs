@@ -22,8 +22,8 @@ pub struct AppConfig {
     pub aec_enabled: bool,         // Acoustic Echo Cancellation (default false)
     #[serde(default)]
     pub speaker_denoise: bool,     // Speaker denoise pipeline (default false)
-    #[serde(default = "default_true")]
-    pub comfort_noise: bool,       // Subtle acoustic floor (default true)
+    #[serde(default)]
+    pub comfort_noise: bool,       // Subtle acoustic floor (default false for pure Krisp silence)
     #[serde(default)]
     pub selected_mic: Option<String>,
     #[serde(default)]
@@ -56,7 +56,7 @@ impl Default for AppConfig {
             bypass: false,
             aec_enabled: false,
             speaker_denoise: false,
-            comfort_noise: true,
+            comfort_noise: false,
             selected_mic: None,
             selected_speaker: None,
             start_with_windows: false,

@@ -21,7 +21,7 @@ impl ComfortNoiseGenerator {
             state: 0x180E_C0DE,
             lpf_state: 0.0,
             amplitude: linear_amp,
-            enabled: true,
+            enabled: false, // Disabled by default for pure digital Krisp silence
         }
     }
 
@@ -73,6 +73,7 @@ mod tests {
     #[test]
     fn test_comfort_noise_level() {
         let mut gen = ComfortNoiseGenerator::default_preset();
+        gen.set_enabled(true);
         let mut buffer = vec![0.0f32; 4800];
         gen.inject_into(&mut buffer);
 
