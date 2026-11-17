@@ -73,17 +73,23 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
-    /// Returns the standard config directory in %APPDATA%/180Hz-NC
+    /// Returns the standard config directory in %APPDATA%/180hz nc
     pub fn config_dir() -> PathBuf {
         let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-        let dir = PathBuf::from(appdata.clone()).join("180Hz-NC");
+        let dir = PathBuf::from(&appdata).join("180hz nc");
         let _ = fs::create_dir_all(&dir);
 
-        // Seamless migration from legacy QuietMic path
-        let legacy_config = PathBuf::from(appdata).join("QuietMic").join("config.json");
+        // Seamless migration from legacy QuietMic and 180Hz-NC paths
+        let legacy_qm = PathBuf::from(&appdata).join("QuietMic").join("config.json");
+        let legacy_180 = PathBuf::from(&appdata).join("180Hz-NC").join("config.json");
         let new_config = dir.join("config.json");
-        if legacy_config.exists() && !new_config.exists() {
-            let _ = fs::copy(&legacy_config, &new_config);
+
+        if !new_config.exists() {
+            if legacy_180.exists() {
+                let _ = fs::copy(&legacy_180, &new_config);
+            } else if legacy_qm.exists() {
+                let _ = fs::copy(&legacy_qm, &new_config);
+            }
         }
 
         dir
@@ -168,7 +174,9 @@ impl AppConfig {
                 return Err("Failed to open Registry Run key".to_string());
             }
 
-            let app_name = HSTRING::from("180Hz-NC");
+            let app_name = HSTRING::from("180hz nc");
+            let legacy_name_1 = HSTRING::from("180Hz-NC");
+            let legacy_name_2 = HSTRING::from("QuietMic");
 
             if enable {
                 if let Ok(exe_path) = std::env::current_exe() {
@@ -186,9 +194,13 @@ impl AppConfig {
                         REG_SZ,
                         Some(bytes),
                     );
+                    let _ = RegDeleteValueW(hkey, &legacy_name_1);
+                    let _ = RegDeleteValueW(hkey, &legacy_name_2);
                 }
             } else {
                 let _ = RegDeleteValueW(hkey, &app_name);
+                let _ = RegDeleteValueW(hkey, &legacy_name_1);
+                let _ = RegDeleteValueW(hkey, &legacy_name_2);
             }
 
             let _ = RegCloseKey(hkey);

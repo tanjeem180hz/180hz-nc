@@ -27,12 +27,24 @@
 - [x] Bug Fix Phase: Sample scaling in LightEngine, RealFFT STFT in StandardEngine, VAD hangover tuning.
 - [x] Quality Verification: $\ge 15$ dB noise suppression, A/B audio files in `ab_samples/`, loopback verification.
 - [x] Krisp AI Engine Default & Adaptive Dynamic Sample Rate Synchronization in Exe.
-- [x] Complete Product Rebrand to 180Hz NC across App, UI, Installer, Mutex, Logs, Registry, and Tests.
+- [x] Complete Product Rebrand to "180hz nc" across App, UI, Installer, Mutex, Logs, Registry, and Tests.
 - [x] Complete Denoise Engine Audit (Step 1-5): Result A Confirmed (110.3 dB noise drop), Root Causes Fixed, Zero Silent Fallbacks, Atomic Metrics UI, and A/B Real Typing/Fan WAV Verification in `NS_DEBUG_REPORT.md`.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 26: Consistent Rebranding to "180hz nc", Automatic Legacy Config Migration, and Clean Registry Autostart
+- Renamed every user-visible surface to consistent lowercase "180hz nc":
+  - Window title: `180hz nc`
+  - Tray tooltip: `180hz nc`
+  - Tray quit menu item: `Quit 180hz nc`
+  - Windows single instance mutex: `Global\180hznc_SingleInstance_Mutex`
+  - Log file: `%APPDATA%\180hz nc\logs\180hz nc.log`
+  - Config folder: `%APPDATA%\180hz nc\` with automated fallback migration from legacy `%APPDATA%\QuietMic\` and `%APPDATA%\180Hz-NC\`
+  - Windows Registry autostart entry: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` with value name `"180hz nc"` and automatic cleanup of legacy `"QuietMic"` and `"180Hz-NC"` values
+  - Installer: `180hz-nc-setup.exe` and `C:\Program Files\180hz nc\` with Start Menu and Desktop shortcuts `180hz nc.lnk`
+- Verified: All 61 workspace tests pass; 0 clippy warnings.
 
 ### Commit 25: Noise Suppression Engine Audit, Real-Time Atomic Metrics, and Silent Fallback Elimination
 - **Step 1 Standalone Engine Proof**:

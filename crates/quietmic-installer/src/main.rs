@@ -63,7 +63,7 @@ fn elevate_self() -> Result<(), String> {
         if res.0 as isize > 32 {
             std::process::exit(0);
         } else {
-            Err("Administrator privileges are required to install 180Hz NC and audio drivers.".to_string())
+            Err("Administrator privileges are required to install 180hz nc and audio drivers.".to_string())
         }
     }
 }
@@ -174,7 +174,13 @@ fn create_shortcut(target_exe: &Path, shortcut_path: &Path, description: &str) {
 
 fn register_uninstall_entry(install_dir: &Path, exe_path: &Path, uninstaller_path: &Path) {
     unsafe {
-        let subkey = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\180Hz-NC");
+        // Clean up legacy registry keys if present
+        let legacy_1 = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\180Hz-NC");
+        let legacy_2 = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\QuietMic");
+        let _ = RegDeleteKeyW(HKEY_LOCAL_MACHINE, &legacy_1);
+        let _ = RegDeleteKeyW(HKEY_LOCAL_MACHINE, &legacy_2);
+
+        let subkey = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\180hz-nc");
         let mut hkey = HKEY::default();
         if RegCreateKeyExW(
             HKEY_LOCAL_MACHINE,
@@ -203,9 +209,9 @@ fn register_uninstall_entry(install_dir: &Path, exe_path: &Path, uninstaller_pat
                 let _ = RegSetValueExW(hkey, &h_name, 0, REG_DWORD, Some(&bytes));
             };
 
-            set_str("DisplayName", "180Hz NC - Real-Time AI Noise Suppression");
+            set_str("DisplayName", "180hz nc - Real-Time AI Noise Suppression");
             set_str("DisplayVersion", "1.0.0");
-            set_str("Publisher", "180Hz Audio Technologies");
+            set_str("Publisher", "180hz Audio Technologies");
             set_str("InstallLocation", &install_dir.to_string_lossy());
             let uninst_cmd = format!("\"{}\" --uninstall", uninstaller_path.display());
             set_str("UninstallString", &uninst_cmd);
@@ -222,16 +228,16 @@ fn register_uninstall_entry(install_dir: &Path, exe_path: &Path, uninstaller_pat
 
 fn run_install(silent: bool) -> Result<(), String> {
     if !silent {
-        let welcome = "Welcome to 180Hz NC Setup!\n\n\
-                       180Hz NC is a real-time AI noise cancellation desktop app targeting quality equal to or better than Krisp with minimal CPU usage.\n\n\
+        let welcome = "Welcome to 180hz nc Setup!\n\n\
+                       180hz nc is a real-time AI noise cancellation desktop app targeting quality equal to or better than Krisp with minimal CPU usage.\n\n\
                        This installer includes:\n\
-                       • 180Hz NC Core Application & GUI\n\
+                       • 180hz nc Core Application & GUI\n\
                        • Virtual Microphone Audio Driver (VB-CABLE)\n\
                        • Security Certificate Verification\n\
                        • Desktop and Start Menu Shortcuts\n\
                        • Automatic 48,000 Hz Audio Setup\n\n\
                        Do you wish to continue with the installation?";
-        let res = show_msg_box("180Hz NC Setup", welcome, MB_YESNO | MB_ICONQUESTION);
+        let res = show_msg_box("180hz nc Setup", welcome, MB_YESNO | MB_ICONQUESTION);
         if res != IDYES {
             return Ok(());
         }
@@ -242,19 +248,21 @@ fn run_install(silent: bool) -> Result<(), String> {
 
     // Kill any existing instances
     let _ = Command::new("taskkill")
-        .args(["/F", "/IM", "180Hz-NC.exe", "/IM", "QuietMic.exe", "/IM", "quietmic-app.exe"])
+        .args(["/F", "/IM", "180hz nc.exe", "/IM", "180hz-nc.exe", "/IM", "180Hz-NC.exe", "/IM", "QuietMic.exe", "/IM", "quietmic-app.exe"])
         .creation_flags(CREATE_NO_WINDOW)
         .status();
 
     let prog_files = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
-    let install_dir = PathBuf::from(prog_files).join("180Hz-NC");
+    let install_dir = PathBuf::from(prog_files).join("180hz nc");
     fs::create_dir_all(&install_dir).map_err(|e| format!("Failed to create install folder: {}", e))?;
 
-    let exe_path = install_dir.join("180Hz-NC.exe");
+    let exe_path = install_dir.join("180hz nc.exe");
+    let cli_exe_path = install_dir.join("180hz-nc.exe");
     let uninst_path = install_dir.join("Uninstall.exe");
 
-    // Write application executable
-    fs::write(&exe_path, APP_EXE).map_err(|e| format!("Failed to install 180Hz-NC.exe: {}", e))?;
+    // Write application executables
+    fs::write(&exe_path, APP_EXE).map_err(|e| format!("Failed to install 180hz nc.exe: {}", e))?;
+    let _ = fs::write(&cli_exe_path, APP_EXE);
 
     // Copy installer executable as Uninstaller
     if let Ok(current_exe) = std::env::current_exe() {
@@ -269,28 +277,28 @@ fn run_install(silent: bool) -> Result<(), String> {
     // Create Start Menu Shortcut via native Win32 COM
     let start_menu_dir = PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs");
     if start_menu_dir.exists() {
-        let shortcut = start_menu_dir.join("180Hz NC.lnk");
-        create_shortcut(&exe_path, &shortcut, "180Hz NC - AI Noise Suppression");
+        let shortcut = start_menu_dir.join("180hz nc.lnk");
+        create_shortcut(&exe_path, &shortcut, "180hz nc - AI Noise Suppression");
     }
 
     // Create Desktop Shortcut via native Win32 COM
     let desktop_dir = PathBuf::from("C:\\Users\\Public\\Desktop");
     if desktop_dir.exists() {
-        let shortcut = desktop_dir.join("180Hz NC.lnk");
-        create_shortcut(&exe_path, &shortcut, "180Hz NC - AI Noise Suppression");
+        let shortcut = desktop_dir.join("180hz nc.lnk");
+        create_shortcut(&exe_path, &shortcut, "180hz nc - AI Noise Suppression");
     }
 
     // Register Add/Remove Programs entry
     register_uninstall_entry(&install_dir, &exe_path, &uninst_path);
 
     if !silent {
-        let finished = "180Hz NC has been successfully installed!\n\n\
-                        • Application installed to: C:\\Program Files\\180Hz-NC\\\n\
+        let finished = "180hz nc has been successfully installed!\n\n\
+                        • Application installed to: C:\\Program Files\\180hz nc\\\n\
                         • Virtual Microphone Driver installed & active\n\
                         • Desktop & Start Menu shortcuts created\n\
                         • Verified Publisher Certificate applied\n\n\
-                        Launch 180Hz NC now?";
-        let res = show_msg_box("180Hz NC Setup Completed", finished, MB_YESNO | MB_ICONINFORMATION);
+                        Launch 180hz nc now?";
+        let res = show_msg_box("180hz nc Setup Completed", finished, MB_YESNO | MB_ICONINFORMATION);
         if res == IDYES {
             let _ = Command::new(&exe_path).spawn();
         }
@@ -301,8 +309,8 @@ fn run_install(silent: bool) -> Result<(), String> {
 
 fn run_uninstall(silent: bool) -> Result<(), String> {
     if !silent {
-        let confirm = "Are you sure you want to completely uninstall 180Hz NC from your computer?";
-        let res = show_msg_box("Uninstall 180Hz NC", confirm, MB_YESNO | MB_ICONQUESTION);
+        let confirm = "Are you sure you want to completely uninstall 180hz nc from your computer?";
+        let res = show_msg_box("Uninstall 180hz nc", confirm, MB_YESNO | MB_ICONQUESTION);
         if res != IDYES {
             return Ok(());
         }
@@ -310,27 +318,28 @@ fn run_uninstall(silent: bool) -> Result<(), String> {
 
     // Kill running instances
     let _ = Command::new("taskkill")
-        .args(["/F", "/IM", "180Hz-NC.exe", "/IM", "QuietMic.exe", "/IM", "quietmic-app.exe"])
+        .args(["/F", "/IM", "180hz nc.exe", "/IM", "180hz-nc.exe", "/IM", "180Hz-NC.exe", "/IM", "QuietMic.exe", "/IM", "quietmic-app.exe"])
         .creation_flags(CREATE_NO_WINDOW)
         .status();
 
-    // Remove Desktop shortcut
-    let desktop_shortcut = PathBuf::from("C:\\Users\\Public\\Desktop\\180Hz NC.lnk");
-    let _ = fs::remove_file(desktop_shortcut);
+    // Remove Desktop shortcuts
+    let _ = fs::remove_file(PathBuf::from("C:\\Users\\Public\\Desktop\\180hz nc.lnk"));
+    let _ = fs::remove_file(PathBuf::from("C:\\Users\\Public\\Desktop\\180Hz NC.lnk"));
 
-    // Remove Start Menu shortcut
-    let start_menu_shortcut =
-        PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\180Hz NC.lnk");
-    let _ = fs::remove_file(start_menu_shortcut);
+    // Remove Start Menu shortcuts
+    let _ = fs::remove_file(PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\180hz nc.lnk"));
+    let _ = fs::remove_file(PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\180Hz NC.lnk"));
 
-    // Remove Registry Uninstall Entry
+    // Remove Registry Uninstall Entries
     unsafe {
-        let subkey = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\180Hz-NC");
+        let subkey = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\180hz-nc");
         let _ = RegDeleteKeyW(HKEY_LOCAL_MACHINE, &subkey);
+        let subkey_legacy = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\180Hz-NC");
+        let _ = RegDeleteKeyW(HKEY_LOCAL_MACHINE, &subkey_legacy);
     }
 
     let prog_files = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
-    let install_dir = PathBuf::from(prog_files).join("180Hz-NC");
+    let install_dir = PathBuf::from(prog_files).join("180hz nc");
 
     // Create temporary cleanup script to delete the install directory after uninstaller exits
     let temp_script = std::env::temp_dir().join("180hznc_cleanup.bat");
@@ -347,8 +356,8 @@ fn run_uninstall(silent: bool) -> Result<(), String> {
 
     if !silent {
         show_msg_box(
-            "180Hz NC Uninstalled",
-            "180Hz NC has been successfully removed from your computer.",
+            "180hz nc Uninstalled",
+            "180hz nc has been successfully removed from your computer.",
             MB_OK | MB_ICONINFORMATION,
         );
     }

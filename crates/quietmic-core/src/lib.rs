@@ -20,7 +20,7 @@ pub fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
     let log_dir = AppConfig::config_dir().join("logs");
     let _ = std::fs::create_dir_all(&log_dir);
 
-    let file_appender = tracing_appender::rolling::daily(log_dir, "180hz-nc.log");
+    let file_appender = tracing_appender::rolling::daily(log_dir, "180hz nc.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
     let subscriber = tracing_subscriber::fmt()

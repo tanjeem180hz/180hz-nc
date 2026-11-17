@@ -540,7 +540,7 @@ fn main() {
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| std::path::PathBuf::from("diagnostics_output"));
 
-        println!("180Hz NC Diagnostic Mode Active");
+        println!("180hz nc Diagnostic Mode Active");
         println!("Writing 8-stage WAV dumps to: {}", out_dir.display());
         let _ = std::fs::create_dir_all(&out_dir);
 
@@ -569,15 +569,15 @@ fn main() {
 
     #[cfg(windows)]
     unsafe {
-        let _mutex = CreateMutexW(None, true, w!("Global\\180HzNC_SingleInstance_Mutex"));
+        let _mutex = CreateMutexW(None, true, w!("Global\\180hznc_SingleInstance_Mutex"));
         if GetLastError() == ERROR_ALREADY_EXISTS {
-            eprintln!("180Hz NC is already running. Another instance cannot be started.");
+            eprintln!("180hz nc is already running. Another instance cannot be started.");
             return;
         }
     }
 
     let _log_guard = init_logging();
-    tracing::info!("Starting 180Hz NC application");
+    tracing::info!("Starting 180hz nc application");
 
     let mut config = AppConfig::load();
     let device_manager = DeviceManager::new();
@@ -789,13 +789,13 @@ fn main() {
             let live_test_item = MenuItem::with_id(app, "toggle_live_test", "Live Test: On/Off", true, None::<&str>)?;
             let toggle_item = MenuItem::with_id(app, "toggle_bypass", "Toggle Active/Bypass (Ctrl+Shift+B)", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "open_settings", "Settings...", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit 180Hz NC", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit 180hz nc", true, None::<&str>)?;
 
             let menu = Menu::with_items(app, &[&live_test_item, &toggle_item, &settings_item, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
                 .menu(&menu)
-                .tooltip("180Hz NC - Real-Time AI Noise Suppression")
+                .tooltip("180hz nc")
                 .on_menu_event(|app, event| {
                     match event.id().as_ref() {
                         "toggle_live_test" => {
@@ -880,5 +880,5 @@ fn main() {
             open_url
         ])
         .run(tauri::generate_context!())
-        .expect("Error running 180Hz NC application");
+        .expect("Error running 180hz nc application");
 }
