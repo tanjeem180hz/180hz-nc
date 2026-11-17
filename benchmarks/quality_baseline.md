@@ -10,8 +10,8 @@
 
 | Engine Mode | DNSMOS SIG | DNSMOS BAK | DNSMOS OVRL | SI-SDR (dB) | STOI | Noise Reduction (dB) | Speech Level Delta (dB) | Avg Frame Time (µs) | Real-Time Factor (RTF) |
 |---|---|---|---|---|---|---|---|---|---|
-| **Krisp AI / RNNoise (Light)** | **3.16** | **3.29** | **3.22** | **-7.07 dB** | **0.432** | **26.1 dB** | **8.04 dB** | **58.8 µs** | **0.0080** |
-| **ERB Wiener STFT (Standard)** | **3.63** | **2.69** | **3.21** | **5.68 dB** | **0.868** | **10.0 dB** | **1.36 dB** | **10.0 µs** | **0.0032** |
+| **Krisp AI / RNNoise (Light)** | **3.13** | **3.34** | **3.22** | **-8.28 dB** | **0.392** | **34.0 dB** | **9.45 dB** | **62.0 µs** | **0.0201** |
+| **ERB Wiener STFT (Standard)** | **3.67** | **2.76** | **3.26** | **6.75 dB** | **0.878** | **11.2 dB** | **1.28 dB** | **14.1 µs** | **0.0152** |
 
 ---
 

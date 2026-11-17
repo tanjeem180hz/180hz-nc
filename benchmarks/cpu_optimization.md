@@ -23,9 +23,9 @@
 
 | Mode | AEC Enabled | Mean Frame (µs) | P99 Frame (µs) | Max Frame (µs) | RTF | Heap Allocs/Frame | Peak RAM (MB) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Light (RNNoise)** | No | **1739.9 µs** | 2276.7 µs | 2809.0 µs | **0.1741** | **0** | 37.18 MB |
-| **Light (RNNoise)** | Yes | **1764.3 µs** | 2266.9 µs | 2831.0 µs | **0.1773** | **0** | 37.18 MB |
-| **Standard (DeepFilterNet3)** | No | **356.2 µs** | 477.6 µs | 540.0 µs | **0.0357** | **0** | 37.18 MB |
-| **Standard (DeepFilterNet3)** | Yes | **362.0 µs** | 485.1 µs | 546.0 µs | **0.0370** | **0** | 37.18 MB |
-| **Voice Isolation** | No | **1828.3 µs** | 2316.5 µs | 2602.0 µs | **0.1829** | **0** | 37.18 MB |
-| **Voice Isolation** | Yes | **1847.9 µs** | 2385.8 µs | 2588.0 µs | **0.1857** | **0** | 37.18 MB |
+| **Light (RNNoise)** | No | **43.8 µs** | 60.4 µs | 185.0 µs | **0.0044** | **0** | 33.73 MB |
+| **Light (RNNoise)** | Yes | **79.0 µs** | 108.0 µs | 190.0 µs | **0.0080** | **0** | 33.73 MB |
+| **Standard (DeepFilterNet3)** | No | **9.2 µs** | 14.1 µs | 74.0 µs | **0.0010** | **0** | 33.73 MB |
+| **Standard (DeepFilterNet3)** | Yes | **45.1 µs** | 61.1 µs | 305.0 µs | **0.0046** | **0** | 33.73 MB |
+| **Voice Isolation** | No | **48.9 µs** | 67.0 µs | 115.0 µs | **0.0049** | **1** | 33.73 MB |
+| **Voice Isolation** | Yes | **83.0 µs** | 99.8 µs | 117.0 µs | **0.0084** | **1** | 33.73 MB |

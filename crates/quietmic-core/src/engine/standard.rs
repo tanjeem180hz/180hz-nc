@@ -23,8 +23,13 @@ pub struct StandardEngine {
     time_synth: Vec<f32>,
     overlap_buffer: Vec<f32>, // 480 samples history for 50% overlap-add
     noise_estimate: Vec<f32>, // Per-band noise floor tracker
+    prior_snr: Vec<f32>,      // Decision-directed a-priori SNR per band
+    prev_gain: Vec<f32>,      // Previous frame gain per band
     vad_estimate: f32,
     suppression_factor: f32,
+    attenuation_limit_db: f32,
+    post_filter_enabled: bool,
+    post_filter_beta: f32,
     init_frames: usize,
     band_bin_ranges: [(usize, usize); Self::NUM_BANDS],
 }
@@ -88,11 +93,33 @@ impl StandardEngine {
             time_synth,
             overlap_buffer: vec![0.0f32; frame_size],
             noise_estimate: vec![0.0f32; Self::NUM_BANDS],
+            prior_snr: vec![1.0f32; Self::NUM_BANDS],
+            prev_gain: vec![1.0f32; Self::NUM_BANDS],
             vad_estimate: 0.0,
             suppression_factor: 1.0,
+            attenuation_limit_db: 36.0,
+            post_filter_enabled: true,
+            post_filter_beta: 1.25,
             init_frames: 0,
             band_bin_ranges,
         }
+    }
+
+    pub fn set_attenuation_limit_db(&mut self, db: f32) {
+        self.attenuation_limit_db = db.clamp(12.0, 100.0);
+    }
+
+    pub fn set_post_filter(&mut self, enabled: bool, beta: f32) {
+        self.post_filter_enabled = enabled;
+        self.post_filter_beta = beta.clamp(1.0, 2.5);
+    }
+
+    pub fn attenuation_limit_db(&self) -> f32 {
+        self.attenuation_limit_db
+    }
+
+    pub fn post_filter_beta(&self) -> f32 {
+        self.post_filter_beta
     }
 
     /// Sets suppression intensity (0.0 to 1.0).
@@ -124,6 +151,8 @@ impl DenoiseEngine for StandardEngine {
         self.time_synth.fill(0.0);
         self.complex_spectrum.fill(Complex::new(0.0, 0.0));
         self.noise_estimate.fill(0.0);
+        self.prior_snr.fill(1.0);
+        self.prev_gain.fill(1.0);
         self.vad_estimate = 0.0;
         self.init_frames = 0;
     }
@@ -180,8 +209,8 @@ impl DenoiseEngine for StandardEngine {
             let noise = self.noise_estimate[b];
 
             // Ambient noise floor ceiling: stationary fan hum / keyboard / room noise floor
-            // up to -17 dBFS (0.02 power). Prevents loud fan/clicks from being falsely classified as speech.
-            const MAX_NOISE_FLOOR: f32 = 0.02;
+            // up to -27 dBFS (1e-3 power). Speech syllables (amplitude 0.2-0.5, power 0.03-0.12) are > 50x higher.
+            const MAX_NOISE_FLOOR: f32 = 1e-3;
 
             if is_startup {
                 self.noise_estimate[b] += 0.40 * (band_power.min(MAX_NOISE_FLOOR) - noise);
@@ -207,13 +236,25 @@ impl DenoiseEngine for StandardEngine {
                 }
             }
 
-            let raw_gain = if snr > 2.0 {
-                ((snr - 1.0) / snr).sqrt()
+            let min_gain = 10.0f32.powf(-self.attenuation_limit_db / 20.0);
+
+            // Decision-directed a-priori SNR smoothing to eliminate musical noise
+            let prior = if is_startup {
+                (snr - 1.0).max(0.01)
             } else {
-                0.0001
+                0.80 * (self.prev_gain[b].powi(2) * self.prior_snr[b]) + 0.20 * (snr - 1.0).max(0.0)
             };
+            self.prior_snr[b] = prior;
+
+            // DeepFilterNet-style Wiener gain with optional harmonic post-filter
+            let mut raw_gain = (prior / (prior + 1.0)).sqrt();
+            if self.post_filter_enabled && self.post_filter_beta > 1.0 {
+                raw_gain = raw_gain.powf(self.post_filter_beta);
+            }
+
             let tuned_gain = 1.0 - self.suppression_factor * (1.0 - raw_gain);
-            let band_gain = tuned_gain.clamp(0.0001, 1.0);
+            let band_gain = tuned_gain.clamp(min_gain, 1.0);
+            self.prev_gain[b] = band_gain;
 
             for spec in &mut self.complex_spectrum[start..end] {
                 *spec *= band_gain;

@@ -225,7 +225,13 @@ fn main() {
 
         // 1. Light Engine (No AEC and With AEC)
         for &aec in &[false, true] {
-            let light_wav = if is_key && !aec { Some(output_dir.join(format!("cleaned_light_{}.wav", sc.name))) } else { None };
+            let light_wav = if is_key && !aec {
+                let ab_path = ab_dir.join(format!("cleaned_light_{}.wav", sc.name));
+                let _ = output_dir.join(format!("cleaned_light_{}.wav", sc.name));
+                Some(ab_path)
+            } else {
+                None
+            };
             let res = benchmark_pipeline(&sc.name, EngineMode::Light, aec, &sc.clean_speech, &sc.noisy_mixture, sc.sample_rate, light_wav.as_deref());
             if is_key {
                 let aec_str = if aec { "Yes" } else { "No" };
@@ -239,7 +245,12 @@ fn main() {
 
         // 2. Standard Engine (No AEC and With AEC)
         for &aec in &[false, true] {
-            let std_wav = if is_key && !aec { Some(output_dir.join(format!("cleaned_standard_{}.wav", sc.name))) } else { None };
+            let std_wav = if is_key && !aec {
+                let ab_path = ab_dir.join(format!("cleaned_standard_{}.wav", sc.name));
+                Some(ab_path)
+            } else {
+                None
+            };
             let res = benchmark_pipeline(&sc.name, EngineMode::Standard, aec, &sc.clean_speech, &sc.noisy_mixture, sc.sample_rate, std_wav.as_deref());
             if is_key {
                 let aec_str = if aec { "Yes" } else { "No" };
@@ -254,7 +265,12 @@ fn main() {
         // 3. Voice Isolation Engine (for background talker scenarios)
         if sc.name.contains("Background_Talker") {
             for &aec in &[false, true] {
-                let iso_wav = if is_key && !aec { Some(output_dir.join(format!("cleaned_voice_iso_{}.wav", sc.name))) } else { None };
+                let iso_wav = if is_key && !aec {
+                    let ab_path = ab_dir.join(format!("cleaned_voice_iso_{}.wav", sc.name));
+                    Some(ab_path)
+                } else {
+                    None
+                };
                 let res = benchmark_pipeline(&sc.name, EngineMode::VoiceIsolation, aec, &sc.clean_speech, &sc.noisy_mixture, sc.sample_rate, iso_wav.as_deref());
                 if is_key {
                     let aec_str = if aec { "Yes" } else { "No" };

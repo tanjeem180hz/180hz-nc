@@ -79,8 +79,8 @@ impl DenoiseEngine for LightEngine {
         );
 
         // Krisp-grade Voice Activity Gating with Hangover:
-        // - Speech onset trigger: >= 0.35
-        // - Hangover duration: 8 frames (80 ms; plus ~100 ms RNN GRU decay gives ~180 ms smooth cutoff)
+        // - Speech onset trigger: >= 0.35 (protects speech while rejecting clicks/transients)
+        // - Hangover duration: 8 frames (80 ms)
         const VAD_ONSET: f32 = 0.35;
         const HANGOVER_FRAMES: usize = 8;
 
@@ -94,17 +94,17 @@ impl DenoiseEngine for LightEngine {
             false
         };
 
-        // When speech is present: pass neural-denoised voice with full 100% natural clarity
-        // When speech is absent: aggressively mute background down to 0.0 (absolute digital silence)
+        // When speech is present: preserve 100% full natural speech harmonics
+        // When speech is absent: smooth background floor attenuation down to 0.001 (-60 dB)
         let target_gate = if is_speech {
             1.0f32
         } else {
-            (self.vad_probability / VAD_ONSET).powi(3).clamp(0.0, 0.01) * 0.01
+            (self.vad_probability / VAD_ONSET).clamp(0.001, 0.05) * 0.05
         };
 
-        // Smooth gain transition across samples (fast attack ~2ms, gentle decay ~35ms)
-        let attack_coeff = 0.08f32;
-        let release_coeff = 0.010f32;
+        // Smooth gain transition across samples (fast attack ~1.5ms, gentle release ~60ms)
+        let attack_coeff = 0.12f32;
+        let release_coeff = 0.008f32;
 
         for (i, &s) in self.scratch_out.iter().enumerate() {
             let coeff = if target_gate > self.smoothed_vad_gain {
@@ -113,12 +113,7 @@ impl DenoiseEngine for LightEngine {
                 release_coeff
             };
             self.smoothed_vad_gain += (target_gate - self.smoothed_vad_gain) * coeff;
-            let effective_gain = if self.smoothed_vad_gain < 0.0002 {
-                0.0
-            } else {
-                self.smoothed_vad_gain
-            };
-            out_frame[i] = (s * SCALE_FROM_16BIT) * effective_gain;
+            out_frame[i] = (s * SCALE_FROM_16BIT) * self.smoothed_vad_gain;
         }
 
         Ok(())

@@ -332,20 +332,43 @@ pub struct Evaluator;
 
 impl Evaluator {
     pub fn find_optimal_lag(reference: &[f32], signal: &[f32], max_lag: usize) -> usize {
-        let max_search = max_lag.min(reference.len().saturating_sub(2400)).min(signal.len().saturating_sub(2400));
+        // Find region of strong speech in reference
+        let mut start_ref = 0;
+        while start_ref + 4800 < reference.len() {
+            let energy: f32 = reference[start_ref..start_ref + 480].iter().map(|&x| x * x).sum();
+            if energy / 480.0 > 0.001 {
+                break;
+            }
+            start_ref += 240;
+        }
+
+        let eval_len = 4800; // 100 ms correlation window
+        if start_ref + eval_len > reference.len() {
+            start_ref = 0;
+        }
+
+        let max_search = max_lag.min(signal.len().saturating_sub(start_ref + eval_len));
         if max_search == 0 { return 0; }
 
+        let ref_slice = &reference[start_ref..start_ref + eval_len];
+        let ref_norm_sq: f32 = ref_slice.iter().map(|&x| x * x).sum();
+        if ref_norm_sq < 1e-8 { return 0; }
+
         let mut best_lag = 0;
-        let mut max_corr = f32::NEG_INFINITY;
-        let eval_len = 2400;
+        let mut max_norm_corr = f32::NEG_INFINITY;
 
         for lag in 0..=max_search {
-            let mut corr = 0.0f32;
+            let sig_slice = &signal[start_ref + lag..start_ref + lag + eval_len];
+            let sig_norm_sq: f32 = sig_slice.iter().map(|&x| x * x).sum();
+            if sig_norm_sq < 1e-8 { continue; }
+
+            let mut dot = 0.0f32;
             for i in 0..eval_len {
-                corr += reference[i] * signal[i + lag];
+                dot += ref_slice[i] * sig_slice[i];
             }
-            if corr > max_corr {
-                max_corr = corr;
+            let norm_corr = dot / (ref_norm_sq.sqrt() * sig_norm_sq.sqrt());
+            if norm_corr > max_norm_corr {
+                max_norm_corr = norm_corr;
                 best_lag = lag;
             }
         }
@@ -353,9 +376,9 @@ impl Evaluator {
     }
 
     pub fn calculate_si_sdr(clean: &[f32], estimated: &[f32]) -> f32 {
-        let lag = Self::find_optimal_lag(clean, estimated, 960);
+        let lag = Self::find_optimal_lag(clean, estimated, 1440);
         let avail = clean.len().min(estimated.len().saturating_sub(lag));
-        if avail == 0 { return 0.0; }
+        if avail < 2400 { return 0.0; }
 
         let s = &clean[..avail];
         let sh = &estimated[lag..lag + avail];
@@ -387,7 +410,7 @@ impl Evaluator {
     }
 
     pub fn calculate_stoi(clean: &[f32], cleaned: &[f32]) -> f32 {
-        let lag = Self::find_optimal_lag(clean, cleaned, 960);
+        let lag = Self::find_optimal_lag(clean, cleaned, 1440);
         let avail = clean.len().min(cleaned.len().saturating_sub(lag));
         if avail < 1000 { return 0.0; }
 
@@ -427,11 +450,18 @@ impl Evaluator {
     }
 
     pub fn calculate_speech_delta_db(clean_speech: &[f32], cleaned_speech: &[f32]) -> f32 {
-        let in_energy: f32 = clean_speech.iter().map(|&x| x * x).sum();
-        let out_energy: f32 = cleaned_speech.iter().map(|&x| x * x).sum();
+        let lag = Self::find_optimal_lag(clean_speech, cleaned_speech, 1440);
+        let avail = clean_speech.len().min(cleaned_speech.len().saturating_sub(lag));
+        if avail < 2400 { return 0.0; }
 
-        let in_rms = (in_energy / clean_speech.len().max(1) as f32).sqrt();
-        let out_rms = (out_energy / cleaned_speech.len().max(1) as f32).sqrt();
+        let s = &clean_speech[..avail];
+        let sh = &cleaned_speech[lag..lag + avail];
+
+        let in_energy: f32 = s.iter().map(|&x| x * x).sum();
+        let out_energy: f32 = sh.iter().map(|&x| x * x).sum();
+
+        let in_rms = (in_energy / avail as f32).sqrt();
+        let out_rms = (out_energy / avail as f32).sqrt();
 
         if in_rms < 1e-6 || out_rms < 1e-6 { return 0.0; }
         (20.0 * (out_rms / in_rms).log10()).abs()
@@ -540,8 +570,10 @@ fn evaluate_pipeline_on_mixtures(mode: EngineMode, mixtures: &[TestMixture]) -> 
         let speech_clean = &mix.clean_speech[..speech_samples.min(mix.clean_speech.len())];
         let speech_cleaned = &cleaned[..speech_samples.min(cleaned.len())];
 
-        let noise_in = &mix.noise_only[speech_samples..mix.noise_only.len().min(mix.noisy_mixture.len())];
-        let noise_out = &cleaned[speech_samples..cleaned.len().min(mix.noisy_mixture.len())];
+        // Allow 100 ms (4800 samples) guard band after speech ends for pipeline filter ringout / lag
+        let noise_start = (speech_samples + 4800).min(mix.noise_only.len());
+        let noise_in = &mix.noise_only[noise_start..mix.noise_only.len().min(mix.noisy_mixture.len())];
+        let noise_out = &cleaned[noise_start..cleaned.len().min(mix.noisy_mixture.len())];
 
         let nr_db = Evaluator::calculate_noise_reduction_db(noise_in, noise_out);
         let sp_delta = Evaluator::calculate_speech_delta_db(speech_clean, speech_cleaned);

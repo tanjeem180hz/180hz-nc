@@ -1,6 +1,6 @@
 use crate::dsp::{
     AudioResampler, ComfortNoiseGenerator, DriftCompensator, GainSmoother, HighPassFilter,
-    SilenceDetector, SoftLimiter,
+    SilenceDetector, SoftLimiter, TransientSuppressor,
 };
 use crate::engine::aec::EchoCanceller;
 use crate::engine::diagnostics::DiagnosticTapProducers;
@@ -19,7 +19,7 @@ pub enum EngineMode {
 pub enum ActiveEngine {
     Light(LightEngine),
     Standard(Box<StandardEngine>),
-    VoiceIsolation(VoiceIsolationEngine),
+    VoiceIsolation(Box<VoiceIsolationEngine>),
 }
 
 /// Master Audio Processing Pipeline.
@@ -31,6 +31,7 @@ pub struct AudioPipeline {
     hpf: HighPassFilter,
     aec: EchoCanceller,
     vad: SilenceDetector,
+    transient: TransientSuppressor,
     smoother: GainSmoother,
     limiter: SoftLimiter,
     comfort_noise: ComfortNoiseGenerator,
@@ -72,6 +73,7 @@ impl AudioPipeline {
             hpf: HighPassFilter::default_48k(),
             aec: EchoCanceller::default_preset(),
             vad: SilenceDetector::default_48k(),
+            transient: TransientSuppressor::new(TransientSuppressor::LOOKAHEAD_5MS),
             smoother: GainSmoother::default_48k(),
             limiter: SoftLimiter::default_preset(),
             comfort_noise: ComfortNoiseGenerator::default_preset(),
@@ -130,7 +132,7 @@ impl AudioPipeline {
                     if let Some(ref emb) = self.enrolled_voiceprint {
                         v.set_enrolled_embedding(emb.clone());
                     }
-                    ActiveEngine::VoiceIsolation(v)
+                    ActiveEngine::VoiceIsolation(Box::new(v))
                 }
             };
         }
@@ -237,6 +239,19 @@ impl AudioPipeline {
         self.diagnostic_tap = tap;
     }
 
+    /// Access Transient Suppressor.
+    pub fn transient_mut(&mut self) -> &mut TransientSuppressor {
+        &mut self.transient
+    }
+
+    /// Access Standard Engine if active.
+    pub fn standard_engine_mut(&mut self) -> Option<&mut StandardEngine> {
+        match &mut self.active_engine {
+            ActiveEngine::Standard(ref mut e) => Some(e.as_mut()),
+            _ => None,
+        }
+    }
+
     /// Access Voice Isolation engine for speaker enrollment.
     pub fn voice_isolation_mut(&mut self) -> &mut VoiceIsolationEngine {
         if !matches!(self.active_engine, ActiveEngine::VoiceIsolation(_)) {
@@ -244,11 +259,11 @@ impl AudioPipeline {
             if let Some(ref emb) = self.enrolled_voiceprint {
                 v.set_enrolled_embedding(emb.clone());
             }
-            self.active_engine = ActiveEngine::VoiceIsolation(v);
+            self.active_engine = ActiveEngine::VoiceIsolation(Box::new(v));
             self.mode = EngineMode::VoiceIsolation;
         }
         match &mut self.active_engine {
-            ActiveEngine::VoiceIsolation(v) => v,
+            ActiveEngine::VoiceIsolation(ref mut v) => v.as_mut(),
             _ => unreachable!(),
         }
     }
@@ -333,7 +348,10 @@ impl AudioPipeline {
         // Step 3: AEC (subtract room loudspeaker echo if enabled)
         self.aec.process_mic_frame(&mut self.wet_buffer);
 
-        // Stage 3: After AEC
+        // Step 3b: Dedicated Transient & Click Suppression (mechanical keyboards, mouse clicks)
+        self.transient.process_frame(&mut self.wet_buffer);
+
+        // Stage 3: After AEC & Transient Suppression
         if let Some(ref mut diag) = self.diagnostic_tap {
             diag.push_stage(3, &self.wet_buffer);
         }
