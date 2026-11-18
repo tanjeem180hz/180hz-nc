@@ -22,6 +22,13 @@ pub struct AudioMetrics {
     pub frames_passthrough: AtomicU64,
     pub fallback_active: AtomicBool,
     pub noise_reduction_db: AtomicU32, // Bitwise float representation
+    pub aec_enabled: AtomicBool,
+    pub aec_ref_device_name: std::sync::RwLock<String>,
+    pub aec_ref_sample_rate: AtomicU32,
+    pub aec_ref_peak_db: AtomicU32,
+    pub aec_frames_processed: AtomicU64,
+    pub aec_erle_db: AtomicU32,
+    pub aec_delay_ms: AtomicU32,
 }
 
 impl AudioMetrics {
@@ -37,6 +44,13 @@ impl AudioMetrics {
             frames_passthrough: AtomicU64::new(0),
             fallback_active: AtomicBool::new(false),
             noise_reduction_db: AtomicU32::new(0.0f32.to_bits()),
+            aec_enabled: AtomicBool::new(false),
+            aec_ref_device_name: std::sync::RwLock::new("None".to_string()),
+            aec_ref_sample_rate: AtomicU32::new(0),
+            aec_ref_peak_db: AtomicU32::new((-100.0f32).to_bits()),
+            aec_frames_processed: AtomicU64::new(0),
+            aec_erle_db: AtomicU32::new(0.0f32.to_bits()),
+            aec_delay_ms: AtomicU32::new(0.0f32.to_bits()),
         }
     }
 
@@ -71,6 +85,34 @@ impl AudioMetrics {
     pub fn get_noise_reduction_db(&self) -> f32 {
         f32::from_bits(self.noise_reduction_db.load(Ordering::Relaxed))
     }
+
+    pub fn is_aec_enabled(&self) -> bool {
+        self.aec_enabled.load(Ordering::Relaxed)
+    }
+
+    pub fn get_aec_ref_device_name(&self) -> String {
+        self.aec_ref_device_name.read().map(|g| g.clone()).unwrap_or_else(|_| "Unknown".to_string())
+    }
+
+    pub fn get_aec_ref_sample_rate(&self) -> u32 {
+        self.aec_ref_sample_rate.load(Ordering::Relaxed)
+    }
+
+    pub fn get_aec_ref_peak_db(&self) -> f32 {
+        f32::from_bits(self.aec_ref_peak_db.load(Ordering::Relaxed))
+    }
+
+    pub fn get_aec_frames_processed(&self) -> u64 {
+        self.aec_frames_processed.load(Ordering::Relaxed)
+    }
+
+    pub fn get_aec_erle_db(&self) -> f32 {
+        f32::from_bits(self.aec_erle_db.load(Ordering::Relaxed))
+    }
+
+    pub fn get_aec_delay_ms(&self) -> f32 {
+        f32::from_bits(self.aec_delay_ms.load(Ordering::Relaxed))
+    }
 }
 
 impl Default for AudioMetrics {
@@ -86,6 +128,7 @@ pub struct AudioStreamControls {
     pub ptt_active: Arc<AtomicBool>,
     pub auto_sensitivity: Arc<AtomicBool>,
     pub sensitivity_threshold_dbfs: Arc<AtomicU32>,
+    pub aec_enabled: Arc<AtomicBool>,
 }
 
 impl Default for AudioStreamControls {
@@ -96,6 +139,7 @@ impl Default for AudioStreamControls {
             ptt_active: Arc::new(AtomicBool::new(false)),
             auto_sensitivity: Arc::new(AtomicBool::new(true)),
             sensitivity_threshold_dbfs: Arc::new(AtomicU32::new((-50.0f32).to_bits())),
+            aec_enabled: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -294,49 +338,52 @@ impl AudioStreamController {
             None
         };
 
-        // 3. Optional AEC Reference Loopback Stream
-        let (ref_stream, mut ref_cons) = if pipeline.is_aec_enabled() {
-            if let Ok(speaker_dev) = device_manager.get_default_output_device() {
-                if let Ok(spk_cfg) = speaker_dev.default_output_config() {
-                    let spk_channels = (spk_cfg.channels() as usize).max(1);
-                    let ref_rb = HeapRb::<f32>::new(Self::RB_CAPACITY);
-                    let (mut ref_prod, ref_cons) = ref_rb.split();
-                    let is_running_ref = Arc::clone(&running);
+        // 3. AEC Reference Loopback Stream (captures default render device audio for echo cancellation)
+        let (ref_stream, mut ref_cons) = if let Ok(speaker_dev) = device_manager.get_default_output_device() {
+            let spk_name = cpal::traits::DeviceTrait::name(&speaker_dev).unwrap_or_else(|_| "Default Output".to_string());
+            if let Ok(spk_cfg) = speaker_dev.default_output_config() {
+                let spk_channels = (spk_cfg.channels() as usize).max(1);
+                let spk_sample_rate = spk_cfg.sample_rate().0;
+                let ref_rb = HeapRb::<f32>::new(Self::RB_CAPACITY);
+                let (mut ref_prod, ref_cons) = ref_rb.split();
+                let is_running_ref = Arc::clone(&running);
 
-                    let stream_res = speaker_dev.build_input_stream(
-                        &spk_cfg.into(),
-                        move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                            if !is_running_ref.load(Ordering::Relaxed) {
-                                return;
-                            }
-                            if spk_channels > 1 {
-                                for frame in data.chunks_exact(spk_channels) {
-                                    let mono = frame.iter().sum::<f32>() / spk_channels as f32;
-                                    let _ = ref_prod.try_push(mono);
-                                }
-                            } else {
-                                for &sample in data {
-                                    let _ = ref_prod.try_push(sample);
-                                }
-                            }
-                        },
-                        |err| tracing::warn!("AEC loopback reference stream warning: {}", err),
-                        None,
-                    );
+                if let Ok(mut g) = metrics.aec_ref_device_name.write() {
+                    *g = spk_name;
+                }
+                metrics.aec_ref_sample_rate.store(spk_sample_rate, Ordering::Relaxed);
 
-                    match stream_res {
-                        Ok(st) => {
-                            let _ = st.play();
-                            tracing::info!("AEC loopback reference capture active");
-                            (Some(st), Some(ref_cons))
+                let stream_res = speaker_dev.build_input_stream(
+                    &spk_cfg.into(),
+                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                        if !is_running_ref.load(Ordering::Relaxed) {
+                            return;
                         }
-                        Err(e) => {
-                            tracing::warn!("Could not start AEC loopback stream: {}", e);
-                            (None, None)
+                        if spk_channels > 1 {
+                            for frame in data.chunks_exact(spk_channels) {
+                                let mono = frame.iter().sum::<f32>() / spk_channels as f32;
+                                let _ = ref_prod.try_push(mono);
+                            }
+                        } else {
+                            for &sample in data {
+                                let _ = ref_prod.try_push(sample);
+                            }
                         }
+                    },
+                    |err| tracing::warn!("AEC loopback reference stream warning: {}", err),
+                    None,
+                );
+
+                match stream_res {
+                    Ok(st) => {
+                        let _ = st.play();
+                        tracing::info!("AEC loopback reference capture initialized on speaker: {}", metrics.get_aec_ref_device_name());
+                        (Some(st), Some(ref_cons))
                     }
-                } else {
-                    (None, None)
+                    Err(e) => {
+                        tracing::warn!("Could not start AEC loopback stream: {}", e);
+                        (None, None)
+                    }
                 }
             } else {
                 (None, None)
@@ -352,6 +399,7 @@ impl AudioStreamController {
             ptt_active: Arc::new(AtomicBool::new(pipeline.is_ptt_active())),
             auto_sensitivity: Arc::new(AtomicBool::new(true)),
             sensitivity_threshold_dbfs: Arc::new(AtomicU32::new(pipeline.sensitivity_threshold_dbfs().to_bits())),
+            aec_enabled: Arc::new(AtomicBool::new(pipeline.is_aec_enabled())),
         };
         let is_running_worker = Arc::clone(&running);
         let worker_metrics = Arc::clone(&metrics);
@@ -387,19 +435,36 @@ impl AudioStreamController {
                     let sens_thresh = f32::from_bits(worker_controls.sensitivity_threshold_dbfs.load(Ordering::Relaxed));
                     worker_pipeline.set_auto_sensitivity(auto_sens);
                     worker_pipeline.set_sensitivity_threshold(sens_thresh);
+
+                    let aec_en = worker_controls.aec_enabled.load(Ordering::Relaxed);
+                    worker_pipeline.set_aec_enabled(aec_en);
+                    worker_metrics.aec_enabled.store(aec_en, Ordering::Relaxed);
+
                     // Drain AEC reference samples if loopback is active
                     if let Some(ref mut r_cons) = ref_cons {
                         let mut count = 0;
+                        let mut ref_peak = 0.0f32;
                         while count < AudioPipeline::FRAME_SAMPLES {
                             if let Some(s) = r_cons.try_pop() {
                                 ref_scratch[count] = s;
+                                let abs_s = s.abs();
+                                if abs_s > ref_peak {
+                                    ref_peak = abs_s;
+                                }
                                 count += 1;
                             } else {
                                 break;
                             }
                         }
-                        if count > 0 {
+                        if count > 0 && aec_en {
                             worker_pipeline.feed_aec_reference(&ref_scratch[..count]);
+                            let ref_db = if ref_peak > 1e-5 { 20.0 * ref_peak.log10() } else { -100.0 };
+                            worker_metrics.aec_ref_peak_db.store(ref_db.to_bits(), Ordering::Relaxed);
+                            worker_metrics.aec_frames_processed.fetch_add(1, Ordering::Relaxed);
+                            worker_metrics.aec_erle_db.store(worker_pipeline.aec().last_erle_db().to_bits(), Ordering::Relaxed);
+                            worker_metrics.aec_delay_ms.store(worker_pipeline.aec().bulk_delay_ms().to_bits(), Ordering::Relaxed);
+                        } else if !aec_en {
+                            worker_metrics.aec_ref_peak_db.store((-100.0f32).to_bits(), Ordering::Relaxed);
                         }
                     }
 
@@ -663,6 +728,14 @@ impl AudioStreamController {
 
     pub fn set_sensitivity_threshold(&self, threshold_dbfs: f32) {
         self.controls.sensitivity_threshold_dbfs.store(threshold_dbfs.to_bits(), Ordering::Relaxed);
+    }
+
+    pub fn set_aec_enabled(&self, enabled: bool) {
+        self.controls.aec_enabled.store(enabled, Ordering::Relaxed);
+    }
+
+    pub fn is_aec_enabled(&self) -> bool {
+        self.controls.aec_enabled.load(Ordering::Relaxed)
     }
 
     pub fn stop(&mut self) {

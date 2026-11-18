@@ -68,6 +68,14 @@ const sensitivityText = document.getElementById('sensitivityText');
 
 const segButtons = document.querySelectorAll('.seg-btn');
 const aecToggle = document.getElementById('aecToggle');
+const aecDetails = document.getElementById('aecDetails');
+const aecRefDeviceText = document.getElementById('aecRefDeviceText');
+const aecRefLevelText = document.getElementById('aecRefLevelText');
+const aecErleText = document.getElementById('aecErleText');
+const aecDelayText = document.getElementById('aecDelayText');
+const aecFramesText = document.getElementById('aecFramesText');
+const aecTestBtn = document.getElementById('aecTestBtn');
+const pipelineSelfTestBtn = document.getElementById('pipelineSelfTestBtn');
 
 const pttToggle = document.getElementById('pttToggle');
 const pttControls = document.getElementById('pttControls');
@@ -375,12 +383,46 @@ segButtons.forEach((btn) => {
 });
 
 // ----------------------------------------------------------------------------
-// Echo Cancellation
+// Echo Cancellation & Self-Test Actions
 // ----------------------------------------------------------------------------
 
 aecToggle.addEventListener('change', () => {
-  invoke('set_aec', { enabled: aecToggle.checked }).catch(() => {});
+  const en = aecToggle.checked;
+  if (aecDetails) aecDetails.style.display = en ? 'flex' : 'none';
+  invoke('set_aec', { enabled: en }).catch(() => {});
 });
+
+if (aecTestBtn) {
+  aecTestBtn.addEventListener('click', async () => {
+    aecTestBtn.disabled = true;
+    aecTestBtn.textContent = 'Testing...';
+    try {
+      const res = await invoke('run_aec_speaker_test_command');
+      alert(`[AEC Test Result]\n${res.summary}`);
+    } catch (e) {
+      alert(`AEC test failed: ${e}`);
+    } finally {
+      aecTestBtn.disabled = false;
+      aecTestBtn.textContent = 'Speaker Test';
+    }
+  });
+}
+
+if (pipelineSelfTestBtn) {
+  pipelineSelfTestBtn.addEventListener('click', async () => {
+    pipelineSelfTestBtn.disabled = true;
+    pipelineSelfTestBtn.textContent = 'Testing...';
+    try {
+      const res = await invoke('run_pipeline_self_test_command');
+      alert(`[Self-Test Result]\n${res.summary}`);
+    } catch (e) {
+      alert(`Self-test failed: ${e}`);
+    } finally {
+      pipelineSelfTestBtn.disabled = false;
+      pipelineSelfTestBtn.textContent = 'Self-Test';
+    }
+  });
+}
 
 // ----------------------------------------------------------------------------
 // Push to Talk
@@ -490,6 +532,20 @@ async function pollMetrics() {
         framesPassthroughText.style.color = (metrics.frames_passthrough > 0) ? '#f87171' : '#cbd5e1';
       }
       if (dspLatencyText) dspLatencyText.textContent = `${metrics.frame_time_us || 0} µs`;
+
+      // Update AEC Telemetry
+      if (aecDetails) {
+        if (metrics.aec_enabled) {
+          aecDetails.style.display = 'flex';
+          if (aecRefDeviceText) aecRefDeviceText.textContent = metrics.aec_ref_device || 'Default Output';
+          if (aecRefLevelText) aecRefLevelText.textContent = metrics.aec_ref_peak_db > -58 ? `${Math.round(metrics.aec_ref_peak_db)} dB` : '-100 dB';
+          if (aecErleText) aecErleText.textContent = `${Math.round(metrics.aec_erle_db || 0)} dB`;
+          if (aecDelayText) aecDelayText.textContent = `${(metrics.aec_delay_ms || 0).toFixed(1)} ms`;
+          if (aecFramesText) aecFramesText.textContent = metrics.aec_frames_processed || 0;
+        } else {
+          aecDetails.style.display = 'none';
+        }
+      }
 
       if (noiseReductionBadge) {
         if (!metrics.suppression_active) {

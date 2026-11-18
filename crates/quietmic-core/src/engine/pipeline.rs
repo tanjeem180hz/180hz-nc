@@ -242,6 +242,14 @@ impl AudioPipeline {
         self.aec.is_enabled()
     }
 
+    pub fn aec(&self) -> &EchoCanceller {
+        &self.aec
+    }
+
+    pub fn aec_mut(&mut self) -> &mut EchoCanceller {
+        &mut self.aec
+    }
+
     pub fn feed_aec_reference(&mut self, ref_samples: &[f32]) {
         self.aec.feed_reference(ref_samples);
     }

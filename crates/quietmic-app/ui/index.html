@@ -101,10 +101,11 @@
         <button type="button" class="seg-btn" data-mode="Standard">Standard</button>
         <button type="button" class="seg-btn" data-mode="None">None</button>
       </div>
-      <div class="stat-row" style="display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; margin-top: 8px;">
+      <div class="stat-row" style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #94a3b8; margin-top: 8px;">
         <span>Processed: <strong id="framesProcessedText" style="color: #cbd5e1;">0</strong></span>
         <span>Pass-through: <strong id="framesPassthroughText" style="color: #cbd5e1;">0</strong></span>
         <span>DSP: <strong id="dspLatencyText" style="color: #cbd5e1;">0 µs</strong></span>
+        <button type="button" id="pipelineSelfTestBtn" class="key-bind-btn" style="padding: 2px 8px; font-size: 11px;">Self-Test</button>
       </div>
     </section>
 
@@ -134,6 +135,18 @@
           <input type="checkbox" id="aecToggle">
           <span class="slider-round"></span>
         </label>
+      </div>
+      <div id="aecDetails" class="stat-row" style="display: none; flex-direction: column; gap: 4px; font-size: 11px; color: #94a3b8; margin-top: 8px;">
+        <div style="display: flex; justify-content: space-between;">
+          <span>Speaker Ref: <strong id="aecRefDeviceText" style="color: #cbd5e1;">Default Output</strong></span>
+          <span>Ref Level: <strong id="aecRefLevelText" style="color: #cbd5e1;">-100 dB</strong></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span>ERLE: <strong id="aecErleText" style="color: #34d399;">0 dB</strong></span>
+          <span>Delay: <strong id="aecDelayText" style="color: #cbd5e1;">0 ms</strong></span>
+          <span>Frames: <strong id="aecFramesText" style="color: #cbd5e1;">0</strong></span>
+          <button type="button" id="aecTestBtn" class="key-bind-btn" style="padding: 2px 8px; font-size: 11px;">Speaker Test</button>
+        </div>
       </div>
     </section>
 

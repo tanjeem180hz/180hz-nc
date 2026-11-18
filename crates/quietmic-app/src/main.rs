@@ -40,6 +40,13 @@ pub struct MetricsDto {
     pub fallback_active: bool,
     pub noise_reduction_db: f32,
     pub suppression_active: bool,
+    pub aec_enabled: bool,
+    pub aec_ref_device: String,
+    pub aec_ref_sample_rate: u32,
+    pub aec_ref_peak_db: f32,
+    pub aec_frames_processed: u64,
+    pub aec_erle_db: f32,
+    pub aec_delay_ms: f32,
 }
 
 pub struct AppState {
@@ -316,6 +323,20 @@ fn get_system_audio_diagnostics() -> quietmic_core::audio::SystemAudioDiagnostic
 }
 
 #[tauri::command]
+fn run_pipeline_self_test_command() -> Result<quietmic_core::SelfTestReport, String> {
+    let mut pipeline = quietmic_core::AudioPipeline::new(48000, 48000).map_err(|e| e.to_string())?;
+    pipeline.set_mode(quietmic_core::EngineMode::Standard);
+    pipeline.set_strength(1.0);
+    Ok(quietmic_core::run_pipeline_self_test(&mut pipeline))
+}
+
+#[tauri::command]
+fn run_aec_speaker_test_command() -> Result<quietmic_core::AecSpeakerTestReport, String> {
+    let mut aec = quietmic_core::EchoCanceller::default_preset();
+    Ok(quietmic_core::run_aec_speaker_test(&mut aec))
+}
+
+#[tauri::command]
 fn get_virtual_status(state: State<AppState>) -> VirtualDeviceStatus {
     state.device_manager.check_virtual_cable()
 }
@@ -426,6 +447,13 @@ fn get_metrics(state: State<AppState>) -> MetricsDto {
             fallback_active: m.is_fallback_active(),
             noise_reduction_db: m.get_noise_reduction_db(),
             suppression_active: suppression_active && !m.is_fallback_active(),
+            aec_enabled: m.is_aec_enabled(),
+            aec_ref_device: m.get_aec_ref_device_name(),
+            aec_ref_sample_rate: m.get_aec_ref_sample_rate(),
+            aec_ref_peak_db: m.get_aec_ref_peak_db(),
+            aec_frames_processed: m.get_aec_frames_processed(),
+            aec_erle_db: m.get_aec_erle_db(),
+            aec_delay_ms: m.get_aec_delay_ms(),
         }
     } else {
         MetricsDto {
@@ -440,6 +468,13 @@ fn get_metrics(state: State<AppState>) -> MetricsDto {
             fallback_active: false,
             noise_reduction_db: 0.0,
             suppression_active: false,
+            aec_enabled: false,
+            aec_ref_device: "None".to_string(),
+            aec_ref_sample_rate: 0,
+            aec_ref_peak_db: -100.0,
+            aec_frames_processed: 0,
+            aec_erle_db: 0.0,
+            aec_delay_ms: 0.0,
         }
     }
 }
@@ -877,6 +912,8 @@ fn main() {
             get_live_test_status,
             run_pipeline_diagnostics,
             get_system_audio_diagnostics,
+            run_pipeline_self_test_command,
+            run_aec_speaker_test_command,
             open_url
         ])
         .run(tauri::generate_context!())

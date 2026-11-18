@@ -7,12 +7,13 @@ pub use audio::{AudioDeviceInfo, AudioMetrics, AudioStreamController, DeviceMana
 pub use config::AppConfig;
 pub use dsp::{
     AudioResampler, ComfortNoiseGenerator, DriftCompensator, GainSmoother, HighPassFilter,
-    SilenceDetector, SoftLimiter,
+    ResidualSuppressor, SilenceDetector, SoftLimiter, TransientSuppressor,
 };
 pub use engine::{
-    generate_diagnostic_test_signal, run_diagnostic_sweep, AudioPipeline, DenoiseEngine,
-    DiagnosticController, DiagnosticTapProducers, EchoCanceller, EngineMode, LightEngine,
-    StageMetrics, StandardEngine, VoiceIsolationEngine, STAGE_NAMES,
+    generate_diagnostic_test_signal, run_aec_speaker_test, run_diagnostic_sweep,
+    run_pipeline_self_test, AecSpeakerTestReport, AudioPipeline, DenoiseEngine,
+    DiagnosticController, DiagnosticTapProducers, EchoCanceller, EngineMode, EngineRuntimeParameters,
+    LightEngine, SelfTestReport, StageMetrics, StandardEngine, VoiceIsolationEngine, STAGE_NAMES,
 };
 
 /// Initializes rotating file logger in %APPDATA%/180Hz-NC/logs/180hz-nc.log

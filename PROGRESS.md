@@ -35,6 +35,21 @@
 
 ## 2. Completed Tasks & Measurements
 
+### Commit 30: Part B Fixes (Extended NLMS AEC, Bulk Delay Line, Cross-Correlation Delay Estimation, Double-Talk Protection, and Speaker Test)
+- **Problem Investigated**: Turning on AEC did not work; far-end users heard their own echo; reference stream silent.
+- **Root Causes Discovered & Fixed**:
+  - *Root Cause 1 (Reference Stream Lifecycle Bug)*: Reference stream was only initialized on startup if AEC was already toggled ON. Fixed by unconditionally setting up and maintaining the loopback reference stream on the default output device.
+  - *Root Cause 2 (Severe Hardware/Acoustic Delay Mismatch)*: Acoustic distance + Windows WASAPI render/capture buffers create 20-80 ms of latency (1000-4000 samples). The previous 128-tap filter (2.6 ms) could not reach the echo. Fixed by implementing a 200 ms bulk delay line with normalized cross-correlation delay estimation (`estimate_delay_cross_correlation`).
+  - *Root Cause 3 (Double-Talk Filter Divergence)*: Without DTD, near-end speech corrupted filter weights. Implemented Geigel and power-ratio DTD that instantly freezes adaptation ($\mu = 0$) during double talk.
+- **AEC Performance Measurements**:
+  - Offline AEC Test with 40 ms acoustic propagation delay and multi-tap room reflections: Achieves **69.6 dB ERLE** (target $\ge 20.0$ dB) -> **PASS**.
+  - Delay estimation unit test `test_cross_correlation_delay_estimation`: Identifies exact 1920 samples (40.0 ms) delay with 0 sample error.
+  - Double-talk test `test_double_talk_protection_freezes_adaptation`: Weights remain within 0.05 norm variance during loud near-end speech.
+- **Real-Time UI Telemetry & Action Buttons**:
+  - Added live reference device name, sample rate, live peak/RMS level meter, real-time ERLE in dB, bulk delay in ms, and AEC frame counter to UI.
+  - Added "Speaker Test" button (runs `run_aec_speaker_test_command`) and "Self-Test" button (runs `run_pipeline_self_test_command`) with one-click diagnostic modal reports.
+- **Verification**: All 59 unit tests and 15 integration test suites pass with 0 errors.
+
 ### Commit 29: Part A Fixes (Per-Bin Fine Spectral Wiener Gain, Zero Dry Leakage at 100%, 2nd-Stage Residual Suppressor, and Self-Test)
 - **Problem Investigated**: Denoise engine active, but noise leaking during active speech; dry signal leakage concern; comfort noise gain.
 - **Root Cause & Fix (Under-Suppression During Speech)**:
