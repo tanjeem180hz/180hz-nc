@@ -1,5 +1,5 @@
 /// Comfort Noise Generator.
-/// Generates an extremely subtle, low-pass shaped pseudo-random acoustic presence floor (~ -68 dBFS)
+/// Generates an extremely subtle, low-pass shaped pseudo-random acoustic presence floor (~ -76 dBFS)
 /// to avoid the unnatural "dead silence" digital cutoff perception during pauses or strong gating.
 #[derive(Debug, Clone)]
 pub struct ComfortNoiseGenerator {
@@ -25,9 +25,9 @@ impl ComfortNoiseGenerator {
         }
     }
 
-    /// Default generator (-68 dBFS floor).
+    /// Default generator (-76 dBFS floor, below the -70 dBFS requirement).
     pub fn default_preset() -> Self {
-        Self::new(-68.0)
+        Self::new(-76.0)
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {

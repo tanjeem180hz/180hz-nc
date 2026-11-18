@@ -2,6 +2,7 @@ pub mod aec;
 pub mod diagnostics;
 pub mod light;
 pub mod pipeline;
+pub mod self_test;
 pub mod standard;
 pub mod traits;
 pub mod voice_isolation;
@@ -12,7 +13,8 @@ pub use diagnostics::{
     DiagnosticTapProducers, StageMetrics, STAGE_NAMES,
 };
 pub use light::LightEngine;
-pub use pipeline::{AudioPipeline, EngineMode};
+pub use pipeline::{AudioPipeline, EngineMode, EngineRuntimeParameters};
+pub use self_test::{run_pipeline_self_test, SelfTestReport};
 pub use standard::StandardEngine;
 pub use traits::DenoiseEngine;
 pub use voice_isolation::VoiceIsolationEngine;

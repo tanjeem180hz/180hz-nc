@@ -25,6 +25,8 @@ pub struct StandardEngine {
     noise_estimate: Vec<f32>, // Per-band noise floor tracker
     prior_snr: Vec<f32>,      // Decision-directed a-priori SNR per band
     prev_gain: Vec<f32>,      // Previous frame gain per band
+    bin_prior: Vec<f32>,      // Per-bin decision-directed a-priori SNR
+    bin_prev_gain: Vec<f32>,  // Per-bin previous frame gain
     vad_estimate: f32,
     suppression_factor: f32,
     attenuation_limit_db: f32,
@@ -95,11 +97,13 @@ impl StandardEngine {
             noise_estimate: vec![0.0f32; Self::NUM_BANDS],
             prior_snr: vec![1.0f32; Self::NUM_BANDS],
             prev_gain: vec![1.0f32; Self::NUM_BANDS],
+            bin_prior: vec![1.0f32; num_bins],
+            bin_prev_gain: vec![1.0f32; num_bins],
             vad_estimate: 0.0,
             suppression_factor: 1.0,
-            attenuation_limit_db: 36.0,
+            attenuation_limit_db: 40.0,
             post_filter_enabled: true,
-            post_filter_beta: 1.25,
+            post_filter_beta: 1.45,
             init_frames: 0,
             band_bin_ranges,
         }
@@ -153,6 +157,8 @@ impl DenoiseEngine for StandardEngine {
         self.noise_estimate.fill(0.0);
         self.prior_snr.fill(1.0);
         self.prev_gain.fill(1.0);
+        self.bin_prior.fill(1.0);
+        self.bin_prev_gain.fill(1.0);
         self.vad_estimate = 0.0;
         self.init_frames = 0;
     }
@@ -226,10 +232,10 @@ impl DenoiseEngine for StandardEngine {
 
             self.noise_estimate[b] = self.noise_estimate[b].clamp(1e-9, MAX_NOISE_FLOOR);
 
-            // Estimate subband SNR
+            // Estimate subband SNR (speech formant range: 75 Hz to 8000 Hz, bands 1..=26)
             let snr = (band_power / self.noise_estimate[b].max(1e-10)).max(0.01);
-            if (3..=24).contains(&b) {
-                if snr > 2.0 {
+            if (1..=26).contains(&b) {
+                if snr > 1.8 {
                     speech_energy_sum += band_power;
                 } else {
                     noise_energy_sum += band_power;
@@ -238,26 +244,34 @@ impl DenoiseEngine for StandardEngine {
 
             let min_gain = 10.0f32.powf(-self.attenuation_limit_db / 20.0);
 
-            // Decision-directed a-priori SNR smoothing to eliminate musical noise
-            let prior = if is_startup {
-                (snr - 1.0).max(0.01)
-            } else {
-                0.80 * (self.prev_gain[b].powi(2) * self.prior_snr[b]) + 0.20 * (snr - 1.0).max(0.0)
-            };
-            self.prior_snr[b] = prior;
+            // Per-bin fine spectral Wiener gain:
+            // Combines subband noise floor with fine bin harmonic structure.
+            // Preserves discrete speech harmonic peaks while suppressing inter-harmonic noise valleys!
+            for (offset, spec) in self.complex_spectrum[start..end].iter_mut().enumerate() {
+                let k = start + offset;
+                let bin_power = (spec.norm_sqr() * FFT_NORM_SQ).max(1e-11);
+                let bin_snr = (bin_power / noise.max(1e-10)).max(0.01);
 
-            // DeepFilterNet-style Wiener gain with optional harmonic post-filter
-            let mut raw_gain = (prior / (prior + 1.0)).sqrt();
-            if self.post_filter_enabled && self.post_filter_beta > 1.0 {
-                raw_gain = raw_gain.powf(self.post_filter_beta);
-            }
+                let prior = if is_startup {
+                    (bin_snr - 1.0).max(0.01)
+                } else {
+                    0.80 * (self.bin_prev_gain[k].powi(2) * self.bin_prior[k]) + 0.20 * (bin_snr - 1.0).max(0.0)
+                };
+                self.bin_prior[k] = prior;
 
-            let tuned_gain = 1.0 - self.suppression_factor * (1.0 - raw_gain);
-            let band_gain = tuned_gain.clamp(min_gain, 1.0);
-            self.prev_gain[b] = band_gain;
+                let mut raw_gain = (prior / (prior + 1.0)).sqrt();
+                if self.post_filter_enabled && self.post_filter_beta > 1.0 {
+                    raw_gain = raw_gain.powf(self.post_filter_beta);
+                }
 
-            for spec in &mut self.complex_spectrum[start..end] {
-                *spec *= band_gain;
+                let tuned_gain = 1.0 - self.suppression_factor * (1.0 - raw_gain);
+                let bin_gain = tuned_gain.clamp(min_gain, 1.0);
+                self.bin_prev_gain[k] = bin_gain;
+
+                let vad_scale = (self.vad_estimate / 0.25).clamp(min_gain, 1.0);
+                let final_gain = (bin_gain * vad_scale).clamp(min_gain, 1.0);
+
+                *spec *= final_gain;
             }
         }
 

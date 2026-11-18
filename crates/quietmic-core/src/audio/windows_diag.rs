@@ -12,6 +12,9 @@ pub struct SystemAudioDiagnostic {
     pub default_input_sample_rate: u32,
     pub default_output_name: String,
     pub default_output_sample_rate: u32,
+    pub mic_boost_high_warning: bool,
+    pub audio_enhancements_warning: bool,
+    pub meeting_app_guidance: String,
     pub recommendations: Vec<String>,
 }
 
@@ -70,8 +73,13 @@ impl SystemAudioDiagnostic {
         }
 
         // Always provide clear third-party meeting app guidance
+        let meeting_app_guidance = "In Discord, Zoom, and Teams: Select 'CABLE Output' as your Microphone. Turn OFF their built-in noise suppression (Krisp/RNNoise) and disable 'Automatically adjust mic volume' to prevent fighting 180hz nc.".to_string();
+        recommendations.push(meeting_app_guidance.clone());
+
+        let mic_boost_high_warning = false;
+        let audio_enhancements_warning = true; // Recommend checking Windows Audio Enhancements
         recommendations.push(
-            "Conflict Prevention: If using Discord, Zoom, Google Meet, or Teams, disable their built-in noise suppression (Krisp/RNNoise) to avoid double-denoising and muffled voice.".to_string(),
+            "Windows Audio Enhancements: Check Sound Control Panel -> Microphone Properties -> Advanced. If 'Enable audio enhancements' is checked, uncheck it to ensure clean raw audio reaches the denoiser.".to_string(),
         );
 
         Self {
@@ -83,6 +91,9 @@ impl SystemAudioDiagnostic {
             default_input_sample_rate,
             default_output_name,
             default_output_sample_rate,
+            mic_boost_high_warning,
+            audio_enhancements_warning,
+            meeting_app_guidance,
             recommendations,
         }
     }

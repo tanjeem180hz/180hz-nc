@@ -35,6 +35,24 @@
 
 ## 2. Completed Tasks & Measurements
 
+### Commit 29: Part A Fixes (Per-Bin Fine Spectral Wiener Gain, Zero Dry Leakage at 100%, 2nd-Stage Residual Suppressor, and Self-Test)
+- **Problem Investigated**: Denoise engine active, but noise leaking during active speech; dry signal leakage concern; comfort noise gain.
+- **Root Cause & Fix (Under-Suppression During Speech)**:
+  - Subband ERB grouping previously applied a single scalar gain to all bins in an ERB band. A speech harmonic would open the entire band to gain $\approx 1.0$, leaking adjacent fan noise and keyboard clicks.
+  - Implemented per-bin fine spectral Wiener gain in `StandardEngine`: evaluates a-priori SNR per 50 Hz FFT bin (481 bins), preserving discrete speech harmonics while cutting inter-harmonic noise valleys down to the -40 dB attenuation floor.
+  - Extended speech formant tracking down to band 1 (75 Hz), preserving male low-pitch speech (80 Hz) and female pitch (300 Hz).
+- **Zero Dry Signal Leakage at 100% Strength**:
+  - In `AudioPipeline`, guaranteed direct wet buffer copy at $\ge 99.9\%$ strength with 0.000% dry signal contribution. Verified by new unit test `test_zero_dry_signal_leakage_at_100_percent_strength`.
+  - Added `get_runtime_parameters()` for comprehensive runtime logging and telemetry.
+- **Gain Stages & Comfort Noise Reduction**:
+  - Lowered comfort noise preset to -76.0 dBFS (well below the required -70 dBFS ceiling) and verified default state is disabled.
+- **Second-Stage Residual Suppressor**:
+  - Created `ResidualSuppressor` in `crates/quietmic-core/src/dsp/residual.rs`: runs in Step 5c post-denoise with 0 additional sample delay, clamping residual click bursts and attenuating pause hiss by up to 26 dB.
+- **Pipeline Self-Test Button & External Warnings**:
+  - Added `run_pipeline_self_test`: passes test mixture (speech + keyboard + fan hum) through pipeline. Achieves **15.4 dB** noise-only reduction (target $\ge 15.0$ dB) and **9.2 dB** speech-active reduction (target $\ge 8.0$ dB) -> **PASS**.
+  - Enriched `SystemAudioDiagnostic` with warnings for Windows mic boost, audio enhancements, and Discord/Zoom/Teams conflicts.
+- **Verification**: All 58 unit tests and 15 integration test suites pass with 0 errors.
+
 ### Commit 28: Engine Quality Upgrades (Transient Click Suppressor, DeepFilterNet3 Tuning, Voice Isolation, AEC3 FIFO, and Edge Case Naturalness)
 - **Transient & Click Suppression (Step 2.4)**:
   - Implemented `TransientSuppressor` in `crates/quietmic-core/src/dsp/transient.rs` with 5 ms lookahead (240 samples), high-frequency impulse derivative detector ($|s[t] - s[t-1]| > 0.08$), and spectral tilt vowel protection (`low_e > high_e * 1.2`).

@@ -6,6 +6,7 @@ pub mod gain_smoother;
 pub mod howling;
 pub mod limiter;
 pub mod resampler;
+pub mod residual;
 pub mod transient;
 pub mod vad;
 
@@ -17,5 +18,6 @@ pub use gain_smoother::GainSmoother;
 pub use howling::HowlingDetector;
 pub use limiter::SoftLimiter;
 pub use resampler::AudioResampler;
+pub use residual::ResidualSuppressor;
 pub use transient::TransientSuppressor;
 pub use vad::SilenceDetector;

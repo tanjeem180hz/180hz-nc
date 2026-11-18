@@ -1,6 +1,6 @@
 use crate::dsp::{
     AudioResampler, ComfortNoiseGenerator, DriftCompensator, GainSmoother, HighPassFilter,
-    SilenceDetector, SoftLimiter, TransientSuppressor,
+    ResidualSuppressor, SilenceDetector, SoftLimiter, TransientSuppressor,
 };
 use crate::engine::aec::EchoCanceller;
 use crate::engine::diagnostics::DiagnosticTapProducers;
@@ -22,6 +22,21 @@ pub enum ActiveEngine {
     VoiceIsolation(Box<VoiceIsolationEngine>),
 }
 
+/// Exact runtime parameters exposed for diagnostics, verification, and UI telemetry.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EngineRuntimeParameters {
+    pub mode: String,
+    pub strength: f32,
+    pub wet_dry_ratio: f32,
+    pub attenuation_limit_db: f32,
+    pub post_filter_enabled: bool,
+    pub post_filter_beta: f32,
+    pub sensitivity_threshold_dbfs: f32,
+    pub aec_enabled: bool,
+    pub comfort_noise_enabled: bool,
+    pub transient_suppression_enabled: bool,
+}
+
 /// Master Audio Processing Pipeline.
 /// Operates on 10 ms frames at 48 kHz mono (480 samples).
 pub struct AudioPipeline {
@@ -32,6 +47,7 @@ pub struct AudioPipeline {
     aec: EchoCanceller,
     vad: SilenceDetector,
     transient: TransientSuppressor,
+    residual: ResidualSuppressor,
     smoother: GainSmoother,
     limiter: SoftLimiter,
     comfort_noise: ComfortNoiseGenerator,
@@ -74,6 +90,7 @@ impl AudioPipeline {
             aec: EchoCanceller::default_preset(),
             vad: SilenceDetector::default_48k(),
             transient: TransientSuppressor::new(TransientSuppressor::LOOKAHEAD_5MS),
+            residual: ResidualSuppressor::default_preset(),
             smoother: GainSmoother::default_48k(),
             limiter: SoftLimiter::default_preset(),
             comfort_noise: ComfortNoiseGenerator::default_preset(),
@@ -244,6 +261,11 @@ impl AudioPipeline {
         &mut self.transient
     }
 
+    /// Access Residual Suppressor.
+    pub fn residual_mut(&mut self) -> &mut ResidualSuppressor {
+        &mut self.residual
+    }
+
     /// Access Standard Engine if active.
     pub fn standard_engine_mut(&mut self) -> Option<&mut StandardEngine> {
         match &mut self.active_engine {
@@ -265,6 +287,30 @@ impl AudioPipeline {
         match &mut self.active_engine {
             ActiveEngine::VoiceIsolation(ref mut v) => v.as_mut(),
             _ => unreachable!(),
+        }
+    }
+
+    /// Returns the exact runtime engine configuration parameters for logging and diagnostics.
+    pub fn get_runtime_parameters(&self) -> EngineRuntimeParameters {
+        let (att_limit, pf_en, pf_beta) = match &self.active_engine {
+            ActiveEngine::Standard(e) => (e.attenuation_limit_db(), true, e.post_filter_beta()),
+            _ => (36.0, false, 1.0),
+        };
+        EngineRuntimeParameters {
+            mode: match self.mode {
+                EngineMode::Light => "Light (RNNoise 48kHz)".to_string(),
+                EngineMode::Standard => "Standard (DeepFilterNet3 48kHz)".to_string(),
+                EngineMode::VoiceIsolation => "Voice Isolation (Speaker Enrolled)".to_string(),
+            },
+            strength: self.strength,
+            wet_dry_ratio: self.smoother.current(),
+            attenuation_limit_db: att_limit,
+            post_filter_enabled: pf_en,
+            post_filter_beta: pf_beta,
+            sensitivity_threshold_dbfs: self.vad.threshold_dbfs(),
+            aec_enabled: self.aec.is_enabled(),
+            comfort_noise_enabled: self.comfort_noise.is_enabled(),
+            transient_suppression_enabled: self.transient.is_enabled(),
         }
     }
 
@@ -395,6 +441,9 @@ impl AudioPipeline {
         // If signal is below input sensitivity threshold, gate to digital silence
         if !is_active {
             self.wet_buffer.fill(0.0);
+        } else {
+            // Step 5c: Apply Second-Stage Residual Suppressor
+            self.residual.process_frame(&mut self.wet_buffer);
         }
 
         // Stage 4: After Denoise
@@ -403,7 +452,15 @@ impl AudioPipeline {
         }
 
         // Step 6: Wet/Dry Linear Mix with Gain Smoother
-        self.smoother.blend_frame(&self.dry_buffer, &self.wet_buffer, &mut self.blended_buffer);
+        // Guarantee: At 100% strength, 0.000% dry signal leaks through.
+        // At 0% strength, 100% dry signal is passed.
+        if self.strength >= 0.999 && (self.smoother.current() - 1.0).abs() < 1e-4 {
+            self.blended_buffer.copy_from_slice(&self.wet_buffer);
+        } else if self.strength <= 0.001 && self.smoother.current() < 1e-4 {
+            self.blended_buffer.copy_from_slice(&self.dry_buffer);
+        } else {
+            self.smoother.blend_frame(&self.dry_buffer, &self.wet_buffer, &mut self.blended_buffer);
+        }
 
         // Stage 5: After Wet/Dry Mix
         if let Some(ref mut diag) = self.diagnostic_tap {
@@ -600,5 +657,47 @@ mod tests {
             assert!(pipeline.process_frame_internal(&input_chunk, &mut output_chunk, 960).is_ok());
             assert_eq!(output_chunk.capacity(), initial_cap, "Output chunk reallocated during soak!");
         }
+    }
+
+    #[test]
+    fn test_zero_dry_signal_leakage_at_100_percent_strength() {
+        let mut pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline init failed");
+        pipeline.set_mode(EngineMode::Standard);
+        pipeline.set_strength(1.0);
+
+        let mut out = Vec::with_capacity(490);
+        // Feed silence to let smoother and filter states settle
+        let silence = vec![0.0f32; AudioPipeline::FRAME_SAMPLES];
+        for _ in 0..20 {
+            pipeline.process_frame_internal(&silence, &mut out, 960).unwrap();
+        }
+
+        // Generate high-amplitude noise burst
+        let noise_frame: Vec<f32> = (0..AudioPipeline::FRAME_SAMPLES)
+            .map(|i| ((i * 17 % 100) as f32 / 50.0 - 1.0) * 0.4)
+            .collect();
+
+        // Process noise frame
+        pipeline.process_frame_internal(&noise_frame, &mut out, 960).unwrap();
+
+        // Check blended buffer vs wet buffer vs dry buffer
+        let dry = pipeline.dry_buffer();
+        let wet = &pipeline.wet_buffer;
+        let blended = pipeline.blended_buffer();
+
+        // At 100% strength, blended buffer MUST match wet buffer identically (0% dry leakage)
+        for i in 0..AudioPipeline::FRAME_SAMPLES {
+            assert!(
+                (blended[i] - wet[i]).abs() < 1e-6,
+                "Dry signal leaked at 100% strength! blended[{}]={}, wet[{}]={}, dry[{}]={}",
+                i, blended[i], i, wet[i], i, dry[i]
+            );
+        }
+
+        // Verify runtime parameters
+        let params = pipeline.get_runtime_parameters();
+        assert_eq!(params.strength, 1.0);
+        assert!((params.wet_dry_ratio - 1.0).abs() < 1e-4);
+        assert_eq!(params.attenuation_limit_db, 40.0);
     }
 }
