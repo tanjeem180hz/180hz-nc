@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradients -->
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#161b26"/>
+      <stop offset="70%" stop-color="#0a0c12"/>
+      <stop offset="100%" stop-color="#050608"/>
+    </radialGradient>
+
+    <!-- Metallic Rim Gradient -->
+    <linearGradient id="rimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.8"/>
+    </linearGradient>
+
+    <!-- Cyan Glow -->
+    <filter id="cyanGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Amber Glow -->
+    <filter id="amberGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Outer Housing Bezel -->
+  <circle cx="256" cy="256" r="248" fill="url(#bgGrad)" stroke="url(#rimGrad)" stroke-width="6"/>
+
+  <!-- Frequency Graticule Rings -->
+  <circle cx="256" cy="256" r="220" fill="none" stroke="#1e293b" stroke-width="2" stroke-dasharray="4 8"/>
+  <circle cx="256" cy="256" r="180" fill="none" stroke="rgba(0, 240, 255, 0.25)" stroke-width="2"/>
+  <circle cx="256" cy="256" r="130" fill="none" stroke="#1e293b" stroke-width="1.5" stroke-dasharray="2 6"/>
+  <circle cx="256" cy="256" r="80" fill="none" stroke="rgba(245, 158, 11, 0.2)" stroke-width="1.5"/>
+
+  <!-- Frequency Ticks along Perimeter -->
+  <g stroke="#334155" stroke-width="2">
+    <line x1="256" y1="12" x2="256" y2="28" stroke="#00f0ff" stroke-width="4"/> <!-- 180 Hz Top Mark -->
+    <line x1="256" y1="484" x2="256" y2="500"/>
+    <line x1="12" y1="256" x2="28" y2="256"/>
+    <line x1="484" y1="256" x2="500" y2="256"/>
+    <line x1="84" y1="84" x2="96" y2="96"/>
+    <line x1="428" y1="84" x2="416" y2="96"/>
+    <line x1="84" y1="428" x2="96" y2="416"/>
+    <line x1="428" y1="428" x2="416" y2="416"/>
+  </g>
+
+  <!-- Outer Jagged Noise Spikes (Collapsing inward) -->
+  <path d="M 120 256 Q 140 210, 170 230 T 210 200 T 256 220 T 300 190 T 340 230 T 392 256"
+        fill="none" stroke="#64748b" stroke-width="3" stroke-linecap="round" opacity="0.4"/>
+
+  <!-- Inner Clean Signal Wave (Electric Cyan, Glowing) -->
+  <path d="M 96 256 C 140 160, 180 340, 256 256 C 330 170, 370 350, 416 256"
+        fill="none" stroke="#00f0ff" stroke-width="10" stroke-linecap="round" filter="url(#cyanGlow)"/>
+
+  <!-- 180 Hz Label & Harmonic Impulse -->
+  <circle cx="256" cy="256" r="14" fill="#f59e0b" filter="url(#amberGlow)"/>
+  <circle cx="256" cy="256" r="6" fill="#ffffff"/>
+
+  <!-- 180 Hz Text Badge -->
+  <text x="256" y="70" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+        font-size="20" font-weight="800" fill="#00f0ff" text-anchor="middle" letter-spacing="4">180 Hz</text>
+  <text x="256" y="445" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+        font-size="16" font-weight="700" fill="#f59e0b" text-anchor="middle" letter-spacing="3">SIGNAL LAB</text>
+</svg>

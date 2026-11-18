@@ -32,10 +32,56 @@
 - [x] Complete Denoise Engine Audit (Step 1-5): Result A Confirmed (110.3 dB noise drop), Root Causes Fixed, Zero Silent Fallbacks, Atomic Metrics UI, and A/B Real Typing/Fan WAV Verification in `NS_DEBUG_REPORT.md`.
 - [x] Echo Doctor Routing Diagnostic Engine & Discord Screen Sharing Remediation in `ECHO_REPORT.md`.
 - [x] AEC Buzzing / "Jir-Jir" Root Causes Fixed: Causal FIR Indexing, Geigel DTD, Leaky LMS, Envelope-Smoothed NLP, and Headphone Auto-Bypass.
+- [x] 180 Hz Signal Lab UI Redesign: Frequency Ruler, Live Circular Signal Orb, Tactile Master Power, 3 Studio Themes (Night Lab, Daylight, Amber Console), 4-Tab Architecture, and 0% Idle CPU.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 36: Complete UI Redesign to "180 Hz Signal Lab" Design System
+- **Design Concept & Architecture**:
+  - Implemented the complete "180 Hz Signal Lab" design system inspired by precision studio audio hardware and futuristic oscilloscopes.
+  - Built around sound, frequency, and signal cleaning anchored at **180 Hz** (the human vocal fundamental).
+- **Signature Visual Elements Implemented**:
+  1. **Top Frequency-Scale Ruler (`.freq-ruler`)**:
+     - Calibrated graduation: `20Hz | 60Hz | 120Hz | [▼ 180 Hz NOTCH LOCK] | 500Hz | 1kHz | 4kHz | 10kHz | 20kHz`.
+     - 180 Hz frequency highlighted with illuminated cyan/amber lock notch badge (`▼ 180 Hz NOTCH LOCK`).
+  2. **Hero Signal Orb & Waveform Ring Canvas (`orb.js`)**:
+     - Circular oscilloscope canvas (`#signalOrbCanvas`) rendering concentric -40 dB, -20 dB, 0 dB graticule rings and 12 radial studio clock ticks.
+     - **Outer Noise Spikes**: Rendered from `raw_waveform` telemetry snapshot (32 points interpolated around $360^\circ$). Raw keyboard clicks and fan hum appear as jagged, desaturated spikes.
+     - **Inner Voice Ring**: Rendered from `clean_waveform` telemetry snapshot as a smooth, glowing electric cyan ring with dynamic radial fill.
+     - **Radial Dynamic Collapse**: When suppression is active, outer noise spikes visibly collapse inward into the smooth ring with radial collapse vector lines, demonstrating real-time AI cleaning.
+     - **Zero Idle CPU**: Throttled to 30 fps via rAF and completely halted when window is minimized or hidden (`document.hidden === true`).
+  3. **Tactile Master Power Button (`#masterPowerBtn`)**:
+     - Nestled directly inside the center hole of the Signal Orb.
+     - Distinct states: `ACTIVE` (electric cyan glow and power symbol), `BYPASS` (warm amber glow), `ERROR` (crimson red pulse).
+     - Satisfying click animation (`transform: scale(0.96)`) mapped to `set_bypass`.
+  4. **The 3 Studio Console Themes**:
+     - `Night Lab` (`night-lab`): Modern dark studio hardware (obsidian `#090a0f`, electric cyan `#00f0ff`, amber `#f59e0b`).
+     - `Daylight` (`daylight`): Clean precision light console (aluminum `#eef2f6`, white cards `#ffffff`, sapphire `#0284c7`).
+     - `Amber Console` (`amber-console`): Vintage warm phosphor oscilloscope (charcoal bronze `#0d0b07`, radiant phosphor amber `#f59e0b`).
+     - Real-time theme switcher in header (`🌙`, `☀️`, `⚡`) persisted to `%APPDATA%/180hz nc/config.json`.
+  5. **Hardware 4-Mode Segmented Switch**:
+     - `None` (true bit-exact linear pass-through), `Light` (RNNoise 48 kHz), `Standard` (DeepFilterNet3), `Max Quality` (Krisp-level full bandwidth).
+  6. **Studio Suppression Strength Fader**:
+     - Track with calibrated dB markings: `0 dB (0%)`, `-6 dB`, `-12 dB`, `-24 dB`, `-∞ dB (100%)`.
+  7. **Dual-Segment Studio VU Meter**:
+     - Dual-segment green/amber/red horizontal bar with white peak-hold bar (15-frame decay) and red **`CLIP`** LED overload indicator flashing at $\ge -1.0$ dBFS.
+  8. **4-Tab Modular Layout**:
+     - `01 LAB`: Hero Signal Orb, Master Power, 4-mode switch, Strength fader, micro-telemetry (Processed frames, pass-through, DSP latency in µs).
+     - `02 DEVICES`: Microphone selection + Auto-Detect badge, Mic Gain, Studio VU meter + `CLIP` LED; Speaker selection + Auto-Detect badge, Volume; VB-CABLE virtual cable status card.
+     - `03 STUDIO`: Live Voice Monitor (headphone test), A/B clickless 15 ms crossfade, 10-second test recorder with WAV export, Auto-Adjust sensitivity gate, Push-to-Talk.
+     - `04 DIAGNOSTICS`: Echo Cancellation (AEC) telemetry, `🩺 Echo Doctor` modal with Discord screen sharing guide, Speaker Test, Self-Test, and Pipeline WAVs dumper.
+- **Iconography & Installer Branding**:
+  - Generated multi-size application icon (`icon.ico`: 16, 24, 32, 48, 64, 128, 256px) and tray icons (`tray-active.ico`, `tray-bypassed.ico`, `tray-error.ico`).
+  - Embedded Common Controls v6 manifest in installer, ensuring clean startup without entry point errors.
+- **Verification & Testing**:
+  - `cargo test --workspace`: **All 64 unit tests and 11 integration test suites passed (0 failures)**.
+  - `cargo clippy --workspace -- -D warnings`: **0 errors, 0 warnings**.
+  - All 6 studio screenshots captured and verified in `docs/screenshots/`:
+    `theme_night_lab.png`, `theme_daylight.png`, `theme_amber_console.png`, `tab_devices.png`, `tab_studio.png`, `tab_diagnostics.png`.
+  - Authored comprehensive `DESIGN.md` documentation.
+  - Clean release binaries built in `target/release/` (`quietmic-app.exe`, `180hz nc.exe`, `180Hz-NC.exe`, `180hz-nc-setup.exe`).
 
 ### Commit 34: Fix Discord Screen Share Echo, Resolve AEC "Jir-Jir" Buzzing, Implement Echo Doctor Diagnostics, and Add Headphone Auto-Bypass
 - **Echo Doctor Routing Diagnostic Engine (Part A)**:

@@ -38,6 +38,32 @@ Everything required for 180hz nc to function perfectly is bundled into `180hz-nc
 
 ---
 
+## 🎛️ 180 Hz Signal Lab UI & Oscilloscope Experience
+
+**180hz nc** features a bespoke interface designed around studio audio hardware and futuristic oscilloscope instrumentation:
+
+- **180 Hz Notch Frequency Ruler**: Spanning the top edge, marking the 180 Hz acoustic anchor frequency where human speech fundamentals decouple from background room noise.
+- **Hero Signal Orb & Waveform Ring**: Real-time circular oscilloscope. Ambient noise appears as jagged, desaturated outer spikes; pristine speech forms a smooth, glowing inner ring. When suppression is active, noise visibly collapses flat into the smooth ring.
+- **Tactile Master Power Button**: Centered inside the Signal Orb with instant one-click toggle between `ACTIVE` (electric cyan glow) and `BYPASS` (amber glow).
+- **3 Studio Themes**:
+  1. `Night Lab` (Default dark studio console, obsidian slate with electric cyan accents).
+  2. `Daylight` (Clean precision light console, aluminum white with sapphire highlights).
+  3. `Amber Console` (Vintage warm phosphor oscilloscope with golden amber phosphor glow).
+- **4 Tabbed Workspaces**:
+  - `01 LAB`: Hero Signal Orb, Master Power, 4-mode segmented switch, suppression strength fader with dB scale, real-time micro-telemetry.
+  - `02 DEVICES`: Microphone selection, Mic Gain, Studio Peak/RMS VU meter with peak-hold & `CLIP` LED alert ($\ge -1.0$ dBFS), Speaker selection & volume, VB-CABLE virtual cable status.
+  - `03 STUDIO`: Live Voice Monitor (headphone test), A/B clickless 15 ms crossfade, 10s voice recorder with WAV export, auto-adjust dynamic sensitivity gate, Push-to-Talk.
+  - `04 DIAGNOSTICS`: Echo Cancellation (AEC), `🩺 Echo Doctor` routing diagnostic modal with Discord screen share guide, Speaker Test, Self-Test, and Pipeline Diagnostics.
+- **Zero Idle CPU**: Automatically halts `requestAnimationFrame` loops and telemetry polling when minimized or hidden to the system tray (**0% CPU**).
+
+### 📸 Studio Console Themes Preview
+
+| Night Lab (Default Dark) | Daylight (Clean Light) | Amber Console (Vintage Phosphor) |
+| :---: | :---: | :---: |
+| ![Night Lab](docs/screenshots/theme_night_lab.png) | ![Daylight](docs/screenshots/theme_daylight.png) | ![Amber Console](docs/screenshots/theme_amber_console.png) |
+
+---
+
 ## 🌟 Overview & Architecture
 
 **180hz nc** is an ultra-low latency, real-time audio enhancement application engineered exclusively in **Rust** with a lightweight **Tauri** frontend (plain HTML/CSS/JS, no heavy frontend frameworks).

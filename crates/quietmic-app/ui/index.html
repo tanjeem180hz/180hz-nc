@@ -1,223 +1,420 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="night-lab">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>180hz nc</title>
+  <title>180hz nc - Signal Lab</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="app-container">
-    <!-- Header -->
-    <header class="header">
-      <div class="brand">
-        <h1 class="brand-title">180hz nc</h1>
-        <span class="brand-subtitle">AI Noise Suppression</span>
+    <!-- 1. Frequency-Scale Ruler (Top Bar) -->
+    <div class="freq-ruler mono" aria-label="Frequency Spectrum Ruler">
+      <div class="freq-tick">20Hz</div>
+      <div class="freq-tick">60Hz</div>
+      <div class="freq-tick">120Hz</div>
+      <div class="freq-tick notch-180">
+        <span class="notch-badge">▼ 180 Hz NOTCH LOCK</span>
+        180Hz
       </div>
-      <div class="status-pill active" id="engineStatusPill">
-        <span class="status-dot"></span>
-        <span id="engineStatusText">Krisp AI Active</span>
+      <div class="freq-tick">500Hz</div>
+      <div class="freq-tick">1kHz</div>
+      <div class="freq-tick">4kHz</div>
+      <div class="freq-tick">10kHz</div>
+      <div class="freq-tick">20kHz</div>
+    </div>
+
+    <!-- 2. Header & Branding -->
+    <header class="header">
+      <div class="brand-wrapper">
+        <div class="brand-logo-dot"></div>
+        <div class="brand-text">
+          <h1 class="brand-title">180hz nc</h1>
+          <span class="brand-sub">SIGNAL LAB AI</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Theme Selector -->
+        <div class="theme-selector" id="themeSelector">
+          <button type="button" class="theme-btn active" data-theme="night-lab" title="Night Lab (Default Dark)">🌙</button>
+          <button type="button" class="theme-btn" data-theme="daylight" title="Daylight (Clean Light)">☀️</button>
+          <button type="button" class="theme-btn" data-theme="amber-console" title="Amber Console (Vintage Phosphor)">⚡</button>
+        </div>
+
+        <!-- Master Engine Status Pill -->
+        <div class="status-pill" id="engineStatusPill">
+          <span class="status-dot"></span>
+          <span id="engineStatusText">Krisp AI Active</span>
+        </div>
       </div>
     </header>
 
-    <!-- Microphone & Input Volume -->
-    <section class="card">
-      <div class="card-row">
-        <label for="micSelect" class="card-label">Microphone</label>
-        <span class="auto-badge" id="micAutoBadge">Auto Detected</span>
-      </div>
-      <select id="micSelect" class="dropdown">
-        <option value="">Detecting microphone...</option>
-      </select>
+    <!-- 3. Studio Navigation Tabs -->
+    <nav class="tab-bar" role="tablist">
+      <button type="button" class="tab-btn active" data-tab="tab-lab" role="tab" aria-selected="true">
+        <span class="tab-index mono">01</span> LAB
+      </button>
+      <button type="button" class="tab-btn" data-tab="tab-devices" role="tab" aria-selected="false">
+        <span class="tab-index mono">02</span> DEVICES
+      </button>
+      <button type="button" class="tab-btn" data-tab="tab-studio" role="tab" aria-selected="false">
+        <span class="tab-index mono">03</span> STUDIO
+      </button>
+      <button type="button" class="tab-btn" data-tab="tab-diagnostics" role="tab" aria-selected="false">
+        <span class="tab-index mono">04</span> DIAGNOSTICS
+      </button>
+    </nav>
 
-      <div class="slider-row">
-        <span class="slider-label">Mic Volume</span>
-        <span id="micVolText" class="slider-val">100%</span>
-      </div>
-      <input type="range" id="micVolumeSlider" min="0" max="200" value="100" class="slider">
-
-      <!-- Mic VU Meter -->
-      <div class="meter-container">
-        <div class="meter-bar">
-          <div id="micMeterFill" class="meter-fill" style="width: 0%;"></div>
+    <!-- =====================================================================
+         TAB 1: LAB (The Hero Dashboard)
+    ====================================================================== -->
+    <main id="tab-lab" class="tab-content active" role="tabpanel">
+      <!-- Signature Signal Orb / Waveform Ring -->
+      <section class="card signal-hero-module">
+        <div class="signal-orb-container" id="signalOrbContainer">
+          <canvas id="signalOrbCanvas" width="220" height="220"></canvas>
+          <!-- Tactile Circular Master Power Button -->
+          <button id="masterPowerBtn" class="master-power-btn active" type="button" aria-label="Toggle Noise Suppression (Power)">
+            <div class="power-btn-inner">
+              <svg class="power-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                <line x1="12" y1="2" x2="12" y2="12"></line>
+              </svg>
+              <span class="power-btn-label mono" id="masterPowerLabel">ACTIVE</span>
+            </div>
+          </button>
         </div>
-        <span id="micMeterDb" class="meter-text">-60 dB</span>
-        <span id="clippingIndicator" class="clip-badge" style="display: none; background: #ef4444; color: #ffffff; font-weight: 700; font-size: 10px; padding: 1px 5px; border-radius: 4px; margin-left: 6px; letter-spacing: 0.5px;">CLIP</span>
-      </div>
-    </section>
 
-    <!-- Speaker & Output Volume -->
-    <section class="card">
-      <div class="card-row">
-        <label for="speakerSelect" class="card-label">Speaker / Headphones</label>
-        <span class="auto-badge" id="spkAutoBadge">Auto Detected</span>
-      </div>
-      <select id="speakerSelect" class="dropdown">
-        <option value="">Detecting speaker...</option>
-      </select>
-
-      <div class="slider-row">
-        <span class="slider-label">Speaker Volume</span>
-        <span id="speakerVolText" class="slider-val">100%</span>
-      </div>
-      <input type="range" id="speakerVolumeSlider" min="0" max="100" value="100" class="slider">
-    </section>
-
-    <!-- Live Voice Tester (Middle Point) -->
-    <section class="card live-test-card">
-      <div class="live-test-center">
-        <button id="liveVoiceBtn" class="live-voice-circle-btn" type="button" title="Click to test your voice live in headphones">
-          <!-- Non-active / Slashed Mic Icon (Off state) -->
-          <svg id="liveVoiceIconOff" class="voice-icon icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="1" y1="1" x2="23" y2="23"></line>
-            <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path>
-            <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
-            <line x1="12" y1="19" x2="12" y2="23"></line>
-            <line x1="8" y1="23" x2="16" y2="23"></line>
-          </svg>
-          <!-- Active Live Mic Icon with waves (On state) -->
-          <svg id="liveVoiceIconOn" class="voice-icon icon-on" style="display: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-            <line x1="12" y1="19" x2="12" y2="23"></line>
-            <line x1="8" y1="23" x2="16" y2="23"></line>
-          </svg>
-        </button>
-
-        <div class="live-test-info">
-          <div id="liveVoiceTitle" class="live-voice-title">Test Your Voice Live</div>
-          <div id="liveVoiceDesc" class="live-voice-desc">Click icon to hear your voice live in headphones</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Noise Suppression: None, Light, Standard, Max Quality -->
-    <section class="card">
-      <div class="card-row">
-        <span class="card-label">Noise Suppression</span>
-        <span id="noiseReductionBadge" class="auto-badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">Active (0 dB)</span>
-      </div>
-      <div class="segmented-control">
-        <button type="button" class="seg-btn" data-mode="None">None</button>
-        <button type="button" class="seg-btn" data-mode="Light">Light</button>
-        <button type="button" class="seg-btn" data-mode="Standard">Standard</button>
-        <button type="button" class="seg-btn active" data-mode="MaxQuality">Max Quality</button>
-      </div>
-      <div class="stat-row" style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #94a3b8; margin-top: 8px;">
-        <span>Processed: <strong id="framesProcessedText" style="color: #cbd5e1;">0</strong></span>
-        <span>Pass-through: <strong id="framesPassthroughText" style="color: #cbd5e1;">0</strong></span>
-        <span>DSP: <strong id="dspLatencyText" style="color: #cbd5e1;">0 µs</strong></span>
-        <button type="button" id="pipelineSelfTestBtn" class="key-bind-btn" style="padding: 2px 8px; font-size: 11px;">Self-Test</button>
-      </div>
-    </section>
-
-    <!-- Automatic Adjust Input Sensitivity -->
-    <section class="card">
-      <div class="toggle-row">
-        <span class="card-label">Auto-Adjust Sensitivity</span>
-        <label class="switch">
-          <input type="checkbox" id="autoSensitivityToggle" checked>
-          <span class="slider-round"></span>
-        </label>
-      </div>
-      <div id="manualSensitivitySection" class="slider-section disabled">
-        <div class="slider-row">
-          <span class="slider-label">Threshold</span>
-          <span id="sensitivityText" class="slider-val">-50 dB</span>
-        </div>
-        <input type="range" id="sensitivitySlider" min="-80" max="-10" value="-50" class="slider" disabled>
-      </div>
-    </section>
-
-    <!-- Echo Cancellation (AEC) -->
-    <section class="card">
-      <div class="toggle-row">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span class="card-label">Echo Cancellation</span>
-          <span id="aecEndpointBadge" class="auto-badge" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; font-size: 10px; display: none;">Speakers</span>
-          <span id="loopWarningPill" class="auto-badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; font-size: 10px; display: none;">⚠️ Loop Detected</span>
-        </div>
-        <label class="switch">
-          <input type="checkbox" id="aecToggle">
-          <span class="slider-round"></span>
-        </label>
-      </div>
-      <div id="aecDetails" class="stat-row" style="display: none; flex-direction: column; gap: 4px; font-size: 11px; color: #94a3b8; margin-top: 8px;">
-        <div style="display: flex; justify-content: space-between;">
-          <span>Speaker Ref: <strong id="aecRefDeviceText" style="color: #cbd5e1;">Default Output</strong></span>
-          <span>Ref Level: <strong id="aecRefLevelText" style="color: #cbd5e1;">-100 dB</strong></span>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
-          <span>ERLE: <strong id="aecErleText" style="color: #34d399;">0 dB</strong></span>
-          <span>Delay: <strong id="aecDelayText" style="color: #cbd5e1;">0 ms</strong></span>
-          <span>Frames: <strong id="aecFramesText" style="color: #cbd5e1;">0</strong></span>
-          <div style="display: flex; gap: 6px;">
-            <button type="button" id="aecTestBtn" class="key-bind-btn" style="padding: 2px 8px; font-size: 11px;">Speaker Test</button>
-            <button type="button" id="echoDoctorBtn" class="key-bind-btn" style="padding: 2px 8px; font-size: 11px; background: rgba(59, 130, 246, 0.2); border-color: #3b82f6; color: #93c5fd;">🩺 Echo Doctor</button>
+        <!-- Micro-copy Bar under Orb -->
+        <div class="orb-telemetry-row mono">
+          <div class="orb-tag">
+            <span class="tag-dot-amber"></span>
+            <span id="orbNoiseStatus">Noise: pulled flat</span>
+          </div>
+          <div class="orb-tag">
+            <span id="orbFrequencyLock" style="color: var(--accent-cyan);">● 180 Hz Locked</span>
+          </div>
+          <div class="orb-tag">
+            <span class="tag-dot-cyan"></span>
+            <span id="orbVoiceStatus">Voice: pristine</span>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- Push to Talk -->
-    <section class="card">
-      <div class="toggle-row">
-        <span class="card-label">Push to Talk</span>
-        <label class="switch">
-          <input type="checkbox" id="pttToggle">
-          <span class="slider-round"></span>
-        </label>
-      </div>
-      <div id="pttControls" class="ptt-controls disabled">
-        <div class="ptt-row">
-          <span class="slider-label">Shortcut:</span>
-          <button type="button" id="pttKeyBtn" class="key-bind-btn">Space</button>
-          <span id="pttStatusBadge" class="ptt-status">Muted</span>
+      <!-- Hardware 4-Mode Segmented Switch -->
+      <section class="card">
+        <div class="card-row">
+          <span class="card-label">Hardware Suppression Engine</span>
+          <span id="noiseReductionBadge" class="auto-badge mono">Active (-38 dB)</span>
         </div>
-      </div>
-    </section>
+        <div class="hw-mode-switch" role="radiogroup" aria-label="Engine Mode">
+          <button type="button" class="hw-mode-btn" data-mode="None" role="radio" aria-checked="false" title="True Linear Bypass (Bit-Exact Pass-Through)">
+            <span class="mode-led"></span> None
+          </button>
+          <button type="button" class="hw-mode-btn" data-mode="Light" role="radio" aria-checked="false" title="Light Engine (RNNoise 48 kHz, Ultra Low CPU)">
+            <span class="mode-led"></span> Light
+          </button>
+          <button type="button" class="hw-mode-btn" data-mode="Standard" role="radio" aria-checked="false" title="Standard Engine (DeepFilterNet3 Fine Spectral Wiener)">
+            <span class="mode-led"></span> Standard
+          </button>
+          <button type="button" class="hw-mode-btn active" data-mode="MaxQuality" role="radio" aria-checked="true" title="Krisp AI Max Quality (Full Bandwidth & Speech Isolation)">
+            <span class="mode-led"></span> Max Quality
+          </button>
+        </div>
+      </section>
+
+      <!-- Studio Noise Suppression Strength Fader -->
+      <section class="card">
+        <div class="fader-group">
+          <div class="slider-row">
+            <span class="card-label">Suppression Strength</span>
+            <span id="strengthValText" class="slider-val mono">100%</span>
+          </div>
+          <input type="range" id="strengthSlider" min="0" max="100" value="100" class="slider" aria-label="Suppression Strength Fader">
+          <div class="fader-scale mono">
+            <span>0 dB (0%)</span>
+            <span>-6 dB</span>
+            <span>-12 dB</span>
+            <span>-24 dB</span>
+            <span>-∞ dB (100%)</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Real-Time Engine Telemetry Strip -->
+      <section class="card" style="padding: 8px 12px;">
+        <div class="card-row mono" style="font-size: 11px; color: var(--text-secondary);">
+          <span>Frames: <strong id="framesProcessedText" style="color: var(--text-main);">0</strong></span>
+          <span>Pass-thru: <strong id="framesPassthroughText" style="color: var(--text-main);">0</strong></span>
+          <span>DSP: <strong id="dspLatencyText" style="color: var(--accent-cyan);">0 µs</strong></span>
+        </div>
+      </section>
+    </main>
+
+    <!-- =====================================================================
+         TAB 2: DEVICES (Input / Output Routing & VU Meters)
+    ====================================================================== -->
+    <main id="tab-devices" class="tab-content" role="tabpanel">
+      <!-- Microphone Selection & Volume -->
+      <section class="card">
+        <div class="card-row">
+          <label for="micSelect" class="card-label">Microphone Input</label>
+          <span class="auto-badge mono" id="micAutoBadge">Auto Detected</span>
+        </div>
+        <select id="micSelect" class="dropdown">
+          <option value="">Detecting microphone...</option>
+        </select>
+
+        <div class="fader-group" style="margin-top: 4px;">
+          <div class="slider-row">
+            <span style="font-size: 11px; color: var(--text-secondary);">Mic Gain</span>
+            <span id="micVolText" class="slider-val mono">100%</span>
+          </div>
+          <input type="range" id="micVolumeSlider" min="0" max="200" value="100" class="slider" aria-label="Microphone Gain">
+        </div>
+
+        <!-- Studio Peak/RMS VU Meter with CLIP Alarm -->
+        <div class="studio-meter-wrapper">
+          <div class="studio-meter-track">
+            <div id="micMeterFill" class="studio-meter-fill"></div>
+            <div id="micMeterPeak" class="studio-meter-peak"></div>
+          </div>
+          <span id="micMeterDb" class="meter-readout mono">-60 dB</span>
+          <span id="clippingIndicator" class="clip-badge mono" style="display: none;">CLIP</span>
+        </div>
+      </section>
+
+      <!-- Speaker / Headphones Selection & Volume -->
+      <section class="card">
+        <div class="card-row">
+          <label for="speakerSelect" class="card-label">Speaker / Headphones</label>
+          <span class="auto-badge mono" id="spkAutoBadge">Auto Detected</span>
+        </div>
+        <select id="speakerSelect" class="dropdown">
+          <option value="">Detecting speaker...</option>
+        </select>
+
+        <div class="fader-group" style="margin-top: 4px;">
+          <div class="slider-row">
+            <span style="font-size: 11px; color: var(--text-secondary);">Output Volume</span>
+            <span id="speakerVolText" class="slider-val mono">100%</span>
+          </div>
+          <input type="range" id="speakerVolumeSlider" min="0" max="100" value="100" class="slider" aria-label="Speaker Volume">
+        </div>
+      </section>
+
+      <!-- Virtual Audio Cable (VB-CABLE) Status Card -->
+      <section class="card">
+        <div class="card-row">
+          <span class="card-label">Virtual Audio Cable</span>
+          <span id="virtualCableBadge" class="auto-badge mono">Installed & Ready</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.5;">
+          Cleaned audio is streamed directly to <strong style="color: var(--accent-cyan);">CABLE Input</strong>. Select <strong style="color: var(--accent-cyan);">CABLE Output</strong> as your microphone in Discord, Zoom, Google Meet, and Teams.
+        </div>
+      </section>
+    </main>
+
+    <!-- =====================================================================
+         TAB 3: STUDIO (Live Voice Test, A/B Crossfade, PTT, Sensitivity)
+    ====================================================================== -->
+    <main id="tab-studio" class="tab-content" role="tabpanel">
+      <!-- Live Voice Tester (Headphone Monitor) -->
+      <section class="card">
+        <div class="card-row">
+          <span class="card-label">Live Voice Monitor</span>
+          <div style="display: flex; gap: 4px;">
+            <button type="button" id="abOriginalBtn" class="btn-action mono" style="padding: 2px 6px; font-size: 10px;">Raw</button>
+            <button type="button" id="abCleanedBtn" class="btn-action primary mono" style="padding: 2px 6px; font-size: 10px;">Cleaned</button>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 14px; padding: 4px 0;">
+          <button id="liveVoiceBtn" class="live-voice-circle-btn" type="button" title="Hear your voice live in headphones">
+            <svg id="liveVoiceIconOff" class="voice-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="1" y1="1" x2="23" y2="23"></line>
+              <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path>
+              <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
+              <line x1="12" y1="19" x2="12" y2="23"></line>
+              <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+            <svg id="liveVoiceIconOn" class="voice-icon" style="display: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              <line x1="12" y1="19" x2="12" y2="23"></line>
+              <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+          </button>
+
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <div id="liveVoiceTitle" style="font-size: 13px; font-weight: 700; color: var(--text-main);">Test Your Voice Live</div>
+            <div id="liveVoiceDesc" style="font-size: 11px; color: var(--text-secondary);">Click to stream live monitor audio to your headphones.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Record & Replay Comparison Buffer -->
+      <section class="card">
+        <div class="card-row">
+          <span class="card-label">10-Second Test Recorder</span>
+          <span id="recordStatusBadge" class="auto-badge mono" style="background: rgba(148, 163, 184, 0.15); color: var(--text-secondary);">Idle</span>
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 4px;">
+          <button type="button" id="recordBufferBtn" class="btn-action" style="flex: 1;">⏺ Record 10s</button>
+          <button type="button" id="playReplayBtn" class="btn-action" style="flex: 1;" disabled>▶ Playback</button>
+          <button type="button" id="exportWavBtn" class="btn-action" style="flex: 1;" disabled>💾 Export WAV</button>
+        </div>
+      </section>
+
+      <!-- Auto-Adjust Sensitivity -->
+      <section class="card">
+        <div class="toggle-row">
+          <span class="card-label">Auto-Adjust Sensitivity</span>
+          <label class="switch">
+            <input type="checkbox" id="autoSensitivityToggle" checked>
+            <span class="slider-round"></span>
+          </label>
+        </div>
+        <div id="manualSensitivitySection" class="fader-group disabled" style="margin-top: 4px;">
+          <div class="slider-row">
+            <span style="font-size: 11px; color: var(--text-secondary);">Manual Gate Threshold</span>
+            <span id="sensitivityText" class="slider-val mono">-50 dB</span>
+          </div>
+          <input type="range" id="sensitivitySlider" min="-80" max="-10" value="-50" class="slider" disabled aria-label="Sensitivity Threshold">
+        </div>
+      </section>
+
+      <!-- Push to Talk -->
+      <section class="card">
+        <div class="toggle-row">
+          <span class="card-label">Push to Talk</span>
+          <label class="switch">
+            <input type="checkbox" id="pttToggle">
+            <span class="slider-round"></span>
+          </label>
+        </div>
+        <div id="pttControls" class="card-row disabled" style="margin-top: 4px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 11px; color: var(--text-secondary);">Shortcut:</span>
+            <button type="button" id="pttKeyBtn" class="btn-action mono">Space</button>
+          </div>
+          <span id="pttStatusBadge" class="auto-badge mono" style="background: rgba(148, 163, 184, 0.15); color: var(--text-secondary);">Muted</span>
+        </div>
+      </section>
+    </main>
+
+    <!-- =====================================================================
+         TAB 4: DIAGNOSTICS (Echo Doctor, AEC, Self-Test, Pipeline Diagnostics)
+    ====================================================================== -->
+    <main id="tab-diagnostics" class="tab-content" role="tabpanel">
+      <!-- Acoustic Echo Cancellation (AEC) -->
+      <section class="card">
+        <div class="toggle-row">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="card-label">Echo Cancellation</span>
+            <span id="aecEndpointBadge" class="auto-badge mono" style="display: none;">Speakers</span>
+            <span id="loopWarningPill" class="auto-badge mono" style="background: var(--accent-red-dim); color: var(--accent-red); display: none;">⚠️ Loop Detected</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="aecToggle">
+            <span class="slider-round"></span>
+          </label>
+        </div>
+
+        <div id="aecDetails" style="display: none; flex-direction: column; gap: 6px; font-size: 11px; color: var(--text-secondary); margin-top: 6px;">
+          <div class="card-row mono">
+            <span>Speaker Ref: <strong id="aecRefDeviceText" style="color: var(--text-main);">Default Output</strong></span>
+            <span>Ref Level: <strong id="aecRefLevelText" style="color: var(--text-main);">-100 dB</strong></span>
+          </div>
+          <div class="card-row mono">
+            <span>ERLE: <strong id="aecErleText" style="color: var(--accent-green);">0 dB</strong></span>
+            <span>Delay: <strong id="aecDelayText" style="color: var(--text-main);">0 ms</strong></span>
+            <span>Frames: <strong id="aecFramesText" style="color: var(--text-main);">0</strong></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Diagnostic Action Tools -->
+      <section class="card">
+        <div class="card-label" style="margin-bottom: 2px;">Signal Diagnostics & Audio Doctors</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <button type="button" id="echoDoctorBtn" class="btn-action primary" style="justify-content: center;">
+            🩺 Echo Doctor
+          </button>
+          <button type="button" id="aecTestBtn" class="btn-action" style="justify-content: center;">
+            🔊 Speaker Test
+          </button>
+          <button type="button" id="pipelineSelfTestBtn" class="btn-action" style="justify-content: center;">
+            ⚙️ Self-Test
+          </button>
+          <button type="button" id="pipelineDiagBtn" class="btn-action" style="justify-content: center;">
+            📊 Pipeline WAVs
+          </button>
+        </div>
+      </section>
+    </main>
   </div>
 
-  <!-- Echo Doctor Diagnostic Modal -->
-  <div id="echoDoctorModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); z-index: 9999; justify-content: center; align-items: center; padding: 16px; backdrop-filter: blur(4px);">
-    <div style="background: #1e293b; border: 1px solid #334155; border-radius: 12px; width: 100%; max-width: 480px; max-height: 85vh; overflow-y: auto; padding: 20px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); color: #f1f5f9; font-family: inherit;">
-      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 12px; margin-bottom: 14px;">
-        <h3 style="margin: 0; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
-          <span>🩺</span> Echo Doctor Diagnostic
-        </h3>
-        <button type="button" id="closeEchoDoctorBtn" style="background: transparent; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; line-height: 1;">&times;</button>
+  <!-- =====================================================================
+       Modals & Dialogs
+  ====================================================================== -->
+  <!-- Echo Doctor Modal -->
+  <div id="echoDoctorModal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title"><span>🩺</span> Echo Doctor Diagnostic</h3>
+        <button type="button" id="closeEchoDoctorBtn" class="modal-close-btn">&times;</button>
       </div>
 
-      <div id="doctorSeverityBanner" style="padding: 10px 14px; border-radius: 8px; font-weight: 600; font-size: 13px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
+      <div id="doctorSeverityBanner" style="padding: 10px 14px; border-radius: 8px; font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 8px;">
         <span id="doctorSeverityIcon">✅</span>
         <span id="doctorSeverityText">Clean Routing</span>
       </div>
 
-      <div style="font-size: 12px; line-height: 1.5; color: #cbd5e1; margin-bottom: 14px;">
-        <div style="font-weight: 600; color: #93c5fd; margin-bottom: 4px;">Diagnosis:</div>
-        <div id="doctorExplanation" style="background: #0f172a; padding: 10px 12px; border-radius: 6px; border: 1px solid #1e293b;">Analyzing audio routing...</div>
+      <div style="font-size: 12px; line-height: 1.5; color: var(--text-secondary);">
+        <div style="font-weight: 700; color: var(--accent-cyan); margin-bottom: 4px;">Diagnosis:</div>
+        <div id="doctorExplanation" style="background: var(--bg-panel-sub); padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border-subtle); color: var(--text-main);">
+          Analyzing audio routing...
+        </div>
       </div>
 
-      <div id="doctorFixSection" style="font-size: 12px; line-height: 1.5; color: #cbd5e1; margin-bottom: 14px; display: none;">
-        <div style="font-weight: 600; color: #f59e0b; margin-bottom: 4px;">Recommended Action:</div>
-        <ul id="doctorFixList" style="background: #0f172a; padding: 10px 14px 10px 28px; border-radius: 6px; border: 1px solid #1e293b; margin: 0;">
+      <div id="doctorFixSection" style="font-size: 12px; line-height: 1.5; color: var(--text-secondary); display: none;">
+        <div style="font-weight: 700; color: var(--accent-amber); margin-bottom: 4px;">Recommended Action:</div>
+        <ul id="doctorFixList" style="background: var(--bg-panel-sub); padding: 10px 14px 10px 28px; border-radius: 6px; border: 1px solid var(--border-subtle); margin: 0; color: var(--text-main);">
         </ul>
       </div>
 
-      <div style="font-size: 11px; line-height: 1.4; color: #94a3b8; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 6px; padding: 10px 12px; margin-bottom: 14px;">
-        <div style="font-weight: 600; color: #60a5fa; margin-bottom: 4px;">📢 Discord Screen Sharing Tips:</div>
+      <div style="font-size: 11px; line-height: 1.4; color: var(--text-secondary); background: var(--accent-cyan-dim); border: 1px solid var(--accent-cyan); border-radius: 6px; padding: 10px 12px;">
+        <div style="font-weight: 700; color: var(--accent-cyan); margin-bottom: 4px;">📢 Discord Screen Sharing Tips:</div>
         <ul id="doctorDiscordTips" style="margin: 0; padding-left: 18px;">
           <li>Share an <strong>Application Window</strong> instead of Entire Screen so Discord captures audio only from that app.</li>
           <li>In Discord Voice & Video settings, set Input to <strong>CABLE Output</strong> and Output to your <strong>Headphones</strong>.</li>
         </ul>
       </div>
 
-      <div style="display: flex; justify-content: flex-end; gap: 8px;">
-        <button type="button" id="dismissEchoDoctorBtn" class="key-bind-btn" style="padding: 6px 14px; font-size: 12px;">Close</button>
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;">
+        <button type="button" id="dismissEchoDoctorBtn" class="btn-action primary" style="padding: 6px 16px;">Done</button>
       </div>
     </div>
   </div>
 
+  <!-- General Diagnostic Result Modal -->
+  <div id="diagnosticResultModal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="diagModalTitle" class="modal-title"><span>⚙️</span> Diagnostic Report</h3>
+        <button type="button" id="closeDiagModalBtn" class="modal-close-btn">&times;</button>
+      </div>
+      <div id="diagModalBody" class="mono" style="font-size: 12px; background: var(--bg-panel-sub); padding: 12px; border-radius: 6px; border: 1px solid var(--border-subtle); max-height: 50vh; overflow-y: auto; white-space: pre-wrap; line-height: 1.5;">
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" id="dismissDiagModalBtn" class="btn-action primary" style="padding: 6px 16px;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="orb.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
