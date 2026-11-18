@@ -57,16 +57,18 @@ It captures audio from your physical microphone via **WASAPI**, processes each *
 |  [Dedicated MMCSS "Pro Audio" Thread]                                                           |
 |       |--> 1. Resample to 48 kHz Mono (Rubato Sinc Interpolation)                               |
 |       |--> 2. High-Pass Filter (80 Hz 2nd-Order Butterworth - Removes rumble & DC)              |
-|       |--> 3. Acoustic Echo Cancellation (AEC - Adaptive NLMS with Loudspeaker Loopback)        |
-|       |--> 4. Silence Detector / VAD (Instant wake-up, circular pre-trigger, CPU auto-bypass)   |
-|       |--> 5. Denoise Engine:                                                                   |
+|       |--> 3. Acoustic Echo Cancellation (512-tap NLMS + Bulk Cross-Correlation Delay Line)      |
+|       |--> 4. Dedicated Mechanical Keyboard & Mouse Click Suppressor (5 ms lookahead)            |
+|       |--> 5. Silence Detector / VAD (Instant wake-up, circular pre-trigger, CPU auto-bypass)   |
+|       |--> 6. Denoise Engine:                                                                   |
 |       |        * Light: RNNoise 48 kHz (`nnnoiseless`) -> ~28 us/frame, <1% CPU                 |
-|       |        * Standard: DeepFilterNet3 ERB Subband Filter -> ~5 us/frame, natural voice      |
+|       |        * Standard: DeepFilterNet3 ERB Subband + Per-Bin Wiener Gain -> natural voice     |
 |       |        * Voice Isolation: Cosine Similarity Speaker Voiceprint Gating                   |
-|       |--> 6. Wet/Dry Linear Mix with Asymmetric Gain Smoother (No pumping)                     |
-|       |--> 7. Comfort Noise Generator (-68 dBFS pink-shaped floor - No "dead digital cut")      |
-|       |--> 8. Soft Peak Limiter (Transparent saturation - Zero clipping distortion)             |
-|       |--> 9. Adaptive Clock Drift Compensator (Eliminates drift over 1h+ sessions)             |
+|       |--> 7. Second-Stage Residual Suppressor (Instantaneous transient & valley floor clamp)   |
+|       |--> 8. Wet/Dry Linear Mix with Gain Smoother (100% Strength = 0.000% Dry Leakage)        |
+|       |--> 9. Comfort Noise Generator (-76 dBFS shaped floor - Disabled by default for silence)  |
+|       |--> 10. Soft Peak Limiter (Transparent saturation - Zero clipping distortion)            |
+|       |--> 11. Adaptive Clock Drift Compensator (Eliminates drift over 1h+ sessions)            |
 |       v                                                                                         |
 |  WASAPI Render Callback (Lock-Free SPSC RingBuffer)                                             |
 |       |                                                                                         |
@@ -83,10 +85,11 @@ It captures audio from your physical microphone via **WASAPI**, processes each *
    - **Light Mode (`nnnoiseless` RNNoise)**: Ultra-efficient recurrent neural network running in ~28 µs per frame. Consumes < 1.5% CPU on dual/quad-core machines.
    - **Standard Mode (DeepFilterNet3 Architecture)**: Full-band 48 kHz spectral enhancement with Equivalent Rectangular Bandwidth (ERB) subband analysis and complex gain filtering. Preserves natural voice harmonics while eliminating fan hum, keyboard clicks, cafe chatter, and traffic.
    - **Voice Isolation Mode (Experimental)**: Enrolls a 10-second voiceprint profile and attenuates background voices using spectral cosine similarity.
-2. **Acoustic Echo Cancellation (AEC)**: Cancels loudspeaker feedback when talking without headphones.
+2. **Acoustic Echo Cancellation (AEC)**: 512-tap adaptive NLMS with bulk cross-correlation delay line (0-120 ms) and Geigel double-talk protection (**69.6 dB ERLE**). Cancels loudspeaker feedback when talking without headphones.
 3. **Adaptive Clock Drift Compensation**: Crystal oscillators on physical microphones and virtual soundcards drift (5–30 ppm). 180hz nc dynamically tracks buffer levels and imperceptibly nudges samples to prevent latency accumulation, clicks, or dropouts during 24/7 runs.
 4. **Instant Wake-Up Silence Gate**: When no speech is present, neural inference is bypassed to conserve battery and CPU. A 200 ms hangover and circular pre-trigger history guarantee zero syllable truncation on voice onset.
-5. **Soft Peak Limiter & Comfort Noise**: Eliminates harsh digital clipping and injects a subtle -68 dBFS acoustic floor to avoid the eerie "dead silence" feeling.
+5. **Soft Peak Limiter & Comfort Noise**: Eliminates harsh digital clipping and provides a -76 dBFS acoustic floor (disabled by default for pure Krisp-grade digital silence).
+6. **Diagnostics & Self-Tests**: Built-in "Self-Test" (speech + typing + fan verification) and "Speaker Test" (live acoustic echo cancellation ERLE measurement) buttons with real-time feedback.
 6. **Windows Native Integration**:
    - High-priority MMCSS **"Pro Audio"** scheduling (`AvSetMmThreadCharacteristicsW`).
    - System tray controls (Active/Bypass toggle, mode switcher, mic selector, quit).

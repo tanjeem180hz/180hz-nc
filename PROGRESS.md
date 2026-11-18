@@ -35,6 +35,27 @@
 
 ## 2. Completed Tasks & Measurements
 
+### Commit 31: Fix TaskDialogIndirect Entry Point Error, Embed Common Controls v6 Manifest in Installer, and Auto-Migrate Legacy 180Hz-NC Files
+- **Problem Investigated**: User encountered error dialog: *"The procedure entry point TaskDialogIndirect could not be located in the dynamic link library C:\Program Files\180Hz-NC\180Hz-NC.exe"*.
+- **Root Cause Discovered**:
+  - `C:\Program Files\180Hz-NC\180Hz-NC.exe` on the system was an outdated binary installed on Nov 17 before commit `b53adf9` restored the Windows Common Controls v6 manifest.
+  - Without an application manifest requesting `Microsoft.Windows.Common-Controls` version `6.0.0.0`, Windows fell back to `comctl32.dll` v5.82 from `C:\Windows\System32\comctl32.dll`, which does not export `TaskDialogIndirect`.
+  - The Start Menu shortcut `C:\ProgramData\Microsoft\Windows\Start Menu\Programs\180Hz NC.lnk` was still pointing to that obsolete `C:\Program Files\180Hz-NC\180Hz-NC.exe`.
+  - In `crates/quietmic-installer/build.rs`, the build script only copied `quietmic-app.exe` to `resources/app.exe` if `!app_target.exists()`, meaning future rebuilds of the installer would not automatically refresh the embedded application binary.
+- **Fixes Applied**:
+  1. Created `crates/quietmic-installer/resources/installer.manifest` containing `<assemblyIdentity>` and `<dependency><dependentAssembly>Microsoft.Windows.Common-Controls 6.0.0.0</dependentAssembly></dependency>` with `asInvoker` requested execution level.
+  2. Linked `installer.manifest` into `crates/quietmic-installer/installer.rc` via resource ID `1 24 "resources/installer.manifest"`.
+  3. Upgraded `crates/quietmic-installer/build.rs` to automatically sync and refresh `resources/app.exe` whenever `target/release/quietmic-app.exe` or `target/release/180hz nc.exe` exists.
+  4. Enhanced `run_install()` in `crates/quietmic-installer/src/main.rs`:
+     - Cleans up legacy shortcuts: `C:\ProgramData\Microsoft\Windows\Start Menu\Programs\180Hz NC.lnk`, `QuietMic.lnk`, and user profile shortcuts.
+     - Automatically updates legacy directories (`C:\Program Files\180Hz-NC\` and `C:\Program Files\QuietMic\`) with the new working binary so that any legacy pinned taskbar icons, recent run history, or shortcuts launch without error.
+  5. Enhanced `run_uninstall()` to clean up legacy shortcuts, directories, and registry keys.
+  6. Rebuilt `180hz nc.exe` and `180hz-nc-setup.exe` in `target/release/`.
+- **Verification**:
+  - `cargo test -p quietmic-installer`: Passed (1/1 unit test).
+  - `cargo test -p quietmic-core`: Passed (59/59 unit tests).
+  - Executed `target/release/180hz nc.exe` in background: Process launched cleanly with zero entry point errors and initialized audio streams and MMCSS Pro Audio thread.
+
 ### Commit 30: Part B Fixes (Extended NLMS AEC, Bulk Delay Line, Cross-Correlation Delay Estimation, Double-Talk Protection, and Speaker Test)
 - **Problem Investigated**: Turning on AEC did not work; far-end users heard their own echo; reference stream silent.
 - **Root Causes Discovered & Fixed**:

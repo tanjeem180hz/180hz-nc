@@ -1,6 +1,7 @@
 #pragma code_page(65001)
 
 1 ICON "resources/icon.ico"
+1 24 "resources/installer.manifest"
 
 1 VERSIONINFO
 FILEVERSION 1,0,0,0

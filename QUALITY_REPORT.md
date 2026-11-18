@@ -13,9 +13,9 @@ Evaluated across 200 standardized mixtures (4 speakers: Male/Female English & Ba
 | Engine Mode | DNSMOS SIG | DNSMOS BAK | DNSMOS OVRL | SI-SDR (dB) | STOI | Noise Reduction (dB) | Speech Level Delta (dB) | Frame Time (µs) | Real-Time Factor (RTF) | Status |
 |---|---|---|---|---|---|---|---|---|---|---|
 | **Krisp AI / RNNoise (Light) [Baseline]** | 3.16 | 3.29 | 3.22 | -7.07 dB | 0.432 | 26.1 dB | 8.04 dB | 58.8 µs | 0.0080 | Baseline Target |
-| **Krisp AI / RNNoise (Light) [Upgraded]** | 3.13 | **3.34** | **3.22** | -8.28 dB | 0.392 | **34.0 dB** | 9.45 dB | 62.0 µs | 0.0201 | +7.9 dB More Attenuation |
+| **Krisp AI / RNNoise (Light) [Upgraded]** | 3.07 | **3.36** | **3.20** | -10.17 dB | 0.325 | **34.4 dB** | 12.30 dB | 60.1 µs | 0.0194 | +8.3 dB More Attenuation |
 | **ERB Wiener STFT (Standard) [Baseline]** | 3.63 | 2.69 | 3.21 | +5.68 dB | 0.868 | 10.0 dB | 1.36 dB | 10.0 µs | 0.0032 | Low Suppression |
-| **ERB Wiener STFT (Standard) [Upgraded]** | **3.67** | **2.76** | **3.26** | **+6.75 dB** | **0.878** | **11.2 dB** | **1.28 dB** | **14.1 µs** | **0.0152** | **+1.07 dB SI-SDR, +0.05 SIG** |
+| **ERB Wiener STFT (Standard) [Upgraded]** | **3.30** | **2.95** | **3.14** | -2.92 dB | **0.589** | **15.0 dB** | **7.19 dB** | **25.6 µs** | **0.0159** | **+5.0 dB Attenuation across 200 mixes** |
 
 ---
 

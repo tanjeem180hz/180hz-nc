@@ -252,17 +252,51 @@ fn run_install(silent: bool) -> Result<(), String> {
         .creation_flags(CREATE_NO_WINDOW)
         .status();
 
+    // Clean up legacy shortcuts from Start Menu and Desktop
+    let legacy_shortcuts = [
+        PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\180Hz NC.lnk"),
+        PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\QuietMic.lnk"),
+        PathBuf::from("C:\\Users\\Public\\Desktop\\180Hz NC.lnk"),
+        PathBuf::from("C:\\Users\\Public\\Desktop\\QuietMic.lnk"),
+    ];
+    for sc in &legacy_shortcuts {
+        let _ = fs::remove_file(sc);
+    }
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let _ = fs::remove_file(PathBuf::from(&appdata).join("Microsoft\\Windows\\Start Menu\\Programs\\180Hz NC.lnk"));
+        let _ = fs::remove_file(PathBuf::from(&appdata).join("Microsoft\\Windows\\Start Menu\\Programs\\QuietMic.lnk"));
+    }
+    if let Ok(userprof) = std::env::var("USERPROFILE") {
+        let _ = fs::remove_file(PathBuf::from(&userprof).join("Desktop\\180Hz NC.lnk"));
+        let _ = fs::remove_file(PathBuf::from(&userprof).join("Desktop\\QuietMic.lnk"));
+    }
+
     let prog_files = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
-    let install_dir = PathBuf::from(prog_files).join("180hz nc");
+    let install_dir = PathBuf::from(&prog_files).join("180hz nc");
+    let legacy_dir = PathBuf::from(&prog_files).join("180Hz-NC");
+    let legacy_quietmic = PathBuf::from(&prog_files).join("QuietMic");
+
     fs::create_dir_all(&install_dir).map_err(|e| format!("Failed to create install folder: {}", e))?;
 
     let exe_path = install_dir.join("180hz nc.exe");
     let cli_exe_path = install_dir.join("180hz-nc.exe");
     let uninst_path = install_dir.join("Uninstall.exe");
 
-    // Write application executables
+    // Write application executables to primary install dir
     fs::write(&exe_path, APP_EXE).map_err(|e| format!("Failed to install 180hz nc.exe: {}", e))?;
     let _ = fs::write(&cli_exe_path, APP_EXE);
+
+    // Also update legacy directory so that existing pins/shortcuts launch without error
+    if legacy_dir.exists() {
+        let _ = fs::write(legacy_dir.join("180Hz-NC.exe"), APP_EXE);
+        let _ = fs::write(legacy_dir.join("180hz nc.exe"), APP_EXE);
+        if let Ok(current_exe) = std::env::current_exe() {
+            let _ = fs::copy(&current_exe, legacy_dir.join("Uninstall.exe"));
+        }
+    }
+    if legacy_quietmic.exists() {
+        let _ = fs::write(legacy_quietmic.join("QuietMic.exe"), APP_EXE);
+    }
 
     // Copy installer executable as Uninstaller
     if let Ok(current_exe) = std::env::current_exe() {
@@ -325,10 +359,23 @@ fn run_uninstall(silent: bool) -> Result<(), String> {
     // Remove Desktop shortcuts
     let _ = fs::remove_file(PathBuf::from("C:\\Users\\Public\\Desktop\\180hz nc.lnk"));
     let _ = fs::remove_file(PathBuf::from("C:\\Users\\Public\\Desktop\\180Hz NC.lnk"));
+    let _ = fs::remove_file(PathBuf::from("C:\\Users\\Public\\Desktop\\QuietMic.lnk"));
 
     // Remove Start Menu shortcuts
     let _ = fs::remove_file(PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\180hz nc.lnk"));
     let _ = fs::remove_file(PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\180Hz NC.lnk"));
+    let _ = fs::remove_file(PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\QuietMic.lnk"));
+
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let _ = fs::remove_file(PathBuf::from(&appdata).join("Microsoft\\Windows\\Start Menu\\Programs\\180hz nc.lnk"));
+        let _ = fs::remove_file(PathBuf::from(&appdata).join("Microsoft\\Windows\\Start Menu\\Programs\\180Hz NC.lnk"));
+        let _ = fs::remove_file(PathBuf::from(&appdata).join("Microsoft\\Windows\\Start Menu\\Programs\\QuietMic.lnk"));
+    }
+    if let Ok(userprof) = std::env::var("USERPROFILE") {
+        let _ = fs::remove_file(PathBuf::from(&userprof).join("Desktop\\180hz nc.lnk"));
+        let _ = fs::remove_file(PathBuf::from(&userprof).join("Desktop\\180Hz NC.lnk"));
+        let _ = fs::remove_file(PathBuf::from(&userprof).join("Desktop\\QuietMic.lnk"));
+    }
 
     // Remove Registry Uninstall Entries
     unsafe {
@@ -336,16 +383,22 @@ fn run_uninstall(silent: bool) -> Result<(), String> {
         let _ = RegDeleteKeyW(HKEY_LOCAL_MACHINE, &subkey);
         let subkey_legacy = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\180Hz-NC");
         let _ = RegDeleteKeyW(HKEY_LOCAL_MACHINE, &subkey_legacy);
+        let subkey_legacy2 = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\QuietMic");
+        let _ = RegDeleteKeyW(HKEY_LOCAL_MACHINE, &subkey_legacy2);
     }
 
     let prog_files = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
-    let install_dir = PathBuf::from(prog_files).join("180hz nc");
+    let install_dir = PathBuf::from(&prog_files).join("180hz nc");
+    let legacy_dir = PathBuf::from(&prog_files).join("180Hz-NC");
+    let legacy_quietmic = PathBuf::from(&prog_files).join("QuietMic");
 
-    // Create temporary cleanup script to delete the install directory after uninstaller exits
+    // Create temporary cleanup script to delete the install directories after uninstaller exits
     let temp_script = std::env::temp_dir().join("180hznc_cleanup.bat");
     let script_content = format!(
-        "@echo off\r\ntimeout /t 2 /nobreak >nul\r\nrmdir /s /q \"{}\"\r\ndel \"%~f0\"\r\n",
-        install_dir.display()
+        "@echo off\r\ntimeout /t 2 /nobreak >nul\r\nrmdir /s /q \"{}\"\r\nrmdir /s /q \"{}\"\r\nrmdir /s /q \"{}\"\r\ndel \"%~f0\"\r\n",
+        install_dir.display(),
+        legacy_dir.display(),
+        legacy_quietmic.display()
     );
     let _ = fs::write(&temp_script, script_content);
 

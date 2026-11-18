@@ -5,6 +5,7 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=installer.rc");
+    println!("cargo:rerun-if-changed=resources/installer.manifest");
     println!("cargo:rerun-if-changed=resources/icon.ico");
     println!("cargo:rerun-if-changed=resources/app.exe");
     println!("cargo:rerun-if-changed=resources/vbcable_pack.zip");
@@ -14,19 +15,40 @@ fn main() {
     let _ = fs::create_dir_all(resources_dir);
 
     let app_target = resources_dir.join("app.exe");
-    if !app_target.exists() {
-        let release_exe = Path::new("../../target/release/quietmic-app.exe");
-        if release_exe.exists() {
-            let _ = fs::copy(release_exe, &app_target);
-        } else {
-            // Build quietmic-app if missing
-            println!("cargo:warning=Building quietmic-app for embedding into installer...");
-            let status = Command::new("cargo")
-                .args(["build", "--release", "-p", "quietmic-app"])
-                .status();
-            if let Ok(st) = status {
-                if st.success() && release_exe.exists() {
-                    let _ = fs::copy(release_exe, &app_target);
+    let release_candidates = [
+        Path::new("../../target/release/quietmic-app.exe"),
+        Path::new("../../target/release/180hz nc.exe"),
+    ];
+    let mut copied = false;
+    for cand in &release_candidates {
+        if cand.exists() {
+            let should_copy = if app_target.exists() {
+                let cand_len = fs::metadata(cand).map(|m| m.len()).unwrap_or(0);
+                let target_len = fs::metadata(&app_target).map(|m| m.len()).unwrap_or(0);
+                cand_len != target_len || cand_len == 0
+            } else {
+                true
+            };
+            if should_copy {
+                let _ = fs::copy(cand, &app_target);
+            }
+            copied = true;
+            break;
+        }
+    }
+    if !copied && !app_target.exists() {
+        // Build quietmic-app if missing
+        println!("cargo:warning=Building quietmic-app for embedding into installer...");
+        let status = Command::new("cargo")
+            .args(["build", "--release", "-p", "quietmic-app"])
+            .status();
+        if let Ok(st) = status {
+            if st.success() {
+                for cand in &release_candidates {
+                    if cand.exists() {
+                        let _ = fs::copy(cand, &app_target);
+                        break;
+                    }
                 }
             }
         }
