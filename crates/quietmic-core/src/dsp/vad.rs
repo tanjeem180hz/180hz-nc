@@ -34,9 +34,9 @@ impl SilenceDetector {
 
     /// Standard preset for 48 kHz 10 ms speech frames.
     /// Uses sensitive -58.0 dBFS threshold (preserves whispers and quiet fricatives)
-    /// and 35 frames (350 ms) of hangover to eliminate syllable clipping.
+    /// and 20 frames (200 ms) of hangover to eliminate syllable clipping.
     pub fn default_48k() -> Self {
-        let mut d = Self::new(-58.0, 35, 480);
+        let mut d = Self::new(-58.0, 20, 480);
         d.auto_sensitivity = true;
         d
     }
@@ -74,12 +74,14 @@ impl SilenceDetector {
         let rms = (sum_sq / frame.len().max(1) as f32).sqrt();
 
         if self.auto_sensitivity {
-            if rms < self.noise_floor_rms * 2.0 {
+            // Only update noise floor tracker during non-speech intervals to prevent
+            // loud speech from raising the noise floor and cutting off subsequent words!
+            if rms < self.noise_floor_rms * 1.8 {
                 self.noise_floor_rms = self.noise_floor_rms * 0.98 + rms * 0.02;
-            } else {
-                self.noise_floor_rms = self.noise_floor_rms * 0.999 + rms * 0.001;
             }
-            self.energy_threshold_rms = (self.noise_floor_rms * 2.0).clamp(0.0005, 0.08);
+            self.noise_floor_rms = self.noise_floor_rms.clamp(0.0001, 0.01);
+            // Sensitivity threshold adapts between -60 dBFS (0.001) and -36 dBFS (0.015)
+            self.energy_threshold_rms = (self.noise_floor_rms * 2.2).clamp(0.0005, 0.015);
         }
 
         if rms >= self.energy_threshold_rms {

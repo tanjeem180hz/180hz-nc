@@ -3,9 +3,6 @@
 /// Detects sudden energy spikes with high crest factor and low harmonic pitch periodicity,
 /// then attenuates the click burst with smooth spline recovery to preserve natural speech plosives.
 pub struct TransientSuppressor {
-    lookahead_samples: usize,
-    buffer: Vec<f32>,
-    buffer_write_pos: usize,
     smoothed_energy: f32,
     prev_sample: f32,
     suppression_gain: f32,
@@ -14,14 +11,10 @@ pub struct TransientSuppressor {
 }
 
 impl TransientSuppressor {
-    pub const LOOKAHEAD_5MS: usize = 240; // 5 ms at 48 kHz
+    pub const LOOKAHEAD_5MS: usize = 240; // 5 ms at 48 kHz (legacy preset constant)
 
-    pub fn new(lookahead_samples: usize) -> Self {
-        let buf_len = lookahead_samples * 4;
+    pub fn new(_lookahead_samples: usize) -> Self {
         Self {
-            lookahead_samples,
-            buffer: vec![0.0f32; buf_len],
-            buffer_write_pos: 0,
             smoothed_energy: 1e-3,
             prev_sample: 0.0,
             suppression_gain: 1.0,
@@ -39,8 +32,6 @@ impl TransientSuppressor {
     }
 
     pub fn reset(&mut self) {
-        self.buffer.fill(0.0);
-        self.buffer_write_pos = 0;
         self.smoothed_energy = 1e-3;
         self.prev_sample = 0.0;
         self.suppression_gain = 1.0;
@@ -65,10 +56,14 @@ impl TransientSuppressor {
             return true; // Speech vowel / formant resonance dominates
         }
 
-        // 2. Pitch periodicity check (100 Hz to 350 Hz)
-        let min_lag = 137;
-        let max_lag = 480.min(samples.len() - 1);
-        let eval_len = samples.len() - max_lag;
+        // 2. Pitch periodicity check (150 Hz to 500 Hz)
+        let eval_len = 200;
+        let min_lag = 96;
+        let max_lag = 280;
+        if samples.len() < max_lag + eval_len {
+            return false;
+        }
+
         let s0 = &samples[..eval_len];
         let e0: f32 = s0.iter().map(|&x| x * x).sum();
         if e0 < 1e-4 {
@@ -76,12 +71,12 @@ impl TransientSuppressor {
         }
 
         let mut max_norm_corr = 0.0f32;
-        for lag in (min_lag..=max_lag).step_by(3) {
+        for lag in (min_lag..=max_lag).step_by(4) {
             let s_lag = &samples[lag..lag + eval_len];
             let dot: f32 = s0.iter().zip(s_lag).map(|(&a, &b)| a * b).sum();
             let e_lag: f32 = s_lag.iter().map(|&x| x * x).sum();
             let norm = (e0 * e_lag).sqrt();
-            if norm > 1e-6 {
+            if norm > 1e-5 {
                 let ncorr = dot / norm;
                 if ncorr > max_norm_corr {
                     max_norm_corr = ncorr;
@@ -89,11 +84,10 @@ impl TransientSuppressor {
             }
         }
 
-        max_norm_corr > 0.40
+        max_norm_corr > 0.45
     }
 
     /// Processes an in-place frame (e.g. 480 samples).
-    /// Uses internal lookahead buffer.
     pub fn process_frame(&mut self, frame: &mut [f32]) {
         if !self.enabled || frame.is_empty() {
             return;
@@ -118,24 +112,14 @@ impl TransientSuppressor {
 
             if is_impulse {
                 // Clamped transient attenuation
-                self.suppression_gain = 0.08;
+                self.suppression_gain = 0.05;
             } else {
                 // Smooth exponential recovery to unity
                 self.suppression_gain += self.recovery_rate * (1.0 - self.suppression_gain);
             }
 
-            // Write into lookahead circular buffer
-            let buf_len = self.buffer.len();
-            self.buffer[self.buffer_write_pos] = in_val;
-
-            // Read sample delayed by lookahead_samples
-            let read_pos = (self.buffer_write_pos + buf_len - self.lookahead_samples) % buf_len;
-            let delayed_sample = self.buffer[read_pos];
-
-            // Apply transient suppression gain to output
-            *s = delayed_sample * self.suppression_gain;
-
-            self.buffer_write_pos = (self.buffer_write_pos + 1) % buf_len;
+            // Apply transient suppression directly on the sample with zero latency
+            *s = in_val * self.suppression_gain;
         }
     }
 }

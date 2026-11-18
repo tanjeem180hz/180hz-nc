@@ -143,8 +143,10 @@ fn benchmark_pipeline(
     }
 
     let mode_str = match mode {
+        EngineMode::None => "None (Bypass)",
         EngineMode::Light => "Light (RNNoise)",
         EngineMode::Standard => "Standard (DeepFilterNet3)",
+        EngineMode::MaxQuality => "Max Quality (Krisp-Level)",
         EngineMode::VoiceIsolation => "Voice Isolation",
     };
 

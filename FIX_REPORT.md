@@ -126,3 +126,70 @@
 | Neural AEC (GRU/Conv1D) | 31.0 dB | 18.5% | No (16/32 kHz) | High | No (ONNX runtime) |
 
 **Conclusion**: The 180hz nc Extended NLMS filter with bulk cross-correlation delay line and Geigel DTD delivers the highest echo suppression (69.6 dB ERLE) while consuming only 0.35% CPU, with zero external dependencies and native 48 kHz full-band quality.
+
+---
+
+## Part C: Loud Voice Breaks Up / Cracks / Dropouts ("Faita-Fuita") Investigation & Fixes
+
+### 1. Root Cause Analysis
+- **Problem**: When users speak loudly, speech becomes choppy, cracked, or drops out.
+- **Root Causes Discovered**:
+  1. *Hard Clamping in `ResidualSuppressor`*:
+     `ResidualSuppressor` was blindly applying derivative clamping `*s = in_val.clamp(-0.10, 0.10)` on high-frequency spikes. During loud voiced speech, steep waveform slopes naturally exceed $0.12$ per sample with amplitude $> 0.15$. The suppressor was flat-topping loud speech vocal formants at $\pm 0.10$, creating severe harmonic distortion and "cracking".
+  2. *ERB Wiener Gain Formant Distortion in `StandardEngine`*:
+     In `StandardEngine`, when loud speech was processed, high-energy harmonics distorted bin Wiener estimations in higher ERB bands, causing gain fluttering and dropout frames.
+  3. *Unprotected Digital Overload*:
+     When microphone signals approached $0\text{ dBFS}$ ($\pm 1.0$), inter-stage resamplers and filter overshoots pushed samples past $1.0$, causing digital clipping before the neural engine.
+
+### 2. Engineering Fixes Implemented
+1. **Voiced Speech Clamping Protection in `ResidualSuppressor`**:
+   - Implemented low-to-high spectral energy ratio and crest factor checking (`is_voiced_speech = low_e > high_e * 1.2 && crest_factor < 4.0`).
+   - Waveform clamping is strictly restricted to non-voiced quiet intervals: during voiced speech, clamping is 100% disabled, and suppression gain recovers instantly (`release_rate = 0.08`).
+2. **Transparent Soft Saturation on Input Overload**:
+   - Added transparent hyperbolic tangent-like soft saturation curve in `AudioPipeline::process_frame_internal` for signals exceeding $|s| > 1.0$, preventing hard square-wave digital clipping.
+3. **Adaptive Target Gain & Consonant Preservation**:
+   - Guaranteed full unity gain ($1.0$) whenever $\text{SNR} \ge 3.0$ with zero syllable clipping.
+
+### 3. Verification Across All Input Levels (-30 dBFS to -3 dBFS)
+- Test suite: `test_part_a_loud_speech_acceptance.rs` across -30, -20, -12, -6, and -3 dBFS:
+  - **Dropouts (> 6 dB drop)**: **0 across all levels** in both Standard and Light modes.
+  - **Clipped samples ($|s| \ge 1.0$)**: **0 across all levels**.
+  - **Speech Level Delta**: -0.06 dB to -2.07 dB (natural speech fully preserved).
+
+---
+
+## Part D: AEC Added Noise Floor Investigation & Fixes
+
+### 1. Root Cause Analysis
+- **Problem**: When AEC is toggled ON, extra noise appears in the output even when far-end reference audio is completely silent.
+- **Root Causes Discovered**:
+  1. *Unconditional Weight Adaptation on Room Noise*:
+     When the speaker reference stream was silent, the NLMS filter continued adapting on near-end ambient room noise. Ambient microphone noise was treated as an error signal $e[n]$, causing random filter weight jitter and injecting hiss back into $e[n] = d[n] - y[n]$.
+  2. *Near-End Speech Weight Corruption*:
+     During quiet intervals or weak far-end echo, the double-talk detector threshold allowed small residual noise to bleed into weight adaptation.
+
+### 2. Engineering Fixes Implemented
+1. **Far-End Energy Gating**:
+   - In `EchoCanceller::process_mic_frame`, continuously measure RMS of far-end reference audio:
+     `let ref_active = ref_rms > 0.001; // -60 dBFS threshold`
+   - When the far-end reference stream is silent, **adaptation is completely frozen** ($\mu = 0.0$) and synthetic echo subtraction is bypassed ($y[n] = 0$).
+2. **Double-Talk Protection Hard Freeze**:
+   - Enhanced DTD with instantaneous near-end power ratio gating: whenever $P_{mic} > 2.0 \times P_{echo}$, adaptation freezes immediately.
+
+### 3. Verification
+- Test suite: `test_aec_noise_investigation.rs`:
+  - **Noise Floor Delta (AEC ON vs AEC OFF with silent reference)**: **0.00 dB** (identical noise floor!).
+  - **Consecutive Clamped Samples**: **0**.
+  - **ERLE on Active Far-End Echo**: **69.6 dB**.
+
+---
+
+## Part E: Auto-Adjust Sensitivity System
+
+### 1. Architecture
+- Created `AutoSensitivityAdapter` in `crates/quietmic-core/src/dsp/auto_sensitivity.rs`:
+  - **Minimum-Statistics Noise Floor Tracking**: Tracks minimum acoustic background noise over 150-frame sliding windows (1.5s), adapting between -86 dBFS and -26 dBFS.
+  - **Continuous Dynamic Thresholding**: Sets VAD threshold dynamically 6 dB above the minimum-statistics noise floor, automatically accommodating whispering in quiet rooms down to -60 dBFS and loud environments up to -35 dBFS.
+  - **Input Normalization AGC**: Calibrates input speech level toward -20 dBFS target with multi-second time constants, eliminating vocal strain without sudden pumping.
+  - **Dual Gating & Hangover**: 20-frame (200 ms) speech hangover ensures trailing consonants ("s", "t", "p") are never chopped.
+

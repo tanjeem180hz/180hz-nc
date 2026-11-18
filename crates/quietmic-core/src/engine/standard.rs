@@ -94,7 +94,7 @@ impl StandardEngine {
             complex_spectrum,
             time_synth,
             overlap_buffer: vec![0.0f32; frame_size],
-            noise_estimate: vec![0.0f32; Self::NUM_BANDS],
+            noise_estimate: vec![1e-6f32; Self::NUM_BANDS],
             prior_snr: vec![1.0f32; Self::NUM_BANDS],
             prev_gain: vec![1.0f32; Self::NUM_BANDS],
             bin_prior: vec![1.0f32; num_bins],
@@ -103,7 +103,7 @@ impl StandardEngine {
             suppression_factor: 1.0,
             attenuation_limit_db: 40.0,
             post_filter_enabled: true,
-            post_filter_beta: 1.45,
+            post_filter_beta: 1.55,
             init_frames: 0,
             band_bin_ranges,
         }
@@ -154,7 +154,7 @@ impl DenoiseEngine for StandardEngine {
         self.time_window.fill(0.0);
         self.time_synth.fill(0.0);
         self.complex_spectrum.fill(Complex::new(0.0, 0.0));
-        self.noise_estimate.fill(0.0);
+        self.noise_estimate.fill(1e-6);
         self.prior_snr.fill(1.0);
         self.prev_gain.fill(1.0);
         self.bin_prior.fill(1.0);
@@ -193,12 +193,16 @@ impl DenoiseEngine for StandardEngine {
         // 3. Multi-band Energy and Noise Tracker across 32 ERB subbands
         let mut speech_energy_sum = 0.0f32;
         let mut noise_energy_sum = 0.0f32;
+        let mut active_speech_bands = 0usize;
         const FFT_NORM_SQ: f32 = 1.0 / (960.0 * 960.0);
+        const MAX_NOISE_FLOOR: f32 = 1e-3; // -30 dBFS ceiling for stationary ambient fan/AC noise
         let is_startup = self.init_frames < 5;
         if is_startup {
             self.init_frames += 1;
         }
 
+        // Pass 1: Compute subband energies and evaluate current-frame voice activity
+        let mut band_powers = [0.0f32; Self::NUM_BANDS];
         for (b, &(start, end)) in self.band_bin_ranges.iter().enumerate() {
             let mut sum_power = 0.0f32;
             for spec in &self.complex_spectrum[start..end] {
@@ -206,47 +210,72 @@ impl DenoiseEngine for StandardEngine {
             }
             let count = (end - start).max(1) as f32;
             let band_power = (sum_power * FFT_NORM_SQ / count).max(1e-10);
-
-            // Fast initialization on first frames or reset
-            if self.noise_estimate[b] < 1e-9 {
-                self.noise_estimate[b] = band_power.min(MAX_NOISE_FLOOR);
-            }
+            band_powers[b] = band_power;
 
             let noise = self.noise_estimate[b];
+            let snr = (band_power / noise.max(1e-10)).max(0.01);
+            if (2..=26).contains(&b) {
+                if snr > 1.8 {
+                    speech_energy_sum += band_power;
+                    active_speech_bands += 1;
+                } else {
+                    noise_energy_sum += band_power;
+                }
+            } else {
+                noise_energy_sum += band_power;
+            }
+        }
 
-            // Ambient noise floor ceiling: stationary fan hum / keyboard / room noise floor
-            // up to -27 dBFS (1e-3 power). Speech syllables (amplitude 0.2-0.5, power 0.03-0.12) are > 50x higher.
-            const MAX_NOISE_FLOOR: f32 = 1e-3;
+        // Instant voice activity detection on the CURRENT frame:
+        let total_energy = speech_energy_sum + noise_energy_sum;
+        let instant_vad = if total_energy > 1e-6 {
+            (speech_energy_sum / total_energy).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
 
-            if is_startup {
+        // Speech requires broadband harmonics (multiple formant bands elevated) and high SNR,
+        // or a strong harmonic in speech formant range dominating frame energy (> 50%).
+        let is_speech_active = (active_speech_bands >= 3 && instant_vad > 0.25)
+            || (active_speech_bands >= 5 && instant_vad > 0.15)
+            || (active_speech_bands >= 1 && instant_vad > 0.50 && speech_energy_sum > 2e-6);
+
+        if is_speech_active {
+            // Instant attack: if speech starts, snap VAD immediately to prevent onset plosive muting!
+            self.vad_estimate = self.vad_estimate.max(instant_vad).max(0.60);
+        } else {
+            // Gentle release decay (hangover) across ~20 frames (200 ms)
+            self.vad_estimate *= 0.92;
+        }
+
+        // Pass 1b: Adapt noise floor based on CURRENT frame voice activity
+        for (b, &band_power) in band_powers.iter().enumerate() {
+            let noise = self.noise_estimate[b];
+
+            if is_startup && !is_speech_active {
+                // Fast startup calibration on pure ambient background noise
                 self.noise_estimate[b] += 0.40 * (band_power.min(MAX_NOISE_FLOOR) - noise);
             } else if band_power < noise * 1.2 {
                 // Downward adaptation: quickly track lowering noise floor
                 self.noise_estimate[b] += 0.20 * (band_power - noise);
-            } else if self.vad_estimate < 0.25 || b < 3 {
-                // Non-speech or sub-200Hz rumble/mains hum -> adapt upward to cancel it
+            } else if !is_speech_active || b < 2 {
+                // Non-speech silence interval -> adapt all bands to track ambient room noise
+                // Active speech -> freeze formant bands (b >= 2) and only adapt sub-150Hz rumble (b < 2)
                 self.noise_estimate[b] += 0.15 * (band_power.min(MAX_NOISE_FLOOR) - noise);
             } else {
-                // Active speech in speech formant bands -> freeze noise floor to prevent speech leakage
+                // Active speech in speech formant bands -> freeze noise floor to prevent speech leakage!
             }
 
             self.noise_estimate[b] = self.noise_estimate[b].clamp(1e-9, MAX_NOISE_FLOOR);
+        }
 
-            // Estimate subband SNR (speech formant range: 75 Hz to 8000 Hz, bands 1..=26)
-            let snr = (band_power / self.noise_estimate[b].max(1e-10)).max(0.01);
-            if (1..=26).contains(&b) {
-                if snr > 1.8 {
-                    speech_energy_sum += band_power;
-                } else {
-                    noise_energy_sum += band_power;
-                }
-            }
+        let min_gain = 10.0f32.powf(-self.attenuation_limit_db / 20.0);
+        let vad_scale = (self.vad_estimate / 0.25).clamp(min_gain, 1.0);
 
-            let min_gain = 10.0f32.powf(-self.attenuation_limit_db / 20.0);
+        // Pass 2: Apply per-bin fine spectral Wiener gains with current-frame VAD scaling
+        for (b, &(start, end)) in self.band_bin_ranges.iter().enumerate() {
+            let noise = self.noise_estimate[b];
 
-            // Per-bin fine spectral Wiener gain:
-            // Combines subband noise floor with fine bin harmonic structure.
-            // Preserves discrete speech harmonic peaks while suppressing inter-harmonic noise valleys!
             for (offset, spec) in self.complex_spectrum[start..end].iter_mut().enumerate() {
                 let k = start + offset;
                 let bin_power = (spec.norm_sqr() * FFT_NORM_SQ).max(1e-11);
@@ -268,20 +297,10 @@ impl DenoiseEngine for StandardEngine {
                 let bin_gain = tuned_gain.clamp(min_gain, 1.0);
                 self.bin_prev_gain[k] = bin_gain;
 
-                let vad_scale = (self.vad_estimate / 0.25).clamp(min_gain, 1.0);
                 let final_gain = (bin_gain * vad_scale).clamp(min_gain, 1.0);
-
                 *spec *= final_gain;
             }
         }
-
-        // VAD estimate based on global speech-to-noise ratio
-        let total_energy = speech_energy_sum + noise_energy_sum;
-        self.vad_estimate = if total_energy > 1e-6 {
-            (speech_energy_sum / total_energy).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
 
         // 4. Inverse Real FFT (481 complex bins -> 960 real samples)
         self.c2r_fft

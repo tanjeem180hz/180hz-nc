@@ -79,10 +79,10 @@ impl DenoiseEngine for LightEngine {
         );
 
         // Krisp-grade Voice Activity Gating with Hangover:
-        // - Speech onset trigger: >= 0.35 (protects speech while rejecting clicks/transients)
-        // - Hangover duration: 8 frames (80 ms)
-        const VAD_ONSET: f32 = 0.35;
-        const HANGOVER_FRAMES: usize = 8;
+        // - Speech onset trigger: RNNoise probability >= 0.30
+        // - Hangover duration: 20 frames (200 ms) to guarantee word starts and endings are never cut
+        const VAD_ONSET: f32 = 0.30;
+        const HANGOVER_FRAMES: usize = 20;
 
         let is_speech = if self.vad_probability >= VAD_ONSET {
             self.hangover_counter = HANGOVER_FRAMES;
@@ -101,6 +101,11 @@ impl DenoiseEngine for LightEngine {
         } else {
             (self.vad_probability / VAD_ONSET).clamp(0.001, 0.05) * 0.05
         };
+
+        // Instant onset wake-up: if speech is detected from silence, snap gain to 1.0 immediately
+        if is_speech && self.smoothed_vad_gain < 0.5 {
+            self.smoothed_vad_gain = 1.0;
+        }
 
         // Smooth gain transition across samples (fast attack ~1.5ms, gentle release ~60ms)
         let attack_coeff = 0.12f32;

@@ -1,6 +1,6 @@
 use crate::dsp::{
-    AudioResampler, ComfortNoiseGenerator, DriftCompensator, GainSmoother, HighPassFilter,
-    ResidualSuppressor, SilenceDetector, SoftLimiter, TransientSuppressor,
+    AudioResampler, AutoSensitivityAdapter, ComfortNoiseGenerator, DriftCompensator, GainSmoother,
+    HighPassFilter, ResidualSuppressor, SilenceDetector, SoftLimiter, TransientSuppressor,
 };
 use crate::engine::aec::EchoCanceller;
 use crate::engine::diagnostics::DiagnosticTapProducers;
@@ -11,8 +11,10 @@ use crate::engine::voice_isolation::VoiceIsolationEngine;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EngineMode {
+    None,
     Light,
     Standard,
+    MaxQuality,
     VoiceIsolation,
 }
 
@@ -46,6 +48,7 @@ pub struct AudioPipeline {
     hpf: HighPassFilter,
     aec: EchoCanceller,
     vad: SilenceDetector,
+    auto_sensitivity: AutoSensitivityAdapter,
     transient: TransientSuppressor,
     residual: ResidualSuppressor,
     smoother: GainSmoother,
@@ -89,6 +92,7 @@ impl AudioPipeline {
             hpf: HighPassFilter::default_48k(),
             aec: EchoCanceller::default_preset(),
             vad: SilenceDetector::default_48k(),
+            auto_sensitivity: AutoSensitivityAdapter::default_preset(),
             transient: TransientSuppressor::new(TransientSuppressor::LOOKAHEAD_5MS),
             residual: ResidualSuppressor::default_preset(),
             smoother: GainSmoother::default_48k(),
@@ -132,15 +136,25 @@ impl AudioPipeline {
         &self.blended_buffer
     }
 
-    /// Sets operating mode: Light (RNNoise), Standard (DeepFilterNet), or VoiceIsolation.
+    /// Sets operating mode: None (Bypass), Light (RNNoise), Standard (DeepFilterNet), MaxQuality, or VoiceIsolation.
     /// Lazy-loads the active engine and immediately frees memory of inactive engines.
     pub fn set_mode(&mut self, mode: EngineMode) {
         if self.mode != mode {
             self.mode = mode;
             self.active_engine = match mode {
+                EngineMode::None => ActiveEngine::Light(LightEngine::new()),
                 EngineMode::Light => ActiveEngine::Light(LightEngine::new()),
                 EngineMode::Standard => {
                     let mut s = StandardEngine::new();
+                    s.set_attenuation_limit_db(36.0);
+                    s.set_post_filter(true, 1.35);
+                    s.set_suppression(self.strength);
+                    ActiveEngine::Standard(Box::new(s))
+                }
+                EngineMode::MaxQuality => {
+                    let mut s = StandardEngine::new();
+                    s.set_attenuation_limit_db(45.0);
+                    s.set_post_filter(true, 1.55);
                     s.set_suppression(self.strength);
                     ActiveEngine::Standard(Box::new(s))
                 }
@@ -220,17 +234,31 @@ impl AudioPipeline {
 
     /// Auto sensitivity adjustment toggle.
     pub fn set_auto_sensitivity(&mut self, enabled: bool) {
+        self.auto_sensitivity.set_enabled(enabled);
         self.vad.set_auto_sensitivity(enabled);
+    }
+
+    pub fn is_auto_sensitivity(&self) -> bool {
+        self.auto_sensitivity.is_enabled()
     }
 
     /// Sets manual sensitivity threshold in dBFS (e.g. -50.0).
     pub fn set_sensitivity_threshold(&mut self, threshold_dbfs: f32) {
+        self.auto_sensitivity.set_manual_threshold_dbfs(threshold_dbfs);
         self.vad.set_threshold_dbfs(threshold_dbfs);
     }
 
     /// Returns current sensitivity threshold in dBFS.
     pub fn sensitivity_threshold_dbfs(&self) -> f32 {
         self.vad.threshold_dbfs()
+    }
+
+    pub fn auto_sensitivity(&self) -> &AutoSensitivityAdapter {
+        &self.auto_sensitivity
+    }
+
+    pub fn auto_sensitivity_mut(&mut self) -> &mut AutoSensitivityAdapter {
+        &mut self.auto_sensitivity
     }
 
     /// Acoustic Echo Cancellation toggle.
@@ -306,8 +334,10 @@ impl AudioPipeline {
         };
         EngineRuntimeParameters {
             mode: match self.mode {
+                EngineMode::None => "None (True Bypass)".to_string(),
                 EngineMode::Light => "Light (RNNoise 48kHz)".to_string(),
                 EngineMode::Standard => "Standard (DeepFilterNet3 48kHz)".to_string(),
+                EngineMode::MaxQuality => "Max Quality (Krisp-Level 48kHz)".to_string(),
                 EngineMode::VoiceIsolation => "Voice Isolation (Speaker Enrolled)".to_string(),
             },
             strength: self.strength,
@@ -378,19 +408,32 @@ impl AudioPipeline {
             return Ok(());
         }
 
-        // Save raw dry frame with hardware NaN/Inf sanitization and mic gain scaling
-        for (i, &s) in frame.iter().enumerate() {
-            let scaled = s * self.mic_gain;
-            let clean = if scaled.is_finite() { scaled.clamp(-1.0, 1.0) } else { 0.0 };
-            self.dry_buffer[i] = clean;
-            self.wet_buffer[i] = clean;
-        }
-
-        // If hard bypass requested, forward directly with safety limiting
-        if self.bypass {
+        // If None mode or hard bypass requested, forward directly with safety limiting (bit-exact linear)
+        if self.mode == EngineMode::None || self.bypass {
+            for (i, &s) in frame.iter().enumerate() {
+                let scaled = s * self.mic_gain;
+                self.dry_buffer[i] = if scaled.is_finite() { scaled.clamp(-1.0, 1.0) } else { 0.0 };
+            }
             self.drift_compensator.adjust_frame(&self.dry_buffer, &mut self.drift_buffer, buffer_fill_samples);
             self.output_resampler.process(&self.drift_buffer, output_mono)?;
             return Ok(());
+        }
+
+        // Save raw dry frame with hardware NaN/Inf sanitization and transparent soft input saturation on overload
+        for (i, &s) in frame.iter().enumerate() {
+            let scaled = s * self.mic_gain;
+            let clean = if !scaled.is_finite() {
+                0.0
+            } else if scaled.abs() <= 1.0 {
+                scaled
+            } else {
+                // Smooth soft saturation curve avoiding hard flat-topping square wave distortion on digital overload
+                let sign = scaled.signum();
+                let excess = scaled.abs() - 1.0;
+                sign * (1.0 + 0.05 * (excess / (excess + 0.15)))
+            };
+            self.dry_buffer[i] = clean;
+            self.wet_buffer[i] = clean;
         }
         self.hpf.process_slice(&mut self.wet_buffer);
 
@@ -405,13 +448,25 @@ impl AudioPipeline {
         // Step 3b: Dedicated Transient & Click Suppression (mechanical keyboards, mouse clicks)
         self.transient.process_frame(&mut self.wet_buffer);
 
+        // Step 3c: Auto-Sensitivity & Dynamic Level Calibration
+        let (auto_in_gain, dynamic_thresh_dbfs, speech_active) = self.auto_sensitivity.update(&self.wet_buffer);
+        self.vad.set_threshold_dbfs(dynamic_thresh_dbfs);
+
         // Stage 3: After AEC & Transient Suppression
         if let Some(ref mut diag) = self.diagnostic_tap {
             diag.push_stage(3, &self.wet_buffer);
         }
 
         // Step 4: Input Sensitivity Detection (Silence & Noise Gate)
-        let is_active = self.vad.update(&self.wet_buffer);
+        let is_active = speech_active || self.vad.update(&self.wet_buffer);
+
+        // Engine input normalization: normalize engine input to healthy ~ -20 dBFS target
+        let should_normalize = (auto_in_gain - 1.0).abs() > 0.01;
+        if should_normalize {
+            for s in self.wet_buffer.iter_mut() {
+                *s *= auto_in_gain;
+            }
+        }
 
         // Step 5: Process through Denoise Engine
         // Neural & subband engines continuously process frames to maintain adapted recurrent state
@@ -443,6 +498,14 @@ impl AudioPipeline {
         if let Err(ref err) = engine_res {
             tracing::error!("Denoise engine execution error (falling back to dry audio): {}", err);
             self.wet_buffer.copy_from_slice(&self.dry_buffer);
+        }
+
+        // Restore natural dynamic speech level after engine:
+        if should_normalize {
+            let inv_gain = 1.0 / auto_in_gain;
+            for s in self.wet_buffer.iter_mut() {
+                *s *= inv_gain;
+            }
         }
 
         // Step 5b: Apply Sensitivity Gating

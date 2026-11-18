@@ -61,10 +61,22 @@ impl ResidualSuppressor {
         }
         let frame_rms = (sum_sq / frame.len() as f32).sqrt().max(1e-6);
 
-        // Update running noise floor and speech level trackers
-        if frame_rms < self.running_noise_floor * 1.5 {
+        let mut low_e = 0.0f32;
+        let mut high_e = 0.0f32;
+        for i in 1..frame.len() {
+            let s_low = frame[i] + frame[i - 1];
+            let s_high = frame[i] - frame[i - 1];
+            low_e += s_low * s_low;
+            high_e += s_high * s_high;
+        }
+        let crest_factor = peak / frame_rms;
+        let is_voiced_speech = low_e > high_e * 1.2 && crest_factor < 4.0;
+
+        // Update running noise floor and speech level trackers:
+        // Adapt noise floor during non-voiced intervals (noise/hiss), freeze during voiced speech
+        if !is_voiced_speech || frame_rms < self.running_noise_floor * 1.5 {
             self.running_noise_floor += 0.05 * (frame_rms - self.running_noise_floor);
-        } else if frame_rms > self.running_noise_floor * 3.0 {
+        } else if frame_rms > self.running_noise_floor * 2.5 {
             self.running_speech_level += 0.05 * (frame_rms - self.running_speech_level);
         }
         self.running_noise_floor = self.running_noise_floor.clamp(1e-6, 0.05);
@@ -95,8 +107,10 @@ impl ResidualSuppressor {
 
             self.suppression_gain += release_rate * (target_gain - self.suppression_gain);
 
-            // Fast clamp on sharp mechanical click impulses
-            if deriv > 0.12 && abs_val > 0.15 {
+            // Fast clamp on sharp mechanical click impulses ONLY during quiet intervals / non-speech.
+            // Never clamp active voiced speech waveforms to prevent cracking or clipping loud voice!
+            let is_click_impulse = !is_voiced_speech && (deriv > 0.12) && (abs_val > 0.15);
+            if is_click_impulse {
                 *s = in_val.clamp(-0.10, 0.10);
             } else {
                 *s = in_val * self.suppression_gain;

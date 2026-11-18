@@ -1,6 +1,7 @@
 use crate::audio::device::DeviceManager;
 use crate::audio::live_monitor::LiveMonitorTapProducers;
 use crate::audio::mmcss::MmcssHandle;
+use crate::dsp::AudioResampler;
 use crate::engine::pipeline::{AudioPipeline, EngineMode};
 use cpal::traits::{DeviceTrait, StreamTrait};
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
@@ -419,6 +420,9 @@ impl AudioStreamController {
                 let mut in_chunk = vec![0.0f32; in_chunk_samples];
                 let mut out_chunk = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES + 10);
                 let mut ref_scratch = [0.0f32; AudioPipeline::FRAME_SAMPLES];
+                let mut ref_resampled = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES * 2);
+                let ref_sr = worker_metrics.aec_ref_sample_rate.load(Ordering::Relaxed).max(8000);
+                let mut ref_resampler = AudioResampler::new(ref_sr, AudioPipeline::INTERNAL_RATE, AudioPipeline::FRAME_SAMPLES).ok();
                 let mut starvation_counter = 0usize;
 
                 while is_running_worker.load(Ordering::Relaxed) {
@@ -457,7 +461,16 @@ impl AudioStreamController {
                             }
                         }
                         if count > 0 && aec_en {
-                            worker_pipeline.feed_aec_reference(&ref_scratch[..count]);
+                            let feed_slice = if let Some(ref mut rs) = ref_resampler {
+                                if rs.process(&ref_scratch[..count], &mut ref_resampled).is_ok() && !ref_resampled.is_empty() {
+                                    &ref_resampled[..]
+                                } else {
+                                    &ref_scratch[..count]
+                                }
+                            } else {
+                                &ref_scratch[..count]
+                            };
+                            worker_pipeline.feed_aec_reference(feed_slice);
                             let ref_db = if ref_peak > 1e-5 { 20.0 * ref_peak.log10() } else { -100.0 };
                             worker_metrics.aec_ref_peak_db.store(ref_db.to_bits(), Ordering::Relaxed);
                             worker_metrics.aec_frames_processed.fetch_add(1, Ordering::Relaxed);

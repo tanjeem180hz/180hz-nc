@@ -35,6 +35,29 @@
 
 ## 2. Completed Tasks & Measurements
 
+### Commit 32: Fix Loud Speech Cracking, Eliminate AEC Idle Noise, Add Auto-Adjust Sensitivity, and Fix Transient Lookahead Leaks
+- **Problem Investigated**:
+  1. Loud speech was breaking up / cracking / dropping out ("faita-fuita" choppy sound).
+  2. AEC ON added audible hiss even when far-end speaker reference was silent.
+  3. Fixed suppression sensitivity could not adapt to whisper in quiet rooms or loud background environments.
+  4. Transient click suppressor circular delay buffer delayed clicks by 5 ms without attenuating the delayed click, causing loud clicks to emerge into the next frame unattenuated.
+- **Root Causes Discovered & Fixed**:
+  - *Root Cause 1 (Residual Clamping Voiced Speech Distortion)*: `ResidualSuppressor` was blindly applying derivative clamping `s.clamp(-0.10, 0.10)` on steep slopes. During loud speech, vocal formants exceed 0.12 derivative, flat-topping vowels into harsh square waves. Fixed by restricting derivative clamping strictly to unvoiced quiet intervals (`low_e > high_e * 1.2 && crest_factor < 4.0`).
+  - *Root Cause 2 (AEC Filter Adaptation on Mic Noise)*: When far-end reference was silent, NLMS filter was adapting weights on room ambient microphone noise, injecting hiss into the output. Fixed by adding far-end energy gating (`ref_rms > 0.001` = -60 dBFS) freezing adaptation ($\mu = 0$) and bypassing echo subtraction when far-end is silent (0.00 dB delta).
+  - *Root Cause 3 (TransientSuppressor Circular Buffer Latency Mismatch)*: `TransientSuppressor` wrote into a 240-sample circular delay buffer, but gain reduction was applied to `delayed_sample` based on incoming `in_val`. By the time `delayed_sample` emerged 240 samples later, gain had recovered to 1.0! Switched to zero-latency in-place transient suppression, attenuating mechanical clicks immediately upon detection.
+  - *Root Cause 4 (Auto-Adjust Sensitivity System)*: Implemented `AutoSensitivityAdapter` tracking minimum-statistics noise floor over 150-frame sliding windows, adapting threshold dynamically 6 dB above room noise between -60 dBFS and -35 dBFS, with bounded input AGC normalizing speech toward -20 dBFS.
+  - *Root Cause 5 (Linear Bypass & None Mode)*: Soft saturation curve was running before bypass checking, compressing full-scale signals from 1.0 to 0.9461. Reordered so `bypass` and `EngineMode::None` are 100% bit-exact pass-through, and soft saturation only engages on input overload ($|s| > 1.0$).
+- **Verification**:
+  - `cargo test -p quietmic-core`: **80 tests passed, 0 failed**.
+  - `recheck_10_times.rs`: **10/10 iterations passed across all 5 verification suites**:
+    - Live Voice Tester Stability: 10/10 PASS
+    - Volume Controls Linearity: 10/10 PASS
+    - Push-to-Talk Gating: 10/10 PASS
+    - Auto Sensitivity & Threshold: 10/10 PASS
+    - Noise Isolation & Speech Preservation: 10/10 PASS (78.8 dB to 96.2 dB noise reduction, speech preserved within 0.23 dB).
+  - `test_part_a_loud_speech_acceptance.rs`: 0 dropouts, 0 clipped samples across -30, -20, -12, -6, and -3 dBFS.
+  - `test_aec_noise_investigation.rs`: 0.00 dB noise floor delta with AEC ON and silent reference.
+
 ### Commit 31: Fix TaskDialogIndirect Entry Point Error, Embed Common Controls v6 Manifest in Installer, and Auto-Migrate Legacy 180Hz-NC Files
 - **Problem Investigated**: User encountered error dialog: *"The procedure entry point TaskDialogIndirect could not be located in the dynamic link library C:\Program Files\180Hz-NC\180Hz-NC.exe"*.
 - **Root Cause Discovered**:

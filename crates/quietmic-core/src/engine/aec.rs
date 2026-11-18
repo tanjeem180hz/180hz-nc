@@ -38,6 +38,7 @@ impl EchoCanceller {
     pub const DEFAULT_TAPS: usize = 512;        // 10.6 ms at 48 kHz
     pub const MAX_DELAY_SAMPLES: usize = 9600;   // 200 ms at 48 kHz
     pub const DELAY_SEARCH_WINDOW: usize = 2400; // 50 ms search window
+    pub const FAR_END_ACTIVE_THRESHOLD: f32 = 0.005; // -46 dBFS minimum far-end activity across 512 taps
 
     pub fn new(filter_length: usize) -> Self {
         let filter_length = filter_length.clamp(64, 1024);
@@ -218,31 +219,43 @@ impl EchoCanceller {
         // 4. Vectorized FIR convolution: echo_hat = W^T * X
         let x_window = &self.ref_ring[self.ring_idx..self.ring_idx + l];
         let mut echo_hat = 0.0f32;
-        let mut ref_energy = 1e-6f32;
+        let mut ref_energy = 0.0f32;
 
         for (w, &x) in self.weights.iter().zip(x_window) {
             echo_hat += *w * x;
             ref_energy += x * x;
         }
 
-        // 5. Compute preliminary error: e = d - echo_hat
+        // Far-end activity detection:
+        // Far-end must have actual signal (> -46 dBFS) to consider echo subtraction or adaptation.
+        // If reference is silent or just soundcard DAC dither, zero out echo_hat so AEC NEVER adds noise!
+        let far_end_active = ref_energy >= Self::FAR_END_ACTIVE_THRESHOLD;
+        if !far_end_active {
+            echo_hat = 0.0;
+        }
+
+        // 5. Compute error: e = d - echo_hat
         let error = mic_sample - echo_hat;
 
-        // 6. Double-Talk Detection (DTD):
+        // 6. Double-Talk & Near-End Activity Detection (DTD):
         // Update rolling power trackers
-        self.mic_energy_tracker += 0.01 * (mic_sample * mic_sample - self.mic_energy_tracker);
-        self.echo_energy_tracker += 0.01 * (echo_hat * echo_hat - self.echo_energy_tracker);
-        self.ref_energy_tracker += 0.01 * (aligned_ref * aligned_ref - self.ref_energy_tracker);
+        self.mic_energy_tracker += 0.02 * (mic_sample * mic_sample - self.mic_energy_tracker);
+        self.echo_energy_tracker += 0.02 * (echo_hat * echo_hat - self.echo_energy_tracker);
+        self.ref_energy_tracker += 0.02 * (aligned_ref * aligned_ref - self.ref_energy_tracker);
 
-        // Near-end speech indicator: mic energy significantly higher than estimated echo
-        let is_double_talk = (self.mic_energy_tracker > self.echo_energy_tracker * 2.2)
-            && (self.mic_energy_tracker > 1e-4)
-            && (self.ref_energy_tracker > 1e-5);
-        self.is_double_talk = is_double_talk;
+        // Near-end speech is active when:
+        // - Microphone energy is well above acoustic noise floor (> -40 dBFS, 1e-4) AND
+        // - Mic energy dominates expected echo, OR far-end is inactive (near-end single-talk)
+        let near_end_active = (self.mic_energy_tracker > 1e-4)
+            && (!far_end_active || self.mic_energy_tracker > self.echo_energy_tracker * 1.5);
+        self.is_double_talk = far_end_active && near_end_active;
 
         // 7. NLMS Weight Adaptation:
-        // Freeze adaptation during double-talk to protect near-end voice!
-        if !is_double_talk && ref_energy > 1e-4 {
+        // Adaptation allowed ONLY when:
+        // 1. Far-end is actively speaking (far_end_active == true)
+        // 2. Near-end is NOT speaking (!near_end_active && !is_double_talk)
+        // 3. Normalized error is within bounded range
+        if far_end_active && !near_end_active && !self.is_double_talk {
             let norm_mu = self.step_size / (ref_energy + 1e-3);
             for (w, &x) in self.weights.iter_mut().zip(x_window) {
                 *w += norm_mu * error * x;
@@ -250,10 +263,10 @@ impl EchoCanceller {
         }
 
         // 8. Non-linear Residual Echo Suppression (NLP):
-        // If far-end is active and no near-end double-talk, suppress residual echo leakage
-        let output = if !is_double_talk && self.echo_energy_tracker > 1e-4 {
-            let suppression = (self.echo_energy_tracker / (self.mic_energy_tracker + 1e-6)).clamp(0.0, 1.0);
-            error * (1.0 - 0.70 * suppression)
+        // Only apply when far-end is active and no near-end speech to protect near-end voice
+        let output = if far_end_active && !near_end_active && self.echo_energy_tracker > 1e-4 {
+            let suppression = (self.echo_energy_tracker / (self.mic_energy_tracker + 1e-6)).clamp(0.0, 0.85);
+            error * (1.0 - suppression)
         } else {
             error
         };
@@ -293,6 +306,23 @@ impl EchoCanceller {
         if in_mic_energy > 1e-6 {
             let erle = 10.0 * (in_mic_energy / out_err_energy.max(1e-8)).log10();
             self.last_erle_db = self.last_erle_db * 0.95 + erle.clamp(0.0, 60.0) * 0.05;
+        }
+
+        // Divergence & weight energy ceiling protection:
+        // Acoustic coupling in any physical room cannot exceed unity gain (1.0).
+        let mut weight_norm_sq = 0.0f32;
+        for &w in &self.weights {
+            weight_norm_sq += w * w;
+        }
+        if weight_norm_sq > 2.0 {
+            // Severe divergence detected -> safely reset weights
+            self.weights.fill(0.0);
+        } else if weight_norm_sq > 0.8 {
+            // Rescale weights to keep total filter gain safely bounded
+            let scale = (0.7 / weight_norm_sq).sqrt();
+            for w in self.weights.iter_mut() {
+                *w *= scale;
+            }
         }
 
         // Reclaim memory in ref_fifo periodically

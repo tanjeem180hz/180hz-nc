@@ -522,8 +522,10 @@ pub struct EvaluationSummary {
 
 fn evaluate_pipeline_on_mixtures(mode: EngineMode, mixtures: &[TestMixture]) -> (EvaluationSummary, Vec<(String, f32, f32)>) {
     let mode_name = match mode {
+        EngineMode::None => "None (True Bypass)",
         EngineMode::Light => "Krisp AI / RNNoise (Light)",
         EngineMode::Standard => "ERB Wiener STFT (Standard)",
+        EngineMode::MaxQuality => "Max Quality (Krisp-Level 48kHz)",
         EngineMode::VoiceIsolation => "Voice Isolation",
     };
 

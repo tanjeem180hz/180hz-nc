@@ -1,3 +1,4 @@
+pub mod auto_sensitivity;
 pub mod biquad;
 pub mod comfort_noise;
 pub mod crossfade;
@@ -10,6 +11,7 @@ pub mod residual;
 pub mod transient;
 pub mod vad;
 
+pub use auto_sensitivity::AutoSensitivityAdapter;
 pub use biquad::HighPassFilter;
 pub use comfort_noise::ComfortNoiseGenerator;
 pub use crossfade::{CrossfadeMode, CrossfadeSwitch};

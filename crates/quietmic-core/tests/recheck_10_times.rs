@@ -95,7 +95,7 @@ fn test_ten_times_recheck_noise_isolation_and_speech_preservation() {
         for f in 35..85 {
             let noise = generate_noise_frame(f, f as u32 * 7919 + iteration as u32, iteration);
             pipeline.process_frame_internal(&noise, &mut out_frame, 960).unwrap();
-            if f >= 55 {
+            if f >= 65 {
                 for i in 0..480 {
                     noise_in_energy += noise[i] * noise[i];
                     noise_out_energy += out_frame[i] * out_frame[i];

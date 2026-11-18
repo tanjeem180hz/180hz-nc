@@ -191,14 +191,19 @@ fn set_noise_mode(mode: String, state: State<AppState>) -> Result<(), String> {
     match mode.as_str() {
         "None" => {
             cfg.bypass = true;
+            cfg.mode = "None".to_string();
         }
-        "Krisp" => {
+        "Light" | "Krisp" => {
             cfg.bypass = false;
             cfg.mode = "Krisp".to_string();
         }
         "Standard" => {
             cfg.bypass = false;
             cfg.mode = "Standard".to_string();
+        }
+        "MaxQuality" | "Max Quality" => {
+            cfg.bypass = false;
+            cfg.mode = "MaxQuality".to_string();
         }
         _ => {
             cfg.bypass = false;
@@ -305,7 +310,9 @@ fn run_pipeline_diagnostics(
     let cfg = state.config.lock();
     let mut pipeline = AudioPipeline::new(48000, 48000)?;
     let mode = match cfg.mode.as_str() {
+        "None" | "Bypass" => EngineMode::None,
         "Light" | "Krisp" => EngineMode::Light,
+        "MaxQuality" | "Max Quality" => EngineMode::MaxQuality,
         "VoiceIsolation" => EngineMode::VoiceIsolation,
         _ => EngineMode::Standard,
     };
@@ -496,7 +503,9 @@ fn restart_audio_stream(state: &AppState, cfg: &AppConfig) -> Result<(), String>
 
     let mut pipeline = AudioPipeline::new(48000, 48000)?;
     let mode = match cfg.mode.as_str() {
+        "None" | "Bypass" => EngineMode::None,
         "Light" | "Krisp" => EngineMode::Light,
+        "MaxQuality" | "Max Quality" => EngineMode::MaxQuality,
         "VoiceIsolation" => EngineMode::VoiceIsolation,
         _ => EngineMode::Standard,
     };
@@ -643,7 +652,9 @@ fn main() {
     // Initialize initial audio pipeline
     let mut pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline initialization failed");
     let mode = match config.mode.as_str() {
+        "None" | "Bypass" => EngineMode::None,
         "Light" | "Krisp" => EngineMode::Light,
+        "MaxQuality" | "Max Quality" => EngineMode::MaxQuality,
         "VoiceIsolation" => EngineMode::VoiceIsolation,
         _ => EngineMode::Standard,
     };

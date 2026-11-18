@@ -87,6 +87,8 @@ pub fn run_pipeline_self_test(pipeline: &mut AudioPipeline) -> SelfTestReport {
     let out_noise_rms = (cleaned[n_start..n_end].iter().map(|&x| x * x).sum::<f32>() / (n_end - n_start) as f32).sqrt();
     let noise_only_reduction_db = (20.0 * (in_noise_rms / out_noise_rms.max(1e-7)).log10()).max(0.0);
 
+    eprintln!("SELF_TEST: in_noise_rms={:.5}, out_noise_rms={:.5}, reduction={:.2} dB", in_noise_rms, out_noise_rms, noise_only_reduction_db);
+
     // 5. Measure Speech-active inter-harmonic noise reduction (0.7s to 1.3s)
     // Pipeline has algorithmic delay (15 ms = 720 samples).
     let lag = 720;
