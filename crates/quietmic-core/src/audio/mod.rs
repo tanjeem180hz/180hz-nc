@@ -1,4 +1,5 @@
 pub mod device;
+pub mod echo_doctor;
 pub mod live_monitor;
 pub mod mmcss;
 pub mod mock;
@@ -6,6 +7,7 @@ pub mod stream;
 pub mod windows_diag;
 
 pub use device::{AudioDeviceInfo, DeviceManager, VirtualDeviceStatus};
+pub use echo_doctor::{EchoDoctor, EchoDoctorReport, EndpointType, LoopPath};
 pub use live_monitor::{LiveMonitorController, LiveMonitorStatus, LiveMonitorTapProducers};
 pub use mmcss::MmcssHandle;
 pub use mock::{MockDeviceManager, MockStreamHarness};

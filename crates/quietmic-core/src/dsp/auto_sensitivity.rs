@@ -176,8 +176,7 @@ impl AutoSensitivityAdapter {
             // Dynamic threshold: 6 dB above minimum-statistics noise floor
             // Whisper protection: minimum threshold down to -60 dBFS
             // Loud speech protection: maximum threshold up to -35 dBFS
-            let dynamic = (self.last_noise_floor_db + 6.0).clamp(-60.0, -35.0);
-            dynamic
+            (self.last_noise_floor_db + 6.0).clamp(-60.0, -35.0)
         } else {
             self.manual_threshold_dbfs
         };
@@ -208,5 +207,11 @@ impl AutoSensitivityAdapter {
     #[inline]
     pub fn is_speech_active(&self) -> bool {
         self.speech_active
+    }
+}
+
+impl Default for AutoSensitivityAdapter {
+    fn default() -> Self {
+        Self::new()
     }
 }

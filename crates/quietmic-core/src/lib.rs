@@ -3,7 +3,10 @@ pub mod config;
 pub mod dsp;
 pub mod engine;
 
-pub use audio::{AudioDeviceInfo, AudioMetrics, AudioStreamController, DeviceManager, VirtualDeviceStatus};
+pub use audio::{
+    AudioDeviceInfo, AudioMetrics, AudioStreamController, DeviceManager, EchoDoctor,
+    EchoDoctorReport, EndpointType, LoopPath, VirtualDeviceStatus,
+};
 pub use config::AppConfig;
 pub use dsp::{
     AudioResampler, ComfortNoiseGenerator, DriftCompensator, GainSmoother, HighPassFilter,

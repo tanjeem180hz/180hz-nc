@@ -188,8 +188,10 @@ All metrics below were measured using the offline test harness (`quietmic-bench`
 | Issue | Cause | Solution |
 | :--- | :--- | :--- |
 | **Noise sounds unchanged or hiss persists** | Background hiss or fallback pass-through active | Check the **Noise Suppression badge** and **Pass-through counter** in settings. If badge displays `Bypassed (0 dB)`, click **Krisp** or press `Ctrl+Shift+B` to re-engage suppression. If `Pass-through` counter is non-zero, check `180hz nc.log` for audio device buffer errors. |
+| **Echo during Discord Screen Sharing** | Digital Windows render loop or "Share Audio" entire desktop capture | **Fix 1**: In Discord, share the specific **Application Window** instead of "Entire Screen" (Discord will stream only that game/app's audio, not call voices).<br>**Fix 2**: Click **🩺 Echo Doctor** in 180hz nc settings to run diagnostic.<br>**Fix 3**: Ensure Windows Default Playback is set to your real Headphones, never `CABLE Input`. |
+| **AEC buzzing / ringing / crackling ("jir-jir")** | Old AEC FIR filter chatter or reference underrun | Resolved in v1.0.0 via envelope-smoothed non-linear suppression, leaky NLMS, and continuous hold-decay. Click **Speaker Test** or **Echo Doctor** in settings to verify. |
 | **No audio in Zoom/Discord** | Virtual mic not selected in target app | Ensure the communication app's microphone input is explicitly set to **"CABLE Output"**. |
-| **Audible echo on loudspeakers** | Loudspeaker sound bleeding into mic | Toggle **Echo Cancellation (AEC)** ON in 180hz nc settings. |
+| **Audible echo on loudspeakers** | Loudspeaker sound bleeding into mic | Toggle **Echo Cancellation (AEC)** ON in 180hz nc settings (or wear headphones for automatic 100% bypass). |
 | **High CPU on battery** | High sampling rate or background tasks | Switch engine mode from Standard to **Krisp** (< 1% CPU usage with SIMD-accelerated inference). |
 | **Bluetooth Headset (HFP 16 kHz)** | Windows hands-free profile limitation | 180hz nc automatically detects 16 kHz sample rate and applies Sinc upsampling to 48 kHz. |
 

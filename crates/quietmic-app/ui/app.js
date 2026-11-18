@@ -76,6 +76,19 @@ const aecErleText = document.getElementById('aecErleText');
 const aecDelayText = document.getElementById('aecDelayText');
 const aecFramesText = document.getElementById('aecFramesText');
 const aecTestBtn = document.getElementById('aecTestBtn');
+const echoDoctorBtn = document.getElementById('echoDoctorBtn');
+const aecEndpointBadge = document.getElementById('aecEndpointBadge');
+const loopWarningPill = document.getElementById('loopWarningPill');
+const echoDoctorModal = document.getElementById('echoDoctorModal');
+const closeEchoDoctorBtn = document.getElementById('closeEchoDoctorBtn');
+const dismissEchoDoctorBtn = document.getElementById('dismissEchoDoctorBtn');
+const doctorSeverityBanner = document.getElementById('doctorSeverityBanner');
+const doctorSeverityIcon = document.getElementById('doctorSeverityIcon');
+const doctorSeverityText = document.getElementById('doctorSeverityText');
+const doctorExplanation = document.getElementById('doctorExplanation');
+const doctorFixSection = document.getElementById('doctorFixSection');
+const doctorFixList = document.getElementById('doctorFixList');
+const doctorDiscordTips = document.getElementById('doctorDiscordTips');
 const pipelineSelfTestBtn = document.getElementById('pipelineSelfTestBtn');
 
 const pttToggle = document.getElementById('pttToggle');
@@ -411,6 +424,84 @@ if (aecTestBtn) {
   });
 }
 
+if (echoDoctorBtn) {
+  echoDoctorBtn.addEventListener('click', async () => {
+    echoDoctorBtn.disabled = true;
+    echoDoctorBtn.textContent = 'Diagnosing...';
+    try {
+      const report = await invoke('run_echo_doctor_command');
+      if (report && echoDoctorModal) {
+        // Update Severity Banner
+        const sev = report.loop_severity || 'CLEAN';
+        if (sev === 'CRITICAL') {
+          doctorSeverityBanner.style.background = 'rgba(239, 68, 68, 0.2)';
+          doctorSeverityBanner.style.border = '1px solid #ef4444';
+          doctorSeverityBanner.style.color = '#f87171';
+          doctorSeverityIcon.textContent = '🚨';
+          doctorSeverityText.textContent = 'Critical Loop Detected!';
+        } else if (sev === 'WARNING') {
+          doctorSeverityBanner.style.background = 'rgba(245, 158, 11, 0.2)';
+          doctorSeverityBanner.style.border = '1px solid #f59e0b';
+          doctorSeverityBanner.style.color = '#fbbf24';
+          doctorSeverityIcon.textContent = '⚠️';
+          doctorSeverityText.textContent = 'Potential Echo / Routing Warning';
+        } else {
+          doctorSeverityBanner.style.background = 'rgba(16, 185, 129, 0.2)';
+          doctorSeverityBanner.style.border = '1px solid #10b981';
+          doctorSeverityBanner.style.color = '#34d399';
+          doctorSeverityIcon.textContent = '✅';
+          doctorSeverityText.textContent = 'Clean Audio Routing - No Loop Detected';
+        }
+
+        // Diagnosis Explanation
+        doctorExplanation.textContent = report.plain_explanation || 'No routing issues detected.';
+
+        // Steps to Fix
+        if (report.step_by_step_fix && report.step_by_step_fix.length > 0) {
+          doctorFixList.innerHTML = '';
+          report.step_by_step_fix.forEach(step => {
+            const li = document.createElement('li');
+            li.textContent = step;
+            doctorFixList.appendChild(li);
+          });
+          doctorFixSection.style.display = 'block';
+        } else {
+          doctorFixSection.style.display = 'none';
+        }
+
+        // Discord Screen Share Tips
+        if (report.discord_screen_share_tips && report.discord_screen_share_tips.length > 0) {
+          doctorDiscordTips.innerHTML = '';
+          report.discord_screen_share_tips.forEach(tip => {
+            const li = document.createElement('li');
+            li.textContent = tip;
+            doctorDiscordTips.appendChild(li);
+          });
+        }
+
+        echoDoctorModal.style.display = 'flex';
+      }
+    } catch (e) {
+      alert(`Echo Doctor failed: ${e}`);
+    } finally {
+      echoDoctorBtn.disabled = false;
+      echoDoctorBtn.textContent = '🩺 Echo Doctor';
+    }
+  });
+}
+
+if (closeEchoDoctorBtn) {
+  closeEchoDoctorBtn.addEventListener('click', () => {
+    if (echoDoctorModal) echoDoctorModal.style.display = 'none';
+  });
+}
+
+if (dismissEchoDoctorBtn) {
+  dismissEchoDoctorBtn.addEventListener('click', () => {
+    if (echoDoctorModal) echoDoctorModal.style.display = 'none';
+  });
+}
+
 if (pipelineSelfTestBtn) {
   pipelineSelfTestBtn.addEventListener('click', async () => {
     pipelineSelfTestBtn.disabled = true;
@@ -543,7 +634,7 @@ async function pollMetrics() {
       }
       if (dspLatencyText) dspLatencyText.textContent = `${metrics.frame_time_us || 0} µs`;
 
-      // Update AEC Telemetry
+      // Update AEC Telemetry & Endpoint Status
       if (aecDetails) {
         if (metrics.aec_enabled) {
           aecDetails.style.display = 'flex';
@@ -552,9 +643,30 @@ async function pollMetrics() {
           if (aecErleText) aecErleText.textContent = `${Math.round(metrics.aec_erle_db || 0)} dB`;
           if (aecDelayText) aecDelayText.textContent = `${(metrics.aec_delay_ms || 0).toFixed(1)} ms`;
           if (aecFramesText) aecFramesText.textContent = metrics.aec_frames_processed || 0;
+
+          if (aecEndpointBadge) {
+            const ep = metrics.aec_endpoint || 'Speakers';
+            aecEndpointBadge.style.display = 'inline-block';
+            if (ep === 'Headphones' || ep === 'Headset') {
+              aecEndpointBadge.textContent = `${ep}: Auto-Bypassed`;
+              aecEndpointBadge.style.background = 'rgba(59, 130, 246, 0.15)';
+              aecEndpointBadge.style.color = '#60a5fa';
+            } else if (ep === 'Speakers') {
+              aecEndpointBadge.textContent = 'Speakers: AEC Active';
+              aecEndpointBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+              aecEndpointBadge.style.color = '#34d399';
+            } else {
+              aecEndpointBadge.textContent = ep;
+            }
+          }
         } else {
           aecDetails.style.display = 'none';
+          if (aecEndpointBadge) aecEndpointBadge.style.display = 'none';
         }
+      }
+
+      if (loopWarningPill) {
+        loopWarningPill.style.display = metrics.loop_warning ? 'inline-block' : 'none';
       }
 
       if (noiseReductionBadge) {

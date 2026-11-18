@@ -28,7 +28,10 @@ pub fn run_pipeline_self_test(pipeline: &mut AudioPipeline) -> SelfTestReport {
     let mut noise_only = vec![0.0f32; total_samples];
 
     // 1. Generate clean speech with natural pitch harmonics (F0 = 150 Hz) between 0.5s and 1.5s
-    for i in (sample_rate / 2)..(sample_rate * 3 / 2) {
+    let speech_start = sample_rate / 2;
+    let speech_end = sample_rate * 3 / 2;
+    for (idx, sample) in clean_speech[speech_start..speech_end].iter_mut().enumerate() {
+        let i = speech_start + idx;
         let t = i as f32 / sample_rate as f32;
         let f0 = 150.0 + 10.0 * (2.0 * PI * 2.0 * t).sin();
         let mut s = 0.0f32;
@@ -38,7 +41,7 @@ pub fn run_pipeline_self_test(pipeline: &mut AudioPipeline) -> SelfTestReport {
             s += amp * (2.0 * PI * freq * t).sin();
         }
         let env = (PI * (t - 0.5)).sin(); // smooth half-sine envelope
-        clean_speech[i] = s * env * 0.35;
+        *sample = s * env * 0.35;
     }
 
     // 2. Generate noise (fan hum 60/120 Hz + sharp keyboard clicks every 300 ms + background hiss)

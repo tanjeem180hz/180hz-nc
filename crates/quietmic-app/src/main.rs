@@ -47,6 +47,8 @@ pub struct MetricsDto {
     pub aec_frames_processed: u64,
     pub aec_erle_db: f32,
     pub aec_delay_ms: f32,
+    pub aec_endpoint: String,
+    pub loop_warning: bool,
 }
 
 pub struct AppState {
@@ -345,6 +347,11 @@ fn run_aec_speaker_test_command() -> Result<quietmic_core::AecSpeakerTestReport,
 }
 
 #[tauri::command]
+fn run_echo_doctor_command() -> quietmic_core::audio::EchoDoctorReport {
+    quietmic_core::audio::EchoDoctor::diagnose()
+}
+
+#[tauri::command]
 fn get_virtual_status(state: State<AppState>) -> VirtualDeviceStatus {
     state.device_manager.check_virtual_cable()
 }
@@ -462,6 +469,8 @@ fn get_metrics(state: State<AppState>) -> MetricsDto {
             aec_frames_processed: m.get_aec_frames_processed(),
             aec_erle_db: m.get_aec_erle_db(),
             aec_delay_ms: m.get_aec_delay_ms(),
+            aec_endpoint: m.get_aec_endpoint_type().to_string(),
+            loop_warning: m.is_loop_warning_active(),
         }
     } else {
         MetricsDto {
@@ -483,6 +492,8 @@ fn get_metrics(state: State<AppState>) -> MetricsDto {
             aec_frames_processed: 0,
             aec_erle_db: 0.0,
             aec_delay_ms: 0.0,
+            aec_endpoint: "Unknown".to_string(),
+            loop_warning: false,
         }
     }
 }
@@ -928,6 +939,7 @@ fn main() {
             get_system_audio_diagnostics,
             run_pipeline_self_test_command,
             run_aec_speaker_test_command,
+            run_echo_doctor_command,
             open_url
         ])
         .run(tauri::generate_context!())

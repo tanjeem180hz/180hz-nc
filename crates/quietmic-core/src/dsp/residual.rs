@@ -119,6 +119,12 @@ impl ResidualSuppressor {
     }
 }
 
+impl Default for ResidualSuppressor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

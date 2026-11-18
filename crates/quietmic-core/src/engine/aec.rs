@@ -30,6 +30,8 @@ pub struct EchoCanceller {
     ref_energy_tracker: f32,
     mic_energy_tracker: f32,
     echo_energy_tracker: f32,
+    smoothed_nlp_gain: f32,
+    last_ref_sample: f32,
     ref_fifo: Vec<f32>,
     ref_fifo_read: usize,
 }
@@ -38,7 +40,7 @@ impl EchoCanceller {
     pub const DEFAULT_TAPS: usize = 512;        // 10.6 ms at 48 kHz
     pub const MAX_DELAY_SAMPLES: usize = 9600;   // 200 ms at 48 kHz
     pub const DELAY_SEARCH_WINDOW: usize = 2400; // 50 ms search window
-    pub const FAR_END_ACTIVE_THRESHOLD: f32 = 0.005; // -46 dBFS minimum far-end activity across 512 taps
+    pub const FAR_END_ACTIVE_THRESHOLD: f32 = 0.001; // -60 dBFS minimum far-end activity across 512 taps
 
     pub fn new(filter_length: usize) -> Self {
         let filter_length = filter_length.clamp(64, 1024);
@@ -47,8 +49,8 @@ impl EchoCanceller {
             filter_length,
             weights: vec![0.0f32; filter_length],
             ref_ring: vec![0.0f32; 2 * filter_length],
-            ring_idx: 0,
-            step_size: 0.15,
+            ring_idx: filter_length,
+            step_size: 0.04,
             delay_buffer: vec![0.0f32; Self::MAX_DELAY_SAMPLES],
             delay_write_pos: 0,
             bulk_delay_samples: 0, // Starts at 0, calibrated via delay estimation
@@ -61,6 +63,8 @@ impl EchoCanceller {
             ref_energy_tracker: 1e-5,
             mic_energy_tracker: 1e-5,
             echo_energy_tracker: 1e-5,
+            smoothed_nlp_gain: 0.0,
+            last_ref_sample: 0.0,
             ref_fifo: Vec::with_capacity(Self::MAX_DELAY_SAMPLES),
             ref_fifo_read: 0,
         }
@@ -81,13 +85,15 @@ impl EchoCanceller {
     pub fn reset(&mut self) {
         self.weights.fill(0.0);
         self.ref_ring.fill(0.0);
-        self.ring_idx = 0;
+        self.ring_idx = self.filter_length;
         self.delay_buffer.fill(0.0);
         self.delay_write_pos = 0;
         self.delay_search_buffer_ref.clear();
         self.delay_search_buffer_mic.clear();
         self.is_double_talk = false;
         self.last_erle_db = 0.0;
+        self.smoothed_nlp_gain = 0.0;
+        self.last_ref_sample = 0.0;
         self.ref_fifo.clear();
         self.ref_fifo_read = 0;
     }
@@ -129,12 +135,21 @@ impl EchoCanceller {
 
         self.ref_frames_fed += 1;
 
-        // Keep FIFO bounded to prevent unbounded memory growth
-        if self.ref_fifo.len().saturating_sub(self.ref_fifo_read) > Self::MAX_DELAY_SAMPLES {
-            let retain_from = self.ref_fifo_read;
-            self.ref_fifo.drain(0..retain_from);
+        // Drain already-read samples to reclaim storage
+        if self.ref_fifo_read > 0 {
+            self.ref_fifo.drain(0..self.ref_fifo_read);
             self.ref_fifo_read = 0;
         }
+
+        // Bounded jitter absorption: keep unread reference buffer within 3 frames (1440 samples = 30 ms).
+        // If unread samples accumulate beyond 3 frames due to callback jitter or clock drift,
+        // drain the oldest excess to strictly prevent acoustic latency drift!
+        const MAX_UNREAD_SAMPLES: usize = 1440;
+        if self.ref_fifo.len() > MAX_UNREAD_SAMPLES {
+            let excess = self.ref_fifo.len() - MAX_UNREAD_SAMPLES;
+            self.ref_fifo.drain(0..excess);
+        }
+
         self.ref_fifo.extend_from_slice(ref_samples);
     }
 
@@ -207,28 +222,35 @@ impl EchoCanceller {
         let aligned_ref = self.delay_buffer[read_pos];
         self.delay_write_pos = (self.delay_write_pos + 1) % delay_len;
 
-        // 3. Store aligned reference symmetrically in contiguous double-buffer
+        // 3. Store aligned reference in symmetric contiguous double-buffer in forward causal order
         let l = self.filter_length;
+        if self.ring_idx == 0 {
+            self.ring_idx = l;
+        }
+        self.ring_idx -= 1;
         self.ref_ring[self.ring_idx] = aligned_ref;
         self.ref_ring[self.ring_idx + l] = aligned_ref;
-        self.ring_idx += 1;
-        if self.ring_idx >= l {
-            self.ring_idx = 0;
-        }
 
-        // 4. Vectorized FIR convolution: echo_hat = W^T * X
+        // 4. Vectorized FIR convolution: echo_hat = sum_{k=0}^{L-1} w[k] * x[n-k]
+        // x_window[0] is aligned_ref (t=0 direct path)
+        // x_window[k] is aligned_ref at delay k (room reflection at t=k)
         let x_window = &self.ref_ring[self.ring_idx..self.ring_idx + l];
         let mut echo_hat = 0.0f32;
         let mut ref_energy = 0.0f32;
+        let mut ref_peak = 0.0f32;
 
         for (w, &x) in self.weights.iter().zip(x_window) {
             echo_hat += *w * x;
             ref_energy += x * x;
+            let abs_x = x.abs();
+            if abs_x > ref_peak {
+                ref_peak = abs_x;
+            }
         }
 
         // Far-end activity detection:
-        // Far-end must have actual signal (> -46 dBFS) to consider echo subtraction or adaptation.
-        // If reference is silent or just soundcard DAC dither, zero out echo_hat so AEC NEVER adds noise!
+        // Far-end must have actual signal (> -60 dBFS) to consider echo subtraction or adaptation.
+        // If reference is silent or soundcard DAC dither, zero out echo_hat so AEC NEVER adds noise!
         let far_end_active = ref_energy >= Self::FAR_END_ACTIVE_THRESHOLD;
         if !far_end_active {
             echo_hat = 0.0;
@@ -237,41 +259,39 @@ impl EchoCanceller {
         // 5. Compute error: e = d - echo_hat
         let error = mic_sample - echo_hat;
 
-        // 6. Double-Talk & Near-End Activity Detection (DTD):
+        // 6. Double-Talk & Near-End Activity Detection (Geigel & Power DTD):
         // Update rolling power trackers
         self.mic_energy_tracker += 0.02 * (mic_sample * mic_sample - self.mic_energy_tracker);
         self.echo_energy_tracker += 0.02 * (echo_hat * echo_hat - self.echo_energy_tracker);
         self.ref_energy_tracker += 0.02 * (aligned_ref * aligned_ref - self.ref_energy_tracker);
 
         // Near-end speech is active when:
-        // - Microphone energy is well above acoustic noise floor (> -40 dBFS, 1e-4) AND
-        // - Mic energy dominates expected echo, OR far-end is inactive (near-end single-talk)
-        let near_end_active = (self.mic_energy_tracker > 1e-4)
-            && (!far_end_active || self.mic_energy_tracker > self.echo_energy_tracker * 1.5);
+        // - Microphone energy has audible energy (> -46 dBFS, 1.5e-4) AND
+        // - (Far-end is inactive OR mic amplitude exceeds loudspeaker acoustic coupling envelope: mic > 1.25 * ref_peak)
+        let near_end_active = (self.mic_energy_tracker > 1.5e-4)
+            && (!far_end_active || mic_sample.abs() > ref_peak * 1.25);
         self.is_double_talk = far_end_active && near_end_active;
 
-        // 7. NLMS Weight Adaptation:
-        // Adaptation allowed ONLY when:
-        // 1. Far-end is actively speaking (far_end_active == true)
-        // 2. Near-end is NOT speaking (!near_end_active && !is_double_talk)
-        // 3. Normalized error is within bounded range
+        // 7. Conservative Leaky NLMS Weight Adaptation:
+        // Step size 0.04 (conservative, zero weight chatter / no buzzing)
+        // Leakage 1e-5 prevents weight drift on unexcited frequencies
         if far_end_active && !near_end_active && !self.is_double_talk {
             let norm_mu = self.step_size / (ref_energy + 1e-3);
             for (w, &x) in self.weights.iter_mut().zip(x_window) {
-                *w += norm_mu * error * x;
+                *w = *w * (1.0 - 1e-5) + norm_mu * error * x;
             }
         }
 
-        // 8. Non-linear Residual Echo Suppression (NLP):
-        // Only apply when far-end is active and no near-end speech to protect near-end voice
-        let output = if far_end_active && !near_end_active && self.echo_energy_tracker > 1e-4 {
-            let suppression = (self.echo_energy_tracker / (self.mic_energy_tracker + 1e-6)).clamp(0.0, 0.85);
-            error * (1.0 - suppression)
+        // 8. Envelope-Smoothed Non-Linear Residual Suppression (NLP):
+        // Smooth gain adjustment (fast attack 0.05, gentle release 0.002) eliminates buzzing/chatter
+        let target_suppression = if far_end_active && !near_end_active && self.echo_energy_tracker > 1e-4 {
+            (self.echo_energy_tracker / (self.mic_energy_tracker + 1e-6)).clamp(0.0, 0.85)
         } else {
-            error
+            0.0
         };
-
-        output
+        let rate = if target_suppression > self.smoothed_nlp_gain { 0.05 } else { 0.002 };
+        self.smoothed_nlp_gain += rate * (target_suppression - self.smoothed_nlp_gain);
+        error * (1.0 - self.smoothed_nlp_gain)
     }
 
     /// Processes microphone frame in-place, draining time-aligned reference audio from ref_fifo.
@@ -289,9 +309,14 @@ impl EchoCanceller {
             let ref_sample = if self.ref_fifo_read < self.ref_fifo.len() {
                 let s = self.ref_fifo[self.ref_fifo_read];
                 self.ref_fifo_read += 1;
+                self.last_ref_sample = s;
                 s
             } else {
-                0.0
+                // Continuous hold-decay: if FIFO underflows by a few samples due to clock drift,
+                // smoothly decay the previous sample instead of slamming to 0.0 (prevents 100 Hz buzzing!)
+                let s = self.last_ref_sample * 0.95;
+                self.last_ref_sample = s;
+                s
             };
 
             let in_val = *sample;
@@ -350,6 +375,7 @@ pub struct AecSpeakerTestReport {
 /// 2. Simulates an acoustic room echo with 40 ms hardware delay + reverberant room impulse response.
 /// 3. Injects near-end speech during double-talk interval.
 /// 4. Runs AEC and computes ERLE in dB.
+///
 /// PASS condition: ERLE >= 20.0 dB.
 pub fn run_aec_speaker_test(aec: &mut EchoCanceller) -> AecSpeakerTestReport {
     use std::f32::consts::PI;
@@ -361,14 +387,14 @@ pub fn run_aec_speaker_test(aec: &mut EchoCanceller) -> AecSpeakerTestReport {
     let mut near_end_speech = vec![0.0f32; total_samples];
 
     // 1. Generate far-end reference speech (pitch harmonics F0 = 220 Hz)
-    for i in 0..total_samples {
+    for (i, ref_sample) in far_end_ref.iter_mut().enumerate() {
         let t = i as f32 / sample_rate as f32;
         let env = 0.5 * (1.0 + (2.0 * PI * 3.0 * t).sin()).powi(2);
         let mut s = 0.0f32;
         for h in 1..=8 {
             s += (0.25 / (h as f32).sqrt()) * (2.0 * PI * 220.0 * (h as f32) * t).sin();
         }
-        far_end_ref[i] = s * env * 0.40;
+        *ref_sample = s * env * 0.40;
     }
 
     // 2. Simulate room echo with 40 ms acoustic delay (1920 samples) and multi-tap room reflections

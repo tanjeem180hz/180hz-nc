@@ -1,4 +1,5 @@
 use crate::audio::device::DeviceManager;
+use crate::audio::echo_doctor::{EchoDoctor, EndpointType};
 use crate::audio::live_monitor::LiveMonitorTapProducers;
 use crate::audio::mmcss::MmcssHandle;
 use crate::dsp::AudioResampler;
@@ -30,6 +31,8 @@ pub struct AudioMetrics {
     pub aec_frames_processed: AtomicU64,
     pub aec_erle_db: AtomicU32,
     pub aec_delay_ms: AtomicU32,
+    pub aec_endpoint_type: AtomicU32, // 0 = Unknown, 1 = Headphones, 2 = Headset, 3 = Speakers, 4 = Bluetooth
+    pub loop_warning_active: AtomicBool,
 }
 
 impl AudioMetrics {
@@ -52,6 +55,8 @@ impl AudioMetrics {
             aec_frames_processed: AtomicU64::new(0),
             aec_erle_db: AtomicU32::new(0.0f32.to_bits()),
             aec_delay_ms: AtomicU32::new(0.0f32.to_bits()),
+            aec_endpoint_type: AtomicU32::new(0),
+            loop_warning_active: AtomicBool::new(false),
         }
     }
 
@@ -113,6 +118,20 @@ impl AudioMetrics {
 
     pub fn get_aec_delay_ms(&self) -> f32 {
         f32::from_bits(self.aec_delay_ms.load(Ordering::Relaxed))
+    }
+
+    pub fn get_aec_endpoint_type(&self) -> &'static str {
+        match self.aec_endpoint_type.load(Ordering::Relaxed) {
+            1 => "Headphones",
+            2 => "Headset",
+            3 => "Speakers",
+            4 => "Bluetooth",
+            _ => "Unknown",
+        }
+    }
+
+    pub fn is_loop_warning_active(&self) -> bool {
+        self.loop_warning_active.load(Ordering::Relaxed)
     }
 }
 
@@ -339,9 +358,37 @@ impl AudioStreamController {
             None
         };
 
-        // 3. AEC Reference Loopback Stream (captures default render device audio for echo cancellation)
-        let (ref_stream, mut ref_cons) = if let Ok(speaker_dev) = device_manager.get_default_output_device() {
+        // 3. AEC Reference Loopback Stream (captures real physical render device audio for echo cancellation)
+        // Guard against selecting a virtual cable as reference, which would cause an echo loop!
+        let physical_speaker_dev = match device_manager.get_default_output_device() {
+            Ok(dev) => {
+                let name = dev.name().unwrap_or_else(|_| "Default Output".to_string());
+                let lower = name.to_lowercase();
+                if lower.contains("cable input") || (lower.contains("cable") && lower.contains("vb-audio")) || lower.contains("quietmic") {
+                    tracing::warn!("Default output device is virtual cable ('{}'). AEC loopback must not capture virtual cable!", name);
+                    metrics.loop_warning_active.store(true, Ordering::Relaxed);
+                    // Search for a real physical device (e.g. Speakers, Headphones)
+                    device_manager.get_monitoring_output_device(None).ok()
+                } else {
+                    metrics.loop_warning_active.store(false, Ordering::Relaxed);
+                    Some(dev)
+                }
+            }
+            Err(_) => None,
+        };
+
+        let (ref_stream, mut ref_cons) = if let Some(speaker_dev) = physical_speaker_dev {
             let spk_name = cpal::traits::DeviceTrait::name(&speaker_dev).unwrap_or_else(|_| "Default Output".to_string());
+            let endpoint = EchoDoctor::detect_endpoint_type(&spk_name);
+            let endpoint_code = match endpoint {
+                EndpointType::Headphones => 1,
+                EndpointType::Headset => 2,
+                EndpointType::Speakers => 3,
+                EndpointType::Bluetooth => 4,
+                EndpointType::Unknown => 0,
+            };
+            metrics.aec_endpoint_type.store(endpoint_code, Ordering::Relaxed);
+
             if let Ok(spk_cfg) = speaker_dev.default_output_config() {
                 let spk_channels = (spk_cfg.channels() as usize).max(1);
                 let spk_sample_rate = spk_cfg.sample_rate().0;
@@ -350,7 +397,7 @@ impl AudioStreamController {
                 let is_running_ref = Arc::clone(&running);
 
                 if let Ok(mut g) = metrics.aec_ref_device_name.write() {
-                    *g = spk_name;
+                    *g = format!("{} ({})", spk_name, endpoint.display_name());
                 }
                 metrics.aec_ref_sample_rate.store(spk_sample_rate, Ordering::Relaxed);
 
@@ -378,7 +425,7 @@ impl AudioStreamController {
                 match stream_res {
                     Ok(st) => {
                         let _ = st.play();
-                        tracing::info!("AEC loopback reference capture initialized on speaker: {}", metrics.get_aec_ref_device_name());
+                        tracing::info!("AEC loopback reference capture initialized on: {}", metrics.get_aec_ref_device_name());
                         (Some(st), Some(ref_cons))
                     }
                     Err(e) => {
@@ -441,7 +488,10 @@ impl AudioStreamController {
                     worker_pipeline.set_sensitivity_threshold(sens_thresh);
 
                     let aec_en = worker_controls.aec_enabled.load(Ordering::Relaxed);
-                    worker_pipeline.set_aec_enabled(aec_en);
+                    let endpoint_code = worker_metrics.aec_endpoint_type.load(Ordering::Relaxed);
+                    let is_headphones = endpoint_code == 1 || endpoint_code == 2;
+                    let effective_aec_en = aec_en && !is_headphones;
+                    worker_pipeline.set_aec_enabled(effective_aec_en);
                     worker_metrics.aec_enabled.store(aec_en, Ordering::Relaxed);
 
                     // Drain AEC reference samples if loopback is active
@@ -460,6 +510,17 @@ impl AudioStreamController {
                                 break;
                             }
                         }
+
+                        // Jitter & Backlog Protection:
+                        // Prevent latency accumulation by draining excess unread samples
+                        let backlog = r_cons.occupied_len();
+                        if backlog > 2 * AudioPipeline::FRAME_SAMPLES {
+                            let excess = backlog - AudioPipeline::FRAME_SAMPLES;
+                            for _ in 0..excess {
+                                let _ = r_cons.try_pop();
+                            }
+                        }
+
                         if count > 0 && aec_en {
                             let feed_slice = if let Some(ref mut rs) = ref_resampler {
                                 if rs.process(&ref_scratch[..count], &mut ref_resampled).is_ok() && !ref_resampled.is_empty() {
@@ -470,12 +531,16 @@ impl AudioStreamController {
                             } else {
                                 &ref_scratch[..count]
                             };
-                            worker_pipeline.feed_aec_reference(feed_slice);
+                            if effective_aec_en {
+                                worker_pipeline.feed_aec_reference(feed_slice);
+                            }
                             let ref_db = if ref_peak > 1e-5 { 20.0 * ref_peak.log10() } else { -100.0 };
                             worker_metrics.aec_ref_peak_db.store(ref_db.to_bits(), Ordering::Relaxed);
                             worker_metrics.aec_frames_processed.fetch_add(1, Ordering::Relaxed);
-                            worker_metrics.aec_erle_db.store(worker_pipeline.aec().last_erle_db().to_bits(), Ordering::Relaxed);
-                            worker_metrics.aec_delay_ms.store(worker_pipeline.aec().bulk_delay_ms().to_bits(), Ordering::Relaxed);
+                            let erle = if effective_aec_en { worker_pipeline.aec().last_erle_db() } else { 0.0 };
+                            let delay = if effective_aec_en { worker_pipeline.aec().bulk_delay_ms() } else { 0.0 };
+                            worker_metrics.aec_erle_db.store(erle.to_bits(), Ordering::Relaxed);
+                            worker_metrics.aec_delay_ms.store(delay.to_bits(), Ordering::Relaxed);
                         } else if !aec_en {
                             worker_metrics.aec_ref_peak_db.store((-100.0f32).to_bits(), Ordering::Relaxed);
                         }

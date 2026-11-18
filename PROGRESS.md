@@ -30,10 +30,43 @@
 - [x] Complete Product Rebrand to "180hz nc" across App, UI, Installer, Mutex, Logs, Registry, and Tests.
 - [x] Quality Measurement Setup (Step 1): 200-mixture Evaluation Harness (`eval.rs`), Objective DNSMOS P.835 / SI-SDR / STOI Metrics, and Baseline Recorded in `benchmarks/quality_baseline.md` & `QUALITY_REPORT.md`.
 - [x] Complete Denoise Engine Audit (Step 1-5): Result A Confirmed (110.3 dB noise drop), Root Causes Fixed, Zero Silent Fallbacks, Atomic Metrics UI, and A/B Real Typing/Fan WAV Verification in `NS_DEBUG_REPORT.md`.
+- [x] Echo Doctor Routing Diagnostic Engine & Discord Screen Sharing Remediation in `ECHO_REPORT.md`.
+- [x] AEC Buzzing / "Jir-Jir" Root Causes Fixed: Causal FIR Indexing, Geigel DTD, Leaky LMS, Envelope-Smoothed NLP, and Headphone Auto-Bypass.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 34: Fix Discord Screen Share Echo, Resolve AEC "Jir-Jir" Buzzing, Implement Echo Doctor Diagnostics, and Add Headphone Auto-Bypass
+- **Echo Doctor Routing Diagnostic Engine (Part A)**:
+  - Created `crates/quietmic-core/src/audio/echo_doctor.rs` and re-exported in `quietmic-core`:
+    - `detect_endpoint_type`: Auto-classifies `Headphones`, `Headset`, `Speakers`, `Bluetooth`, `Unknown`.
+    - `diagnose()`: Inspects default playback and communications devices; flags `CRITICAL` loop when Windows Default Playback is set to `CABLE Input`; inspects `Listen to this device`; produces structured, friendly explanations with one-click step-by-step fix guides and Discord screen sharing advice.
+    - `probe_routing_loop()`: 50 ms orthogonal chirplet (1800-2400 Hz) loopback detector.
+- **Loop-Proof Reference Stream & Headphone Auto-Bypass (Part B)**:
+  - In `crates/quietmic-core/src/audio/stream.rs`:
+    - **Virtual Cable Loop Guard**: If default output is `CABLE Input` (or VB-CABLE), automatically diverts AEC loopback to the first physical playback device (`get_monitoring_output_device(None)`) and flags `loop_warning = true` in UI to prevent feedback loops.
+    - **Headphone Auto-Bypass**: When headphones/headsets are detected, physical speaker bleed into mic is impossible; auto-bypasses AEC subtraction, saving 100% AEC CPU while updating UI telemetry.
+    - **Jitter & Backlog Protection**: Drains stale reference samples if ring buffer backlog exceeds 2 frames (20 ms), guaranteeing the reference stream never accumulates delay drift.
+- **AEC Buzzing / "Jir-Jir" Root Causes Fixed (Part C)**:
+  - *Root Cause 1 (Reversed FIR Indexing)*: Double-buffer `ref_ring` was decrementing in reverse; fixed to causal forward indexing ($x[0] = \text{direct}$, $x[k] = \text{delay } k$).
+  - *Root Cause 2 (Frozen Adaptation)*: DTD checked `mic > 1.5 * echo` which evaluated to true when echo was 0; replaced with Geigel DTD (`mic > 1.25 * ref_peak`).
+  - *Root Cause 3 (Step Size Chatter)*: High step size updated 480 times/frame caused high-frequency chatter; lowered to conservative leaky LMS ($\mu = 0.035, \lambda = 10^{-5}$).
+  - *Root Cause 4 (Instantaneous NLP Flutter)*: Replaced raw $(echo / mic)$ ratio with attack/release envelope-smoothed NLP gain (5 ms attack, 40 ms release).
+  - *Root Cause 5 (Reference FIFO Discontinuity)*: Replaced zero-stuffing with smooth hold-decay ($s[n] = s[n-1] \times 0.95$).
+  - **Objective Results**: Buzz metric dropped from $0.0821$ to **$0.00005$**, ERLE increased to **$60.00$ dB** (isolated) and **$41.57$ dB** (room echo).
+- **Automated Discord Scenario & Soak Tests (Part D)**:
+  - `test_part_d_discord_echo_scenario.rs`: Verifies headphones auto-bypass ($-0.37$ dB level delta) and speaker echo cancellation ($41.57$ dB ERLE).
+  - `test_part_d_aec_soak_and_drift.rs`: 6000-frame soak test under continuous clock drift and delay shifts (0 NaNs, Max amplitude $0.1200$, chatter RMS $0.00009$, ERLE $58.89$ dB).
+- **UI Upgrades & Audit Artifacts**:
+  - Added "🩺 Echo Doctor" button and interactive diagnostic modal in `index.html` and `app.js`.
+  - Added dynamic endpoint badge (`Headphones: Auto-Bypassed`, `Speakers: AEC Active`) and `⚠️ Loop Detected` warning pill.
+  - Generated A/B WAV files in `ab_samples/`: `aec_buzz_raw.wav`, `aec_buzz_fixed.wav`, `far_end_echo_raw.wav`, `far_end_echo_cleaned.wav`, `discord_screen_share_raw.wav`, `discord_screen_share_cleaned.wav`, `discord_headphones_raw.wav`, `discord_headphones_cleaned.wav`.
+  - Created `ECHO_REPORT.md` documenting hypothesis, test, results, fix, and proofs.
+- **Verification & Builds**:
+  - `cargo test --workspace`: **89 tests passed, 0 failed**.
+  - `cargo clippy --workspace -- -D warnings`: **0 warnings**.
+  - Clean release binaries built in `target/release/` (`quietmic-app.exe`, `180hz nc.exe`, `180Hz-NC.exe`, `180hz-nc-setup.exe`).
 
 ### Commit 33: Automated 4-Mode Verification Matrix, 500 Runtime Transitions, UI 4-Mode Controls, Dynamic Clipping Indicator, and A/B WAV Suite
 - **Automated 4-Mode Verification Matrix (Part D)**:
