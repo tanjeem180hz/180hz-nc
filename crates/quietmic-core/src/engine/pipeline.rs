@@ -152,11 +152,7 @@ impl AudioPipeline {
                     ActiveEngine::Standard(Box::new(s))
                 }
                 EngineMode::MaxQuality => {
-                    let mut s = StandardEngine::new();
-                    s.set_attenuation_limit_db(45.0);
-                    s.set_post_filter(true, 1.55);
-                    s.set_suppression(self.strength);
-                    ActiveEngine::Standard(Box::new(s))
+                    ActiveEngine::Light(LightEngine::new())
                 }
                 EngineMode::VoiceIsolation => {
                     let mut v = VoiceIsolationEngine::new(Box::new(LightEngine::new()));

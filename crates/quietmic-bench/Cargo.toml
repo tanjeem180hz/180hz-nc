@@ -29,3 +29,7 @@ path = "src/main.rs"
 [[bin]]
 name = "eval"
 path = "src/eval.rs"
+
+[[bin]]
+name = "gen_ab_samples"
+path = "src/gen_ab_samples.rs"

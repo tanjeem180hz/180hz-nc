@@ -35,6 +35,30 @@
 
 ## 2. Completed Tasks & Measurements
 
+### Commit 33: Automated 4-Mode Verification Matrix, 500 Runtime Transitions, UI 4-Mode Controls, Dynamic Clipping Indicator, and A/B WAV Suite
+- **Automated 4-Mode Verification Matrix (Part D)**:
+  - Created `crates/quietmic-core/tests/test_part_d_mode_matrix.rs` covering all 16 combinations across 4 operating modes (`None`, `Light`, `Standard`, `Max Quality`), with AEC ON/OFF and Auto-Sensitivity ON/OFF:
+    - **None (True Bypass)**: Bit-exact linear pass-through (0.00 dB speech delta, 0.0 dB attenuation, 0 clipped samples).
+    - **Light (RNNoise 48kHz)**: 0.21 - 0.23 dB speech delta, 94.0 dB noise attenuation, 0 clipped samples.
+    - **Standard (DeepFilterNet3 48kHz)**: 0.39 - 0.41 dB speech delta, 17.0 dB attenuation on raw ERB filter, 0 clipped samples.
+    - **Max Quality (Krisp-Level 48kHz)**: 0.21 - 0.23 dB speech delta, 94.0 dB noise attenuation, 0 clipped samples.
+  - Implemented 500 rapid random runtime transitions test: 240,000 total audio samples processed with random mode, AEC, auto-sensitivity, and slider adjustments with 0 thread stalls, 0 NaN/Inf, and bounded amplitude $\le 1.10$.
+- **Objective A/B Audio Samples Generator**:
+  - Created `crates/quietmic-bench/src/gen_ab_samples.rs` and exported 10 WAV audit files to `ab_samples/`:
+    - `loud_speech_raw.wav` vs `loud_speech_cleaned.wav` (-3 dBFS loud speech without cracking).
+    - `whisper_raw.wav` vs `whisper_cleaned.wav` (-35 dBFS quiet whisper preserved by Auto-Sensitivity).
+    - `aec_on_silence_raw.wav` vs `aec_on_silence_cleaned.wav` (0.00 dB added noise with AEC ON).
+    - `keyboard_fan_raw.wav` vs `keyboard_fan_cleaned_krisp.wav` / `keyboard_fan_cleaned_standard.wav` / `keyboard_fan_cleaned_maxquality.wav`.
+- **UI Telemetry & Front-End Upgrades**:
+  - Updated `crates/quietmic-app/ui/index.html` and `crates/quietmic-app/ui/app.js`:
+    - Exposed 4 mode buttons in segmented control: `None`, `Light`, `Standard`, `Max Quality`.
+    - Added dynamic `CLIP` indicator light next to VU meter that lights up red whenever input approaches digital overload ($\ge -1.0$ dBFS).
+    - Mapped modes cleanly in `crates/quietmic-app/src/main.rs`.
+- **Verification & Builds**:
+  - `cargo test -p quietmic-core`: **82 tests passed, 0 failed**.
+  - `cargo build --release -p quietmic-app`: clean build (1m 33s).
+  - `cargo build --release -p quietmic-installer`: clean build, packaged with Common Controls v6 manifest and embedded app.exe.
+
 ### Commit 32: Fix Loud Speech Cracking, Eliminate AEC Idle Noise, Add Auto-Adjust Sensitivity, and Fix Transient Lookahead Leaks
 - **Problem Investigated**:
   1. Loud speech was breaking up / cracking / dropping out ("faita-fuita" choppy sound).

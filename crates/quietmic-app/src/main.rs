@@ -189,19 +189,19 @@ fn set_sensitivity_threshold(threshold: f32, state: State<AppState>) -> Result<(
 fn set_noise_mode(mode: String, state: State<AppState>) -> Result<(), String> {
     let mut cfg = state.config.lock();
     match mode.as_str() {
-        "None" => {
+        "None" | "Bypass" => {
             cfg.bypass = true;
             cfg.mode = "None".to_string();
         }
-        "Light" | "Krisp" => {
+        "Light" => {
             cfg.bypass = false;
-            cfg.mode = "Krisp".to_string();
+            cfg.mode = "Light".to_string();
         }
         "Standard" => {
             cfg.bypass = false;
             cfg.mode = "Standard".to_string();
         }
-        "MaxQuality" | "Max Quality" => {
+        "MaxQuality" | "Max Quality" | "Krisp" => {
             cfg.bypass = false;
             cfg.mode = "MaxQuality".to_string();
         }
@@ -311,10 +311,11 @@ fn run_pipeline_diagnostics(
     let mut pipeline = AudioPipeline::new(48000, 48000)?;
     let mode = match cfg.mode.as_str() {
         "None" | "Bypass" => EngineMode::None,
-        "Light" | "Krisp" => EngineMode::Light,
-        "MaxQuality" | "Max Quality" => EngineMode::MaxQuality,
+        "Light" => EngineMode::Light,
+        "Standard" => EngineMode::Standard,
+        "MaxQuality" | "Max Quality" | "Krisp" => EngineMode::MaxQuality,
         "VoiceIsolation" => EngineMode::VoiceIsolation,
-        _ => EngineMode::Standard,
+        _ => EngineMode::MaxQuality,
     };
     pipeline.set_mode(mode);
     pipeline.set_strength(cfg.strength);
@@ -504,10 +505,11 @@ fn restart_audio_stream(state: &AppState, cfg: &AppConfig) -> Result<(), String>
     let mut pipeline = AudioPipeline::new(48000, 48000)?;
     let mode = match cfg.mode.as_str() {
         "None" | "Bypass" => EngineMode::None,
-        "Light" | "Krisp" => EngineMode::Light,
-        "MaxQuality" | "Max Quality" => EngineMode::MaxQuality,
+        "Light" => EngineMode::Light,
+        "Standard" => EngineMode::Standard,
+        "MaxQuality" | "Max Quality" | "Krisp" => EngineMode::MaxQuality,
         "VoiceIsolation" => EngineMode::VoiceIsolation,
-        _ => EngineMode::Standard,
+        _ => EngineMode::MaxQuality,
     };
     pipeline.set_mode(mode);
     pipeline.set_strength(cfg.strength);
@@ -653,10 +655,11 @@ fn main() {
     let mut pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline initialization failed");
     let mode = match config.mode.as_str() {
         "None" | "Bypass" => EngineMode::None,
-        "Light" | "Krisp" => EngineMode::Light,
-        "MaxQuality" | "Max Quality" => EngineMode::MaxQuality,
+        "Light" => EngineMode::Light,
+        "Standard" => EngineMode::Standard,
+        "MaxQuality" | "Max Quality" | "Krisp" => EngineMode::MaxQuality,
         "VoiceIsolation" => EngineMode::VoiceIsolation,
-        _ => EngineMode::Standard,
+        _ => EngineMode::MaxQuality,
     };
     pipeline.set_mode(mode);
     pipeline.set_strength(config.strength);

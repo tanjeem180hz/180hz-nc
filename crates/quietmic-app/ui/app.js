@@ -55,6 +55,7 @@ const micVolumeSlider = document.getElementById('micVolumeSlider');
 const micVolText = document.getElementById('micVolText');
 const micMeterFill = document.getElementById('micMeterFill');
 const micMeterDb = document.getElementById('micMeterDb');
+const clippingIndicator = document.getElementById('clippingIndicator');
 
 const speakerSelect = document.getElementById('speakerSelect');
 const spkAutoBadge = document.getElementById('spkAutoBadge');
@@ -264,14 +265,16 @@ function applyConfig(cfg) {
   sensitivitySlider.value = thresh;
   sensitivityText.textContent = `${thresh} dB`;
 
-  // Noise Suppression Mode (Krisp, Standard, None)
-  let activeMode = 'Krisp';
-  if (cfg.bypass) {
+  // Noise Suppression Mode (None, Light, Standard, MaxQuality)
+  let activeMode = 'MaxQuality';
+  if (cfg.bypass || cfg.mode === 'None') {
     activeMode = 'None';
+  } else if (cfg.mode === 'Light') {
+    activeMode = 'Light';
   } else if (cfg.mode === 'Standard') {
     activeMode = 'Standard';
   } else {
-    activeMode = 'Krisp';
+    activeMode = 'MaxQuality';
   }
   updateNoiseModeUI(activeMode);
 
@@ -523,6 +526,13 @@ async function pollMetrics() {
 
       if (micMeterFill) micMeterFill.style.width = `${pct}%`;
       if (micMeterDb) micMeterDb.textContent = inDb > -58 ? `${Math.round(inDb)} dB` : '-60 dB';
+      if (clippingIndicator) {
+        if (inDb >= -1.0) {
+          clippingIndicator.style.display = 'inline-block';
+        } else {
+          clippingIndicator.style.display = 'none';
+        }
+      }
 
       const nrDb = Math.round(metrics.noise_reduction_db || 0);
 
