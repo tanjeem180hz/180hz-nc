@@ -9,6 +9,7 @@ fn default_volume() -> f32 { 1.0 }
 fn default_sensitivity_threshold() -> f32 { -50.0 }
 fn default_ptt_key() -> String { "Space".to_string() }
 fn default_hotkey() -> String { "Ctrl+Alt+N".to_string() }
+fn default_theme() -> String { "night-lab".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -46,6 +47,8 @@ pub struct AppConfig {
     pub push_to_talk: bool,       // Push to talk toggle (default false)
     #[serde(default = "default_ptt_key")]
     pub ptt_key: String,          // Key binding for PTT (default "Space")
+    #[serde(default = "default_theme")]
+    pub theme: String,            // "night-lab", "daylight", "amber-console"
 }
 
 impl Default for AppConfig {
@@ -68,6 +71,7 @@ impl Default for AppConfig {
             sensitivity_threshold: -50.0,
             push_to_talk: false,
             ptt_key: "Space".to_string(),
+            theme: "night-lab".to_string(),
         }
     }
 }

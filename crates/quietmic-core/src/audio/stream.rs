@@ -33,9 +33,13 @@ pub struct AudioMetrics {
     pub aec_delay_ms: AtomicU32,
     pub aec_endpoint_type: AtomicU32, // 0 = Unknown, 1 = Headphones, 2 = Headset, 3 = Speakers, 4 = Bluetooth
     pub loop_warning_active: AtomicBool,
+    pub raw_waveform: [AtomicU32; Self::WAVEFORM_SNAPSHOT_LEN],
+    pub clean_waveform: [AtomicU32; Self::WAVEFORM_SNAPSHOT_LEN],
 }
 
 impl AudioMetrics {
+    pub const WAVEFORM_SNAPSHOT_LEN: usize = 32;
+
     pub fn new() -> Self {
         Self {
             frame_time_us: AtomicU64::new(0),
@@ -57,6 +61,8 @@ impl AudioMetrics {
             aec_delay_ms: AtomicU32::new(0.0f32.to_bits()),
             aec_endpoint_type: AtomicU32::new(0),
             loop_warning_active: AtomicBool::new(false),
+            raw_waveform: std::array::from_fn(|_| AtomicU32::new(0)),
+            clean_waveform: std::array::from_fn(|_| AtomicU32::new(0)),
         }
     }
 
@@ -132,6 +138,33 @@ impl AudioMetrics {
 
     pub fn is_loop_warning_active(&self) -> bool {
         self.loop_warning_active.load(Ordering::Relaxed)
+    }
+
+    pub fn update_waveform_snapshot(&self, raw: &[f32], clean: &[f32]) {
+        let step_raw = (raw.len() / Self::WAVEFORM_SNAPSHOT_LEN).max(1);
+        for (i, cell) in self.raw_waveform.iter().enumerate() {
+            let idx = (i * step_raw).min(raw.len().saturating_sub(1));
+            let s = if idx < raw.len() { raw[idx] } else { 0.0 };
+            cell.store(s.to_bits(), Ordering::Relaxed);
+        }
+        let step_clean = (clean.len() / Self::WAVEFORM_SNAPSHOT_LEN).max(1);
+        for (i, cell) in self.clean_waveform.iter().enumerate() {
+            let idx = (i * step_clean).min(clean.len().saturating_sub(1));
+            let s = if idx < clean.len() { clean[idx] } else { 0.0 };
+            cell.store(s.to_bits(), Ordering::Relaxed);
+        }
+    }
+
+    pub fn get_waveform_snapshot(&self) -> (Vec<f32>, Vec<f32>) {
+        let mut raw = Vec::with_capacity(Self::WAVEFORM_SNAPSHOT_LEN);
+        let mut clean = Vec::with_capacity(Self::WAVEFORM_SNAPSHOT_LEN);
+        for cell in &self.raw_waveform {
+            raw.push(f32::from_bits(cell.load(Ordering::Relaxed)));
+        }
+        for cell in &self.clean_waveform {
+            clean.push(f32::from_bits(cell.load(Ordering::Relaxed)));
+        }
+        (raw, clean)
     }
 }
 
@@ -571,6 +604,10 @@ impl AudioStreamController {
                             current_fill,
                         );
 
+                        if worker_metrics.frames_received.load(Ordering::Relaxed).is_multiple_of(3) {
+                            worker_metrics.update_waveform_snapshot(&in_chunk, &out_chunk);
+                        }
+
                         let elapsed_us = t0.elapsed().as_micros() as u64;
                         worker_metrics.frame_time_us.store(elapsed_us, Ordering::Relaxed);
 
@@ -827,5 +864,25 @@ impl AudioStreamController {
 impl Drop for AudioStreamController {
     fn drop(&mut self) {
         self.stop();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_waveform_snapshot_non_blocking_telemetry() {
+        let metrics = AudioMetrics::new();
+        let raw = vec![0.5f32; 480];
+        let clean = vec![0.1f32; 480];
+
+        metrics.update_waveform_snapshot(&raw, &clean);
+        let (snap_raw, snap_clean) = metrics.get_waveform_snapshot();
+
+        assert_eq!(snap_raw.len(), AudioMetrics::WAVEFORM_SNAPSHOT_LEN);
+        assert_eq!(snap_clean.len(), AudioMetrics::WAVEFORM_SNAPSHOT_LEN);
+        assert!((snap_raw[0] - 0.5).abs() < 1e-5);
+        assert!((snap_clean[0] - 0.1).abs() < 1e-5);
     }
 }

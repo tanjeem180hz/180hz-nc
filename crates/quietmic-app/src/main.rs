@@ -49,6 +49,8 @@ pub struct MetricsDto {
     pub aec_delay_ms: f32,
     pub aec_endpoint: String,
     pub loop_warning: bool,
+    pub raw_waveform: Vec<f32>,
+    pub clean_waveform: Vec<f32>,
 }
 
 pub struct AppState {
@@ -450,6 +452,7 @@ fn get_metrics(state: State<AppState>) -> MetricsDto {
 
     if let Some(ref ctrl) = *lock {
         let m = ctrl.metrics();
+        let (raw_wave, clean_wave) = m.get_waveform_snapshot();
         MetricsDto {
             frame_time_us: m.get_frame_time_us(),
             input_peak_db: m.get_input_peak_db(),
@@ -471,6 +474,8 @@ fn get_metrics(state: State<AppState>) -> MetricsDto {
             aec_delay_ms: m.get_aec_delay_ms(),
             aec_endpoint: m.get_aec_endpoint_type().to_string(),
             loop_warning: m.is_loop_warning_active(),
+            raw_waveform: raw_wave,
+            clean_waveform: clean_wave,
         }
     } else {
         MetricsDto {
@@ -494,8 +499,18 @@ fn get_metrics(state: State<AppState>) -> MetricsDto {
             aec_delay_ms: 0.0,
             aec_endpoint: "Unknown".to_string(),
             loop_warning: false,
+            raw_waveform: Vec::new(),
+            clean_waveform: Vec::new(),
         }
     }
+}
+
+#[tauri::command]
+fn set_theme(theme: String, state: State<AppState>) -> Result<(), String> {
+    let mut cfg = state.config.lock();
+    cfg.theme = theme;
+    let _ = cfg.save();
+    Ok(())
 }
 
 #[tauri::command]
@@ -940,6 +955,7 @@ fn main() {
             run_pipeline_self_test_command,
             run_aec_speaker_test_command,
             run_echo_doctor_command,
+            set_theme,
             open_url
         ])
         .run(tauri::generate_context!())
