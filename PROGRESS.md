@@ -34,10 +34,31 @@
 - [x] AEC Buzzing / "Jir-Jir" Root Causes Fixed: Causal FIR Indexing, Geigel DTD, Leaky LMS, Envelope-Smoothed NLP, and Headphone Auto-Bypass.
 - [x] 180 Hz Signal Lab UI Redesign: Frequency Ruler, Live Circular Signal Orb, Tactile Master Power, 3 Studio Themes (Night Lab, Daylight, Amber Console), 4-Tab Architecture, and 0% Idle CPU (Preserved in branch `theme-signal-lab`).
 - [x] Part A: Noise Leakage Regression Resolved (Tuned VAD onset, bounded AGC [0.35, 1.50], pitch-aware residual suppressor, settings-to-engine sync, documented in `REGRESSION_REPORT.md`).
+- [x] Part B: Unified Card UI Restored & Professionally Polished on `main` (Dark & Light Mode, Hero Live Voice Tester with A/B and 10s Record/Replay/Export, Dual VU Meter with CLIP LED, Echo Doctor & Pipeline Diagnostics, 0% Idle CPU).
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 38: Restore and Professionally Polish Unified Card UI on `main`
+- **UI Restoration & Modernization**:
+  1. Restored the user-preferred classic card layout from before the Signal Lab redesign (with the Signal Lab design safely preserved in remote branch `origin/theme-signal-lab`).
+  2. Implemented CSS Custom Property design tokens for instant Dark and Light (`daylight`) mode switching. Persisted seamlessly via `invoke('set_theme')` into `%APPDATA%/180hz nc/config.json`.
+  3. Master Power / Bypass header button with clear, illuminated state badges (`Active` emerald glow vs `Bypassed` amber glow).
+  4. Unified card architecture containing:
+     - Microphone selection, volume slider (0-200%), and calibrated VU meter (-60 dB to 0 dB) with flashing `CLIP` LED badge alert at $\ge -0.5$ dBFS.
+     - Speaker / Headphones selection and volume slider.
+     - Hero Live Voice Tester with interactive circular microphone button, live pulse animations, instant `✨ Cleaned` vs `🎙️ Original` A/B monitor switch, and 10-second Record, Replay, and WAV Export toolbar.
+     - 4-Mode Noise Suppression segmented switch (`None`, `Light`, `Standard`, `Max Quality`), continuous strength slider, and real-time DSP micro-telemetry (processed frames, 0 pass-through frames, latency in µs).
+     - Auto-Sensitivity toggle with room noise adaptation and manual threshold slider.
+     - Echo Cancellation (AEC) with loop detection warning, `🔊 Speaker Test` chirp, and `🩺 Echo Doctor` modal.
+     - Push to Talk with key-recording shortcut button and transmission status badge.
+  5. 0% Idle CPU when minimized or hidden to tray (`visibilitychange` drops polling rate to 2500 ms and pauses animations).
+  6. High-DPI Windows scaling (100% to 200%) and `@media (prefers-reduced-motion: reduce)`.
+  7. Automated headless screenshot capture updated and screenshots refreshed in `docs/screenshots/`.
+- **Quality Verification**:
+  - All 64 unit tests + 13 integration test binaries passed 100%.
+  - `cargo clippy --workspace -- -D warnings` passed with 0 warnings.
 
 ### Commit 37: Resolve Noise Leakage Regression with Tuned VAD Onset, Bounded AGC, and Pitch-Aware Residual Suppression
 - **Root Cause Analysis & Fixes**:

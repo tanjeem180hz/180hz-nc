@@ -30,25 +30,21 @@ if not chrome_path.exists():
     chrome_path = Path("C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe")
 
 shots = [
-    ("theme_night_lab.png", "?theme=night-lab&tab=tab-lab"),
-    ("theme_daylight.png", "?theme=daylight&tab=tab-lab"),
-    ("theme_amber_console.png", "?theme=amber-console&tab=tab-lab"),
-    ("tab_devices.png", "?theme=night-lab&tab=tab-devices"),
-    ("tab_studio.png", "?theme=night-lab&tab=tab-studio"),
-    ("tab_diagnostics.png", "?theme=night-lab&tab=tab-diagnostics"),
+    ("theme_night_lab.png", "?theme=dark"),
+    ("theme_daylight.png", "?theme=light"),
+    ("theme_classic_dark.png", "?theme=dark"),
+    ("theme_classic_light.png", "?theme=light"),
+    ("tab_devices.png", "?theme=dark"),
+    ("tab_studio.png", "?theme=dark"),
+    ("tab_diagnostics.png", "?theme=dark&modal=echo-doctor"),
+    ("echo_doctor_modal.png", "?theme=dark&modal=echo-doctor"),
 ]
 
 for name, query in shots:
     out_file = OUT_DIR / name
     url = f"http://127.0.0.1:{PORT}/{query}"
     print(f"Capturing {name} from {url}...")
-    bg_color = "00000000"
-    if "daylight" in query:
-        bg_color = "ffeef2f6"
-    elif "amber" in query:
-        bg_color = "ff0d0b07"
-    else:
-        bg_color = "ff090a0f"
+    bg_color = "ffeef2f6" if "light" in query else "ff0f172a"
 
     cmd = [
         str(chrome_path),
@@ -56,12 +52,12 @@ for name, query in shots:
         "--disable-gpu",
         "--hide-scrollbars",
         f"--default-background-color={bg_color}",
-        "--window-size=460,700",
-        "--virtual-time-budget=2500",
+        "--window-size=460,780",
+        "--virtual-time-budget=2000",
         f"--screenshot={out_file}",
         url
     ]
     subprocess.run(cmd, check=True)
-    time.sleep(0.5)
+    time.sleep(0.3)
 
 print("All screenshots successfully captured!")

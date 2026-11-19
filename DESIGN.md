@@ -1,80 +1,84 @@
-# 180 Hz Signal Lab Design System & UI Architecture
+# 180hz nc UI Design System & Architecture
 
 ## 1. Concept & Identity
-**180hz nc** is designed as the **"180 Hz Signal Lab"** — a calm, precision studio audio instrument where physical hardware meets a futuristic oscilloscope.
+**180hz nc** features a clean, professional, commercial-grade audio control center built on a unified card-based architecture.
 
 The name refers to **180 Hz**, the acoustic sweet spot of human speech fundamentals and the anchor frequency for speech-noise separation.
 
----
-
-## 2. Signature Visual Elements
-
-### 2.1 Frequency-Scale Ruler & 180 Hz Notch Lock
-Spanning across the top edge of the instrument is a calibrated frequency scale:
-`20 Hz | 60 Hz | 120 Hz | [▼ 180 Hz NOTCH LOCK] | 500 Hz | 1 kHz | 4 kHz | 10 kHz | 20 kHz`
-The `180 Hz` frequency is illuminated with an indicator lock badge, anchoring the signal processing pipeline.
-
-### 2.2 Central Signal Orb & Waveform Ring (Oscilloscope Canvas)
-- **Outer Noise Spikes**: Rendered from the raw input waveform snapshot. Unwanted ambient noise (mechanical keyboard switches, fans, AC hum) appears as jagged, desaturated amber/slate spikes.
-- **Inner Voice Ring**: Rendered from the cleaned output waveform snapshot. Pristine human voice forms a smooth, glowing electric cyan ring.
-- **Radial Dynamic Collapse**: When noise suppression is active, outer jagged spikes are pulled inward toward the clean voice ring, visually demonstrating noise cancellation in real-time.
-- **Idle Breathing**: A subtle, zero-overhead sinusoidal modulation keeps the ring alive during silent monitoring.
-
-### 2.3 Tactile Master Power Button
-Nestled directly in the center hole of the Signal Orb:
-- **Active State**: Neon cyan glow with inner drop-shadow, illuminated power symbol, labeled `ACTIVE`.
-- **Bypass State**: Warm amber glow, labeled `BYPASS`.
-- **Error State**: Crimson red pulse, labeled `ERROR`.
-- Satisfying tactile press physics (`transform: scale(0.96)`) with instant one-click bypass switching.
-
-### 2.4 Hardware 4-Mode Segmented Switch
-Tactile studio enclosure with 4 selectable DSP operating profiles:
-1. **None**: True bit-exact linear pass-through (0.00 dB delta, 0% CPU).
-2. **Light**: RNNoise 48 kHz recurrent neural network (ultra-low CPU for older hardware).
-3. **Standard**: DeepFilterNet3 fine spectral Wiener filter with per-bin harmonic tracking.
-4. **Max Quality**: Krisp-level full-bandwidth deep voice isolation.
-
-### 2.5 Studio Strength Fader & VU Meter
-- **Suppression Fader**: Horizontal slider with physical fader thumb and calibrated dB scale markings: `0 dB (0%)`, `-6 dB`, `-12 dB`, `-24 dB`, `-∞ dB (100%)`.
-- **Dual-Segment Studio VU Meter**: Calibrated from `-60 dB` to `0 dB` with a white peak hold indicator bar (decaying after 15 frames) and a flashing red **`CLIP`** LED overload alert triggered at $\ge -1.0$ dBFS.
+> [!NOTE]
+> The experimental "180 Hz Signal Lab" canvas oscilloscope design remains fully preserved in the remote git branch `origin/theme-signal-lab`. On `main`, the streamlined, high-efficiency classic card layout is the primary design, enhanced with modern design tokens, Dark & Light mode toggling, and comprehensive diagnostics.
 
 ---
 
-## 3. The 3 Studio Console Themes
+## 2. Design Tokens & Visual Hierarchy
 
-| Theme | Identifier | Visual Character | Accent Primary | Background Base |
-| :--- | :--- | :--- | :--- | :--- |
-| **Night Lab** | `night-lab` | Modern dark studio hardware (Default) | Electric Cyan (`#00f0ff`) | Obsidian Slate (`#090a0f`) |
-| **Daylight** | `daylight` | Clean precision light console | Deep Sapphire (`#0284c7`) | Aluminum White (`#eef2f6`) |
-| **Amber Console** | `amber-console` | Vintage warm phosphor oscilloscope | Radiant Amber (`#f59e0b`) | Charcoal Bronze (`#0d0b07`) |
+### 2.1 Color Palette & Design Tokens
+The application implements CSS Custom Properties for immediate theme switching and optimal contrast:
 
-Theme preference is persisted automatically to `%APPDATA%/180hz nc/config.json` and syncs dynamically across sessions.
+| Token | Dark Theme (Default) | Light Theme (`daylight`) | Purpose |
+| :--- | :--- | :--- | :--- |
+| `--bg-app` | `#0f172a` (Slate 900) | `#f1f5f9` (Slate 100) | App window canvas |
+| `--bg-card` | `#1e293b` (Slate 800) | `#ffffff` (Pure White) | Card surfaces |
+| `--bg-input` | `#0b1120` (Slate 950) | `#f8fafc` (Slate 50) | Recessed inputs, dropdowns, meters |
+| `--border-card` | `#334155` (Slate 700) | `#e2e8f0` (Slate 200) | Subtle card borders |
+| `--accent-emerald` | `#10b981` (Emerald 500) | `#059669` (Emerald 600) | Active status, clean voice, healthy |
+| `--accent-blue` | `#3b82f6` (Blue 500) | `#2563eb` (Blue 600) | Primary actions, sliders, active segment |
+| `--accent-amber` | `#f59e0b` (Amber 500) | `#d97706` (Amber 600) | Bypassed state, loop warnings |
+| `--accent-red` | `#ef4444` (Red 500) | `#dc2626` (Red 600) | Overload clipping alert, error states |
+| `--text-primary` | `#f8fafc` (Slate 50) | `#0f172a` (Slate 900) | High-contrast readable typography |
+| `--text-secondary` | `#94a3b8` (Slate 400) | `#475569` (Slate 600) | Labels, descriptors, micro-copy |
 
----
-
-## 4. Modular Tabbed Layout
-
-- **`01 LAB`**: Main hero dashboard. Top frequency ruler, central Signal Orb, Master Power button, 4-mode segmented switch, suppression strength fader, and real-time engine telemetry (frames processed, pass-through, DSP latency in µs).
-- **`02 DEVICES`**: Microphone selection with `Auto Detected` badge, input gain fader, studio VU meter with `CLIP` LED; speaker/headphones selection with auto-detection; and VB-CABLE virtual cable status card.
-- **`03 STUDIO`**: Live Voice Monitor (headphone test), A/B clickless 15 ms crossfade (`Raw` vs `Cleaned`), 10-second test audio recorder with instant replay and WAV export, auto-adjust sensitivity dynamic gate, and Push-to-Talk shortcut binding.
-- **`04 DIAGNOSTICS`**: Echo Cancellation (AEC) telemetry, `🩺 Echo Doctor` one-click routing diagnostic modal with Discord screen sharing remediation, `🔊 Speaker Test`, `⚙️ Self-Test`, and `📊 Pipeline WAVs` multi-stage dumper.
-
----
-
-## 5. Performance & Idle Optimization (0% CPU)
-
-- **Zero CPU Idle in Tray**: When the window is hidden or minimized to the system tray (`document.hidden === true`), all `requestAnimationFrame` loops and telemetry polling timers are cancelled. The UI consumes **0% CPU**.
-- **30 FPS Framerate Cap**: Oscilloscope rendering is throttled to 30 fps (33 ms delta lock) to ensure the UI stays silky smooth while using $< 1.5\%$ GPU on integrated Intel/AMD graphics.
-- **Lock-Free Atomic Telemetry**: Telemetry and waveform snapshots (`WAVEFORM_SNAPSHOT_LEN = 32`) in Rust use atomic integer bitwise transfers (`AtomicU32`), ensuring the audio DSP thread never blocks, allocates, or locks.
-- **Ultra-Lightweight UI Bundle**: Pure vanilla HTML5 + CSS3 + Canvas. Zero heavy frontend framework dependencies (bundle size $< 50$ KB total).
+### 2.2 Typography & Spacing
+- **Font Stack**: Clean system font stack (`-apple-system`, `BlinkMacSystemFont`, `Segoe UI`, `Roboto`, `sans-serif`) for crisp rendering at any DPI.
+- **Monospace Stack**: High-legibility mono numbers for dB scales, latency readouts, and frame counters.
+- **Grid & Spacing**: Strict 4/8 px grid scale (4px, 8px, 12px, 16px, 20px) with 12px card border radii and smooth elevation shadows.
 
 ---
 
-## 6. Screenshots
+## 3. Core Screen Elements & Features
 
-- **Night Lab Hero**: `docs/screenshots/theme_night_lab.png`
-- **Daylight Console**: `docs/screenshots/theme_daylight.png`
-- **Amber Phosphor Console**: `docs/screenshots/theme_amber_console.png`
-- **Devices & Studio VU Meters**: `docs/screenshots/tab_devices.png`
-- **Studio & Live Voice Monitor**: `docs/screenshots/tab_studio.png`
-- **Diagnostics & Echo Doctor**: `docs/screenshots/tab_diagnostics.png`
+### 3.1 Header & Master Power Switch
+- **Brand**: Custom audio wave SVG glyph with bold `180hz nc` title and `AI Noise Suppression` subtitle.
+- **Master Power Button**: Instant one-click toggle between `Active` (emerald glow) and `Bypassed` (amber glow).
+- **Theme Switcher**: One-click toggle (`🌙` / `☀️`) switching between Dark and Light themes with dynamic persistence to `%APPDATA%/180hz nc/config.json`.
+- **Engine Status Pill**: Glowing live indicator showing current mode status (`Krisp AI Active` / `Bypassed` / `Fallback`).
+
+### 3.2 Microphone & Speaker Controls
+- **Microphone**: Auto-detection badge, device dropdown, 0% to 200% input volume slider, and dual-purpose VU meter with calibrated dB ticks (`-60`, `-30`, `-12`, `-3`, `0 dB`).
+- **`CLIP` Indicator**: Flashing red LED warning triggered immediately when input audio reaches $\ge -0.5$ dBFS.
+- **Speaker / Headphones**: Auto-detection badge, device dropdown, and 0% to 100% monitor volume slider.
+
+### 3.3 Live Voice Tester (Hero Centerpiece)
+- **Central Circular Button**: Large 72px interactive microphone button with glowing emerald pulse animation when testing.
+- **A/B Monitor Stream Switch**: Click to instantly toggle between `✨ Cleaned` (AI noise suppression) and `🎙️ Original` (Dry unprocessed mic audio) directly in headphones.
+- **10-Second Record & Replay**:
+  - `⏺ Record 10s`: Captures both raw and cleaned audio buffers simultaneously.
+  - `▶ Play Replay`: Plays back the recorded 10-second snippet for evaluation.
+  - `💾 Export WAV`: Exports timestamped `raw_input.wav` and `cleaned_output.wav` directly to disk.
+
+### 3.4 Noise Suppression & DSP Telemetry
+- **4-Mode Segmented Switch**: `None`, `Light`, `Standard`, and `Max Quality`.
+- **Suppression Strength Slider**: Continuous 0% to 100% fader with zero dry-signal leakage at 100%.
+- **Live DSP Stats**: Real-time counter of processed frames, pass-through frames (guaranteed 0), and DSP latency in microseconds (`~180 µs`).
+- **`Self-Test`**: Runs synthetic audio through all 8 pipeline stages and displays a comprehensive diagnostic report modal.
+
+### 3.5 Advanced Features
+- **Auto-Adjust Input Sensitivity**: Adapts dynamically to room noise floor and vocal intensity. Includes manual threshold slider when disabled.
+- **Echo Cancellation (AEC)**: Filters acoustic speaker bleed with ERLE and delay tracking. Features `🔊 Speaker Test` and `🩺 Echo Doctor` modal for diagnosing loopbacks and Discord screen share echo.
+- **Push to Talk**: Customizable keyboard shortcut binding (e.g., `Space`, mouse keys) with live transmission badge.
+
+---
+
+## 4. Zero CPU Idle Optimization
+- When minimized to tray or hidden (`document.hidden === true`):
+  - Metric polling drops from 60 ms to 2500 ms.
+  - CSS animations and canvas loops are paused.
+  - App UI consumes **0% CPU** in the background.
+
+---
+
+## 5. Screenshots
+
+- **Dark Theme (Default)**: `docs/screenshots/theme_classic_dark.png`
+- **Light Theme**: `docs/screenshots/theme_classic_light.png`
+- **Echo Doctor Diagnostic**: `docs/screenshots/echo_doctor_modal.png`

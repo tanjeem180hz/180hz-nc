@@ -38,29 +38,29 @@ Everything required for 180hz nc to function perfectly is bundled into `180hz-nc
 
 ---
 
-## 🎛️ 180 Hz Signal Lab UI & Oscilloscope Experience
+## 🎛️ Modern Audio Control Center & Unified Card UI
 
-**180hz nc** features a bespoke interface designed around studio audio hardware and futuristic oscilloscope instrumentation:
+**180hz nc** features a clean, professional, commercial-grade audio interface built for maximum efficiency and clarity:
 
-- **180 Hz Notch Frequency Ruler**: Spanning the top edge, marking the 180 Hz acoustic anchor frequency where human speech fundamentals decouple from background room noise.
-- **Hero Signal Orb & Waveform Ring**: Real-time circular oscilloscope. Ambient noise appears as jagged, desaturated outer spikes; pristine speech forms a smooth, glowing inner ring. When suppression is active, noise visibly collapses flat into the smooth ring.
-- **Tactile Master Power Button**: Centered inside the Signal Orb with instant one-click toggle between `ACTIVE` (electric cyan glow) and `BYPASS` (amber glow).
-- **3 Studio Themes**:
-  1. `Night Lab` (Default dark studio console, obsidian slate with electric cyan accents).
-  2. `Daylight` (Clean precision light console, aluminum white with sapphire highlights).
-  3. `Amber Console` (Vintage warm phosphor oscilloscope with golden amber phosphor glow).
-- **4 Tabbed Workspaces**:
-  - `01 LAB`: Hero Signal Orb, Master Power, 4-mode segmented switch, suppression strength fader with dB scale, real-time micro-telemetry.
-  - `02 DEVICES`: Microphone selection, Mic Gain, Studio Peak/RMS VU meter with peak-hold & `CLIP` LED alert ($\ge -1.0$ dBFS), Speaker selection & volume, VB-CABLE virtual cable status.
-  - `03 STUDIO`: Live Voice Monitor (headphone test), A/B clickless 15 ms crossfade, 10s voice recorder with WAV export, auto-adjust dynamic sensitivity gate, Push-to-Talk.
-  - `04 DIAGNOSTICS`: Echo Cancellation (AEC), `🩺 Echo Doctor` routing diagnostic modal with Discord screen share guide, Speaker Test, Self-Test, and Pipeline Diagnostics.
-- **Zero Idle CPU**: Automatically halts `requestAnimationFrame` loops and telemetry polling when minimized or hidden to the system tray (**0% CPU**).
+- **Streamlined Card Layout**: All vital controls are visible at a glance without navigating complex menus — Microphone, Speaker, Live Voice Tester, Noise Suppression, Sensitivity, and Echo Cancellation.
+- **Master Power Button**: Instant one-click toggle in the header between `Active` (emerald glow) and `Bypassed` (amber glow).
+- **Dark & Light Mode Support**: One-click theme toggle (`🌙` / `☀️`) switching seamlessly between deep slate Dark Mode and crisp executive Light Mode (`daylight`), remembered automatically in config.
+- **Hero Live Voice Tester**:
+  - Interactive circular test button with real-time green pulsing audio feedback.
+  - **A/B Monitor Switch**: Compare `✨ Cleaned` vs `🎙️ Original (Dry)` audio in headphones with 1 click while speaking.
+  - **10-Second Record & Replay**: One-touch 10s audio capture, instant replay playback, and WAV file export.
+- **Noise Suppression 4-Mode Switch**: Rapid switching across `None`, `Light`, `Standard`, and `Max Quality` (Krisp-level isolation).
+- **Live Input VU Meter & CLIP Alert**: Calibrated dB meter (`-60 dB` to `0 dB`) with an instant red `CLIP` LED badge alert whenever signal reaches $\ge -0.5$ dBFS.
+- **Echo Doctor Diagnostics**: One-click `🩺 Echo Doctor` modal that inspects Windows audio routes, flags feedback loops, and provides step-by-step Discord screen sharing instructions.
+- **Zero Idle CPU**: Automatically drops polling rate when minimized or hidden to the system tray (**0% CPU**).
 
-### 📸 Studio Console Themes Preview
+*(Note: The experimental "Signal Lab" oscilloscope UI remains fully preserved in the remote git branch `origin/theme-signal-lab`)*.
 
-| Night Lab (Default Dark) | Daylight (Clean Light) | Amber Console (Vintage Phosphor) |
+### 📸 UI Theme Preview
+
+| Dark Theme (Default) | Light Theme (`daylight`) | Echo Doctor Diagnostic Modal |
 | :---: | :---: | :---: |
-| ![Night Lab](docs/screenshots/theme_night_lab.png) | ![Daylight](docs/screenshots/theme_daylight.png) | ![Amber Console](docs/screenshots/theme_amber_console.png) |
+| ![Dark Theme](docs/screenshots/theme_classic_dark.png) | ![Light Theme](docs/screenshots/theme_classic_light.png) | ![Echo Doctor Modal](docs/screenshots/echo_doctor_modal.png) |
 
 ---
 
