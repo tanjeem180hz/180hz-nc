@@ -138,10 +138,6 @@ const liveVoiceTitle = document.getElementById('liveVoiceTitle');
 const liveVoiceDesc = document.getElementById('liveVoiceDesc');
 const abCleanedBtn = document.getElementById('abCleanedBtn');
 const abOriginalBtn = document.getElementById('abOriginalBtn');
-const recordBufferBtn = document.getElementById('recordBufferBtn');
-const playReplayBtn = document.getElementById('playReplayBtn');
-const exportWavBtn = document.getElementById('exportWavBtn');
-const recordStatusBadge = document.getElementById('recordStatusBadge');
 
 const noiseReductionBadge = document.getElementById('noiseReductionBadge');
 const segButtons = document.querySelectorAll('.seg-btn');
@@ -240,12 +236,14 @@ async function init() {
     const liveStatus = await invoke('get_live_test_status').catch(() => null);
     if (liveStatus) {
       updateLiveTestUI(liveStatus.is_active);
-      if (liveStatus.mode === 'Original') {
-        abOriginalBtn.classList.add('active');
-        abCleanedBtn.classList.remove('active');
-      } else {
-        abCleanedBtn.classList.add('active');
-        abOriginalBtn.classList.remove('active');
+      if (abOriginalBtn && abCleanedBtn) {
+        if (liveStatus.mode === 'Original') {
+          abOriginalBtn.classList.add('active');
+          abCleanedBtn.classList.remove('active');
+        } else {
+          abCleanedBtn.classList.add('active');
+          abOriginalBtn.classList.remove('active');
+        }
       }
     }
   } catch (err) {
@@ -623,71 +621,19 @@ function setupEventListeners() {
   liveVoiceBtn.addEventListener('click', toggleLiveTest);
 
   // A/B Monitor Switches
-  abCleanedBtn.addEventListener('click', () => {
-    abCleanedBtn.classList.add('active');
-    abOriginalBtn.classList.remove('active');
-    invoke('set_live_test_ab', { mode: 'Cleaned' }).catch(() => {});
-  });
+  if (abCleanedBtn && abOriginalBtn) {
+    abCleanedBtn.addEventListener('click', () => {
+      abCleanedBtn.classList.add('active');
+      abOriginalBtn.classList.remove('active');
+      invoke('set_live_test_ab', { mode: 'Cleaned' }).catch(() => {});
+    });
 
-  abOriginalBtn.addEventListener('click', () => {
-    abOriginalBtn.classList.add('active');
-    abCleanedBtn.classList.remove('active');
-    invoke('set_live_test_ab', { mode: 'Original' }).catch(() => {});
-  });
-
-  // Record 10s & Replay
-  recordBufferBtn.addEventListener('click', async () => {
-    recordBufferBtn.disabled = true;
-    recordBufferBtn.textContent = 'Recording (10s)...';
-    recordStatusBadge.textContent = 'Recording...';
-    recordStatusBadge.style.color = 'var(--accent-red)';
-    try {
-      await invoke('start_record_and_replay');
-      setTimeout(() => {
-        recordBufferBtn.disabled = false;
-        recordBufferBtn.textContent = '⏺ Record 10s';
-        playReplayBtn.disabled = false;
-        exportWavBtn.disabled = false;
-        recordStatusBadge.textContent = 'Ready to Replay';
-        recordStatusBadge.style.color = 'var(--accent-emerald)';
-      }, 10200);
-    } catch (e) {
-      console.error('Record and replay failed:', e);
-      recordBufferBtn.disabled = false;
-      recordBufferBtn.textContent = '⏺ Record 10s';
-      recordStatusBadge.textContent = 'Failed';
-    }
-  });
-
-  playReplayBtn.addEventListener('click', async () => {
-    playReplayBtn.disabled = true;
-    playReplayBtn.textContent = 'Playing...';
-    recordStatusBadge.textContent = 'Replaying...';
-    try {
-      await invoke('start_replay_playback');
-      setTimeout(() => {
-        playReplayBtn.disabled = false;
-        playReplayBtn.textContent = '▶ Play Replay';
-        recordStatusBadge.textContent = 'Ready';
-      }, 10200);
-    } catch (e) {
-      console.error('Replay playback failed:', e);
-      playReplayBtn.disabled = false;
-      playReplayBtn.textContent = '▶ Play Replay';
-    }
-  });
-
-  exportWavBtn.addEventListener('click', async () => {
-    exportWavBtn.disabled = true;
-    try {
-      const [raw, clean] = await invoke('export_recorded_wav', { dir: null });
-      alert(`WAV Audio Exported Successfully!\n\nRaw Input:\n${raw}\n\nCleaned Output:\n${clean}`);
-    } catch (e) {
-      alert(`Export failed: ${e}`);
-    } finally {
-      exportWavBtn.disabled = false;
-    }
-  });
+    abOriginalBtn.addEventListener('click', () => {
+      abOriginalBtn.classList.add('active');
+      abCleanedBtn.classList.remove('active');
+      invoke('set_live_test_ab', { mode: 'Original' }).catch(() => {});
+    });
+  }
 
   // Auto-Sensitivity
   autoSensitivityToggle.addEventListener('change', () => {

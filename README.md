@@ -48,7 +48,6 @@ Everything required for 180hz nc to function perfectly is bundled into `180hz-nc
 - **Hero Live Voice Tester**:
   - Interactive circular test button with real-time green pulsing audio feedback.
   - **A/B Monitor Switch**: Compare `✨ Cleaned` vs `🎙️ Original (Dry)` audio in headphones with 1 click while speaking.
-  - **10-Second Record & Replay**: One-touch 10s audio capture, instant replay playback, and WAV file export.
 - **Noise Suppression 4-Mode Switch**: Rapid switching across `None`, `Light`, `Standard`, and `Max Quality` (Krisp-level isolation).
 - **Live Input VU Meter & CLIP Alert**: Calibrated dB meter (`-60 dB` to `0 dB`) with an instant red `CLIP` LED badge alert whenever signal reaches $\ge -0.5$ dBFS.
 - **Echo Doctor Diagnostics**: One-click `🩺 Echo Doctor` modal that inspects Windows audio routes, flags feedback loops, and provides step-by-step Discord screen sharing instructions.

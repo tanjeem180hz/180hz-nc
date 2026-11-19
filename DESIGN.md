@@ -51,10 +51,6 @@ The application implements CSS Custom Properties for immediate theme switching a
 ### 3.3 Live Voice Tester (Hero Centerpiece)
 - **Central Circular Button**: Large 72px interactive microphone button with glowing emerald pulse animation when testing.
 - **A/B Monitor Stream Switch**: Click to instantly toggle between `✨ Cleaned` (AI noise suppression) and `🎙️ Original` (Dry unprocessed mic audio) directly in headphones.
-- **10-Second Record & Replay**:
-  - `⏺ Record 10s`: Captures both raw and cleaned audio buffers simultaneously.
-  - `▶ Play Replay`: Plays back the recorded 10-second snippet for evaluation.
-  - `💾 Export WAV`: Exports timestamped `raw_input.wav` and `cleaned_output.wav` directly to disk.
 
 ### 3.4 Noise Suppression & DSP Telemetry
 - **4-Mode Segmented Switch**: `None`, `Light`, `Standard`, and `Max Quality`.

@@ -641,51 +641,6 @@ body {
   color: #ffffff;
 }
 
-.record-replay-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.action-btn {
-  flex: 1;
-  padding: 5px 8px;
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 600;
-  background-color: var(--bg-input);
-  border: 1px solid var(--border-card);
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  text-align: center;
-}
-
-.action-btn:hover:not(:disabled) {
-  background-color: var(--bg-hover);
-  border-color: var(--border-focus);
-}
-
-.action-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.record-btn {
-  color: var(--accent-red);
-}
-
-.record-badge {
-  font-size: 10px;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  color: var(--accent-emerald);
-  padding: 2px 6px;
-  border-radius: 4px;
-  background-color: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-}
-
 /* Segmented Control */
 .segmented-control {
   display: flex;

@@ -140,7 +140,7 @@
           </div>
         </div>
 
-        <!-- A/B Audio Switch & Record/Replay Controls -->
+        <!-- A/B Audio Switch -->
         <div class="live-test-suite">
           <div class="ab-switch-group">
             <span class="suite-label">Monitor Stream:</span>
@@ -148,19 +148,6 @@
               <button type="button" id="abCleanedBtn" class="ab-btn active" title="Listen to AI Cleaned audio">✨ Cleaned</button>
               <button type="button" id="abOriginalBtn" class="ab-btn" title="Listen to raw unprocessed microphone audio">🎙️ Original (Dry)</button>
             </div>
-          </div>
-
-          <div class="record-replay-row">
-            <button type="button" id="recordBufferBtn" class="action-btn record-btn" title="Record 10 seconds of input & cleaned audio for A/B testing">
-              ⏺ Record 10s
-            </button>
-            <button type="button" id="playReplayBtn" class="action-btn replay-btn" disabled title="Replay the 10-second test buffer">
-              ▶ Play Replay
-            </button>
-            <button type="button" id="exportWavBtn" class="action-btn export-btn" disabled title="Export raw and cleaned WAV audio samples to ab_samples directory">
-              💾 Export WAV
-            </button>
-            <span id="recordStatusBadge" class="record-badge">Ready</span>
           </div>
         </div>
       </section>

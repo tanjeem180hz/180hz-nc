@@ -34,11 +34,24 @@
 - [x] AEC Buzzing / "Jir-Jir" Root Causes Fixed: Causal FIR Indexing, Geigel DTD, Leaky LMS, Envelope-Smoothed NLP, and Headphone Auto-Bypass.
 - [x] 180 Hz Signal Lab UI Redesign: Frequency Ruler, Live Circular Signal Orb, Tactile Master Power, 3 Studio Themes (Night Lab, Daylight, Amber Console), 4-Tab Architecture, and 0% Idle CPU (Preserved in branch `theme-signal-lab`).
 - [x] Part A: Noise Leakage Regression Resolved (Tuned VAD onset, bounded AGC [0.35, 1.50], pitch-aware residual suppressor, settings-to-engine sync, documented in `REGRESSION_REPORT.md`).
-- [x] Part B: Unified Card UI Restored & Professionally Polished on `main` (Dark & Light Mode, Hero Live Voice Tester with A/B and 10s Record/Replay/Export, Dual VU Meter with CLIP LED, Echo Doctor & Pipeline Diagnostics, 0% Idle CPU).
+- [x] Part B: Unified Card UI Restored & Professionally Polished on `main` (Dark & Light Mode, Hero Live Voice Tester with A/B switch, Dual VU Meter with CLIP LED, Echo Doctor & Pipeline Diagnostics, 0% Idle CPU).
+- [x] UI Refinement: Safely removed 10-Second Test Recorder component without errors, guarding all DOM event listeners and updating styling.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 39: Remove 10-Second Test Recorder Component from UI
+- **UI & JavaScript Refactoring**:
+  1. Removed the 10-Second Test Recorder row (`recordBufferBtn`, `playReplayBtn`, `exportWavBtn`, `recordStatusBadge`) from `crates/quietmic-app/ui/index.html`.
+  2. Removed element references and event listener registrations in `crates/quietmic-app/ui/app.js` to ensure zero runtime `TypeError: Cannot read properties of null` exceptions. Added defensive null-guards to all optional DOM controls.
+  3. Cleaned up corresponding CSS rules from `crates/quietmic-app/ui/style.css`.
+  4. Verified zero JavaScript console errors in headless Chromium tests.
+  5. Refreshed UI screenshots in `docs/screenshots/`.
+- **Quality Verification**:
+  - `cargo check --workspace` passed cleanly.
+  - `cargo clippy --workspace -- -D warnings` passed with 0 warnings.
+  - `cargo test -p quietmic-app` passed 100%.
 
 ### Commit 38: Restore and Professionally Polish Unified Card UI on `main`
 - **UI Restoration & Modernization**:
