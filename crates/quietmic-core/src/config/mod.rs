@@ -196,8 +196,7 @@ impl AppConfig {
 
             if enable {
                 if let Ok(exe_path) = std::env::current_exe() {
-                    let mut path_str = exe_path.to_string_lossy().to_string();
-                    path_str.push_str(" --minimized");
+                    let path_str = format!("\"{}\" --minimized", exe_path.to_string_lossy());
                     let h_val = HSTRING::from(path_str);
                     let bytes: &[u8] = std::slice::from_raw_parts(
                         h_val.as_ptr() as *const u8,

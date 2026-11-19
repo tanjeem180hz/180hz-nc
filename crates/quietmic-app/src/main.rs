@@ -588,6 +588,17 @@ fn open_windows_startup_settings() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn open_windows_taskbar_settings() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(["/c", "start", "ms-settings:taskbar"])
+            .spawn();
+    }
+    Ok(())
+}
+
 fn restart_audio_stream(state: &AppState, cfg: &AppConfig) -> Result<(), String> {
     let mut stream_lock = state.stream_controller.lock();
     // Stop previous controller cleanly
@@ -708,9 +719,12 @@ fn main() {
 
     #[cfg(windows)]
     unsafe {
-        let _mutex = CreateMutexW(None, true, w!("Global\\180hznc_SingleInstance_Mutex"));
+        let username = std::env::var("USERNAME").unwrap_or_else(|_| "default".to_string());
+        let mutex_name = format!("Global\\180hznc_SingleInstance_Mutex_{}\0", username);
+        let wide_mutex: Vec<u16> = mutex_name.encode_utf16().collect();
+        let _mutex = CreateMutexW(None, true, windows::core::PCWSTR(wide_mutex.as_ptr()));
         if GetLastError() == ERROR_ALREADY_EXISTS {
-            eprintln!("180hz nc is already running. Another instance cannot be started.");
+            eprintln!("180hz nc is already running for user '{}'. Bringing existing window to foreground.", username);
             if let Ok(hwnd) = windows::Win32::UI::WindowsAndMessaging::FindWindowW(None, w!("180hz nc")) {
                 if !hwnd.0.is_null() {
                     use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SetForegroundWindow, SW_RESTORE, SW_SHOW};
@@ -869,6 +883,97 @@ fn main() {
                         let _ = UnregisterHotKey(HWND::default(), 2);
                     })
                     .expect("Failed to spawn global hotkey thread");
+            }
+
+            // Audio Stream Watchdog Thread: Auto-recovers on device loss, system sleep/resume, and startup delay
+            {
+                let app_handle = app.handle().clone();
+                std::thread::Builder::new()
+                    .name("180hznc-audio-watchdog".to_string())
+                    .spawn(move || {
+                        let mut boot_retries = 0u32;
+                        loop {
+                            std::thread::sleep(std::time::Duration::from_secs(2));
+                            let state = app_handle.state::<AppState>();
+                            
+                            let is_running = {
+                                let ctrl = state.stream_controller.lock();
+                                ctrl.as_ref().map(|c| c.is_running()).unwrap_or(false)
+                            };
+
+                            if !is_running {
+                                // Retry startup or recovery up to 90 seconds (e.g. system boot / Audiosrv restart)
+                                if boot_retries < 45 {
+                                    boot_retries += 1;
+                                    tracing::info!("Audio watchdog: Stream inactive, attempting auto-recovery (attempt {}/45)...", boot_retries);
+                                    let cfg = state.config.lock().clone();
+                                    let _ = restart_audio_stream(&state, &cfg);
+                                }
+                            } else {
+                                boot_retries = 0;
+                            }
+                        }
+                    })
+                    .expect("Failed to spawn audio watchdog thread");
+            }
+
+            // Spawn Explorer Restart (TaskbarCreated) Listener
+            #[cfg(windows)]
+            {
+                let app_handle = app.handle().clone();
+                std::thread::Builder::new()
+                    .name("180hznc-taskbar-listener".to_string())
+                    .spawn(move || unsafe {
+                        use windows::Win32::UI::WindowsAndMessaging::{
+                            CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW,
+                            RegisterClassExW, RegisterWindowMessageW,
+                            CS_HREDRAW, CS_VREDRAW, MSG, WNDCLASSEXW, WS_POPUP, WINDOW_EX_STYLE,
+                        };
+
+                        let taskbar_msg = RegisterWindowMessageW(w!("TaskbarCreated"));
+
+                        extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: windows::Win32::Foundation::WPARAM, lparam: windows::Win32::Foundation::LPARAM) -> windows::Win32::Foundation::LRESULT {
+                            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+                        }
+
+                        let class_name = w!("180hz_TaskbarMonitorClass");
+                        let wc = WNDCLASSEXW {
+                            cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+                            style: CS_HREDRAW | CS_VREDRAW,
+                            lpfnWndProc: Some(wndproc),
+                            lpszClassName: class_name,
+                            ..Default::default()
+                        };
+                        let _ = RegisterClassExW(&wc);
+
+                        let hwnd = CreateWindowExW(
+                            WINDOW_EX_STYLE(0),
+                            class_name,
+                            w!("180hz_TaskbarMonitor"),
+                            WS_POPUP,
+                            0, 0, 0, 0,
+                            None,
+                            None,
+                            None,
+                            None,
+                        );
+
+                        if let Ok(h) = hwnd {
+                            if !h.0.is_null() {
+                                let mut msg = MSG::default();
+                                while GetMessageW(&mut msg, h, 0, 0).as_bool() {
+                                    if msg.message == taskbar_msg && taskbar_msg != 0 {
+                                        tracing::info!("Explorer restart detected (TaskbarCreated): re-asserting tray icon");
+                                        if let Some(tray) = app_handle.tray_by_id("main-tray") {
+                                            let _ = tray.set_visible(true);
+                                        }
+                                    }
+                                    let _ = DispatchMessageW(&msg);
+                                }
+                            }
+                        }
+                    })
+                    .expect("Failed to spawn TaskbarCreated listener thread");
             }
 
             // Spawn Audio Device Hot-plug Watcher
@@ -1177,6 +1282,7 @@ fn main() {
             set_start_with_windows,
             get_autostart_status,
             open_windows_startup_settings,
+            open_windows_taskbar_settings,
         ])
         .run(tauri::generate_context!())
         .expect("Error running 180hz nc application");

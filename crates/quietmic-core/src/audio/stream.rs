@@ -626,9 +626,7 @@ impl AudioStreamController {
                         }
 
                         // Exact silence padding if WASAPI loopback callback paused during render silence
-                        for i in count..AudioPipeline::FRAME_SAMPLES {
-                            ref_scratch[i] = 0.0;
-                        }
+                        ref_scratch[count..AudioPipeline::FRAME_SAMPLES].fill(0.0);
 
                         // Adaptive Clock Drift Compensation & Backlog Management:
                         // Normal backlog is 0 to 480 samples (0 to 10 ms jitter buffer).
@@ -939,6 +937,10 @@ impl AudioStreamController {
 
     pub fn is_aec_enabled(&self) -> bool {
         self.controls.aec_enabled.load(Ordering::Relaxed)
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.running.load(Ordering::Relaxed)
     }
 
     pub fn stop(&mut self) {

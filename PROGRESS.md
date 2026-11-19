@@ -39,10 +39,29 @@
 - [x] Part A: Acoustic Echo Cancellation (AEC) Engine Overhaul (Continuous 8 kHz Cross-Correlation Delay Tracking, 0-Sample Error at 20/80/150/300 ms, Multi-Format I16/F32 WASAPI Loopback, Atomic Telemetry UI, ERLE >= 24.8 dB in `AEC_REPORT.md`).
 - [x] Part B: Close Button Minimization to System Tray, Single-Instance Window Focus, Rich Tray Menu with Mode/Mic Submenus, and First-Time Notification Toast.
 - [x] Part C: "Start with Windows" Auto-Start Toggle, Registry Run Key Integration, Task Manager Disabled State Detection, and Installer Auto-Start Option.
+- [x] Part D: Cross-Version Windows Reliability (Per-User Mutex, TaskbarCreated Recovery, Audio Stream Watchdog, Quoted Run Path, Pinning Guide, COMPAT_REPORT.md).
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 43: Cross-Version Windows Reliability (Per-User Mutex, TaskbarCreated Recovery, Audio Watchdog, Quoted Run Path & Pinning Guide)
+- **Windows Enterprise & Multi-User Mutex Isolation**:
+  - Bound single-instance mutex to active user session: `Global\180hznc_SingleInstance_Mutex_<username>`. Resolves instance blocking across Fast User Switching and Remote Desktop sessions on Windows 10/11 Enterprise.
+- **Explorer Crash & Restart Resilience (`TaskbarCreated`)**:
+  - Implemented hidden message pump thread (`180hznc-taskbar-listener`) registering `RegisterWindowMessageW("TaskbarCreated")`.
+  - Automatically re-asserts tray icon visibility via `tray.set_visible(true)` when `explorer.exe` crashes or restarts, preventing lost tray icons without interrupting active audio.
+- **Audio Stream Watchdog & Boot Recovery**:
+  - Implemented `180hznc-audio-watchdog` querying `AudioStreamController::is_running()` every 2 seconds.
+  - Automatically attempts non-blocking stream recovery up to 45 attempts (90-second window), tolerating Windows Audiosrv boot delays, USB audio device re-enumeration, and sleep/resume (S0ix/S3) power events.
+- **Reliable Start with Windows & Quoted Path Execution**:
+  - Enforced outer quotes around the registry HKCU Run value (`"\"<exe_path>\" --minimized"`), resolving startup execution failures on paths with spaces (e.g. `C:\Program Files\180hz nc\`).
+  - Added collapsible "Taskbar & Tray Visibility" pinning guide in UI Preferences with instructions for Windows 11 and Windows 10, plus direct launcher button for `ms-settings:taskbar`.
+- **Quality & Code Verification**:
+  - Replaced manual range index loop in `stream.rs` with idiomatic `fill(0.0)`.
+  - Created comprehensive `COMPAT_REPORT.md` documenting OS matrix (Windows 10/11 Pro/Home/Enterprise x64), architecture, and verification results.
+  - Full workspace tests pass: 64 unit tests + 31 integration test suites pass (0 errors, 0 failures).
+  - Clippy check passes cleanly: 0 warnings with `-D warnings`.
 
 ### Commit 42: Fix AEC Output Fluctuation, Crackling & Dropouts ("Fattic") with Continuous Reference Clock, DTD Hangover, and Offline Stress Suite
 - **AEC Stability & Quality Overhaul**:

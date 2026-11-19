@@ -78,6 +78,7 @@ function mockInvoke(cmd, args) {
     case 'set_close_to_tray':
     case 'set_start_with_windows':
     case 'open_windows_startup_settings':
+    case 'open_windows_taskbar_settings':
       return Promise.resolve();
     case 'get_autostart_status':
       return Promise.resolve({ enabled: false, disabled_by_os: false });
@@ -185,6 +186,9 @@ const closeToTrayToggle = document.getElementById('closeToTrayToggle');
 const startWithWindowsToggle = document.getElementById('startWithWindowsToggle');
 const startupWarning = document.getElementById('startupWarning');
 const openStartupSettingsBtn = document.getElementById('openStartupSettingsBtn');
+const togglePinGuideBtn = document.getElementById('togglePinGuideBtn');
+const pinGuideDetails = document.getElementById('pinGuideDetails');
+const openTaskbarSettingsBtn = document.getElementById('openTaskbarSettingsBtn');
 
 // First-time Tray Toast
 const trayToast = document.getElementById('trayToast');
@@ -914,6 +918,20 @@ function setupEventListeners() {
   if (openStartupSettingsBtn) {
     openStartupSettingsBtn.addEventListener('click', () => {
       invoke('open_windows_startup_settings').catch((e) => console.error('Failed to open startup settings:', e));
+    });
+  }
+
+  if (togglePinGuideBtn && pinGuideDetails) {
+    togglePinGuideBtn.addEventListener('click', () => {
+      const isHidden = pinGuideDetails.style.display === 'none';
+      pinGuideDetails.style.display = isHidden ? 'block' : 'none';
+      togglePinGuideBtn.textContent = isHidden ? 'Hide Guide' : 'Pinning Guide';
+    });
+  }
+
+  if (openTaskbarSettingsBtn) {
+    openTaskbarSettingsBtn.addEventListener('click', () => {
+      invoke('open_windows_taskbar_settings').catch((e) => console.error('Failed to open taskbar settings:', e));
     });
   }
 

@@ -309,6 +309,25 @@
             <span class="slider-round"></span>
           </label>
         </div>
+
+        <div class="toggle-row" style="margin-top: 10px; border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.08)); padding-top: 10px;">
+          <div>
+            <span class="sub-label">Taskbar & Tray Visibility</span>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Ensure 180hz nc is always visible in the system tray</div>
+          </div>
+          <button type="button" id="togglePinGuideBtn" class="key-bind-btn" style="padding: 4px 10px; font-size: 11px;">Pinning Guide</button>
+        </div>
+
+        <div id="pinGuideDetails" class="stat-col" style="display: none; margin-top: 8px; font-size: 11px; color: var(--text-secondary); background: var(--bg-surface-soft, rgba(255,255,255,0.03)); border-radius: 6px; padding: 10px; border: 1px solid var(--border-color, rgba(255,255,255,0.06));">
+          <div style="font-weight: 600; margin-bottom: 6px; color: var(--accent-emerald);">How to keep 180hz nc always visible:</div>
+          <div style="margin-bottom: 6px; line-height: 1.5;">
+            <strong style="color: var(--text-primary);">Windows 11:</strong> Right-click Taskbar &rarr; <em>Taskbar settings</em> &rarr; <em>Other system tray icons</em> &rarr; Switch <strong>180hz nc</strong> to <strong>On</strong>.
+            <button type="button" id="openTaskbarSettingsBtn" class="key-bind-btn" style="padding: 2px 6px; font-size: 10px; margin-left: 6px;">Open Taskbar Settings</button>
+          </div>
+          <div style="line-height: 1.5;">
+            <strong style="color: var(--text-primary);">Windows 10:</strong> Click the <strong>^</strong> chevron in your taskbar, then click and drag the <strong>180hz nc</strong> icon out onto the taskbar.
+          </div>
+        </div>
       </section>
     </main>
 
