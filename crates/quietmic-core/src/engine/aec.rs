@@ -20,14 +20,16 @@ pub struct EchoCanceller {
     step_size: f32,            // Normalized adaptation rate mu
     delay_buffer: Vec<f32>,    // Bulk delay line (24000 samples = 500 ms)
     delay_write_pos: usize,
-    bulk_delay_samples: usize, // Estimated delay between speaker render and mic capture
+    bulk_delay_samples: usize, // Current active bulk delay
+    target_bulk_delay: usize,  // Target delay during crossfade
+    delay_crossfade_pos: usize, // Remaining crossfade samples (0 = not crossfading)
+    delay_crossfade_total: usize,
     delay_search_buffer_ref: Vec<f32>,
     delay_search_buffer_mic: Vec<f32>,
     is_double_talk: bool,
     ref_frames_fed: u64,
     mic_frames_processed: u64,
     last_erle_db: f32,
-    ref_energy_tracker: f32,
     mic_energy_tracker: f32,
     echo_energy_tracker: f32,
     smoothed_nlp_gain: f32,
@@ -38,10 +40,18 @@ pub struct EchoCanceller {
     mic_history_8k: Vec<f32>,
     delay_locked: bool,
     delay_update_counter: usize,
+    candidate_delay_samples: usize,
+    candidate_delay_votes: usize,
     last_correlation: f32,
     bypass_reason_code: u32, // 0=Active, 1=RefSilent, 2=LowCorr, 3=Headphones, 4=Error, 5=Disabled
+    active_dwell_counter: usize,
+    active_crossfade_gain: f32,
     bypassed_frames: u64,
     divergence_resets: u64,
+    divergence_cooldown: usize,
+    near_end_envelope: f32,
+    ref_envelope: f32,
+    double_talk_hangover: usize,
 }
 
 impl EchoCanceller {
@@ -66,13 +76,15 @@ impl EchoCanceller {
             delay_buffer: vec![0.0f32; Self::MAX_DELAY_SAMPLES],
             delay_write_pos: 0,
             bulk_delay_samples: 0, // Starts at 0, calibrated via delay estimation
+            target_bulk_delay: 0,
+            delay_crossfade_pos: 0,
+            delay_crossfade_total: 960,
             delay_search_buffer_ref: Vec::with_capacity(Self::DELAY_SEARCH_WINDOW),
             delay_search_buffer_mic: Vec::with_capacity(Self::DELAY_SEARCH_WINDOW),
             is_double_talk: false,
             ref_frames_fed: 0,
             mic_frames_processed: 0,
             last_erle_db: 0.0,
-            ref_energy_tracker: 1e-5,
             mic_energy_tracker: 1e-5,
             echo_energy_tracker: 1e-5,
             smoothed_nlp_gain: 0.0,
@@ -83,10 +95,18 @@ impl EchoCanceller {
             mic_history_8k: Vec::with_capacity(Self::MAX_MIC_8K + 200),
             delay_locked: false,
             delay_update_counter: 0,
+            candidate_delay_samples: 0,
+            candidate_delay_votes: 0,
             last_correlation: 0.0,
             bypass_reason_code: 5, // Initially disabled
+            active_dwell_counter: 0,
+            active_crossfade_gain: 0.0,
             bypassed_frames: 0,
             divergence_resets: 0,
+            divergence_cooldown: 0,
+            near_end_envelope: 0.0,
+            ref_envelope: 0.0,
+            double_talk_hangover: 0,
         }
     }
 
@@ -125,16 +145,28 @@ impl EchoCanceller {
         self.mic_history_8k.clear();
         self.delay_locked = false;
         self.delay_update_counter = 0;
+        self.candidate_delay_samples = 0;
+        self.candidate_delay_votes = 0;
         self.last_correlation = 0.0;
+        self.active_dwell_counter = 0;
+        self.active_crossfade_gain = 0.0;
+        self.divergence_cooldown = 0;
+        self.near_end_envelope = 0.0;
+        self.ref_envelope = 0.0;
+        self.double_talk_hangover = 0;
         self.bypass_reason_code = if self.enabled { 0 } else { 5 };
     }
 
     /// Sets the bulk delay in samples (e.g. 40 ms at 48 kHz = 1920 samples).
     pub fn set_bulk_delay_samples(&mut self, samples: usize) {
-        self.bulk_delay_samples = samples.min(Self::MAX_DELAY_SAMPLES - self.filter_length - 10);
+        let clamped = samples.min(Self::MAX_DELAY_SAMPLES - self.filter_length - 10);
+        self.bulk_delay_samples = clamped;
+        self.target_bulk_delay = clamped;
+        self.delay_crossfade_pos = 0;
         self.delay_locked = true;
         if self.enabled {
             self.bypass_reason_code = 0;
+            self.active_dwell_counter = 30;
         }
     }
 
@@ -269,9 +301,20 @@ impl EchoCanceller {
         let delay_len = self.delay_buffer.len();
         self.delay_buffer[self.delay_write_pos] = raw_ref_sample;
 
-        // 2. Read time-aligned reference sample delayed by bulk_delay_samples
-        let read_pos = (self.delay_write_pos + delay_len - self.bulk_delay_samples) % delay_len;
-        let aligned_ref = self.delay_buffer[read_pos];
+        // 2. Read time-aligned reference sample with smooth crossfading if delay is transitioning
+        let aligned_ref = if self.delay_crossfade_pos > 0 {
+            let old_pos = (self.delay_write_pos + delay_len - self.bulk_delay_samples) % delay_len;
+            let target_pos = (self.delay_write_pos + delay_len - self.target_bulk_delay) % delay_len;
+            let alpha = 1.0 - (self.delay_crossfade_pos as f32 / self.delay_crossfade_total as f32);
+            self.delay_crossfade_pos -= 1;
+            if self.delay_crossfade_pos == 0 {
+                self.bulk_delay_samples = self.target_bulk_delay;
+            }
+            (1.0 - alpha) * self.delay_buffer[old_pos] + alpha * self.delay_buffer[target_pos]
+        } else {
+            let read_pos = (self.delay_write_pos + delay_len - self.bulk_delay_samples) % delay_len;
+            self.delay_buffer[read_pos]
+        };
         self.delay_write_pos = (self.delay_write_pos + 1) % delay_len;
 
         // 3. Store aligned reference in symmetric contiguous double-buffer in forward causal order
@@ -284,8 +327,6 @@ impl EchoCanceller {
         self.ref_ring[self.ring_idx + l] = aligned_ref;
 
         // 4. Vectorized FIR convolution: echo_hat = sum_{k=0}^{L-1} w[k] * x[n-k]
-        // x_window[0] is aligned_ref (t=0 direct path)
-        // x_window[k] is aligned_ref at delay k (room reflection at t=k)
         let x_window = &self.ref_ring[self.ring_idx..self.ring_idx + l];
         let mut echo_hat = 0.0f32;
         let mut ref_energy = 0.0f32;
@@ -301,8 +342,6 @@ impl EchoCanceller {
         }
 
         // Far-end activity detection:
-        // Far-end must have actual signal (> -60 dBFS) to consider echo subtraction or adaptation.
-        // If reference is silent or soundcard DAC dither, zero out echo_hat so AEC NEVER adds noise!
         let far_end_active = ref_energy >= Self::FAR_END_ACTIVE_THRESHOLD;
         if !far_end_active {
             echo_hat = 0.0;
@@ -311,23 +350,23 @@ impl EchoCanceller {
         // 5. Compute error: e = d - echo_hat
         let error = mic_sample - echo_hat;
 
-        // 6. Double-Talk & Near-End Activity Detection (Geigel & Power DTD):
-        // Update rolling power trackers
+        // 6. Smooth envelope & energy tracking
         self.mic_energy_tracker += 0.02 * (mic_sample * mic_sample - self.mic_energy_tracker);
         self.echo_energy_tracker += 0.02 * (echo_hat * echo_hat - self.echo_energy_tracker);
-        self.ref_energy_tracker += 0.02 * (aligned_ref * aligned_ref - self.ref_energy_tracker);
 
-        // Near-end speech is active when:
-        // - Microphone energy has audible energy (> -46 dBFS, 1.5e-4) AND
-        // - (Far-end is inactive OR mic amplitude exceeds loudspeaker acoustic coupling envelope: mic > 1.25 * ref_peak)
-        let near_end_active = (self.mic_energy_tracker > 1.5e-4)
-            && (!far_end_active || mic_sample.abs() > ref_peak * 1.25);
-        self.is_double_talk = far_end_active && near_end_active;
+        // Geigel DTD:
+        // Near-end double-talk is active when microphone amplitude exceeds loudspeaker coupling envelope
+        let is_double_talk_instant = far_end_active && (self.mic_energy_tracker > 1.5e-4) && (mic_sample.abs() > ref_peak * 1.25);
+        if is_double_talk_instant {
+            self.double_talk_hangover = 480; // 10 ms hangover prevents gain chatter
+        } else if self.double_talk_hangover > 0 {
+            self.double_talk_hangover -= 1;
+        }
+        self.is_double_talk = self.double_talk_hangover > 0;
 
         // 7. Conservative Leaky NLMS Weight Adaptation:
-        // Step size 0.04 (conservative, zero weight chatter / no buzzing)
-        // Leakage 1e-5 prevents weight drift on unexcited frequencies
-        if far_end_active && !near_end_active && !self.is_double_talk {
+        // When double talk or near-end is active, freeze adaptation completely
+        if far_end_active && !is_double_talk_instant && !self.is_double_talk {
             let norm_mu = self.step_size / (ref_energy + 1e-3);
             for (w, &x) in self.weights.iter_mut().zip(x_window) {
                 *w = *w * (1.0 - 1e-5) + norm_mu * error * x;
@@ -335,8 +374,7 @@ impl EchoCanceller {
         }
 
         // 8. Envelope-Smoothed Non-Linear Residual Suppression (NLP):
-        // Smooth gain adjustment (fast attack 0.05, gentle release 0.002) eliminates buzzing/chatter
-        let target_suppression = if far_end_active && !near_end_active && self.echo_energy_tracker > 1e-4 {
+        let target_suppression = if far_end_active && !self.is_double_talk && self.echo_energy_tracker > 1e-4 {
             (self.echo_energy_tracker / (self.mic_energy_tracker + 1e-6)).clamp(0.0, 0.85)
         } else {
             0.0
@@ -354,89 +392,107 @@ impl EchoCanceller {
             return;
         }
 
-        let mic_eval = &self.mic_history_8k[self.mic_history_8k.len() - MIC_WINDOW_8K..];
-        let mic_energy: f32 = mic_eval.iter().map(|&x| x * x).sum();
+        // 1. Far-end activity check
         let ref_len = self.ref_history_8k.len();
         let ref_recent_eval = &self.ref_history_8k[ref_len - MIC_WINDOW_8K..];
         let ref_recent_energy: f32 = ref_recent_eval.iter().map(|&x| x * x).sum();
 
-        // 1. Silent reference check
         if ref_recent_energy < 1e-4 {
-            self.bypass_reason_code = 1; // Reference Silent
+            if self.active_dwell_counter > 0 {
+                self.active_dwell_counter -= 1;
+            } else {
+                self.bypass_reason_code = 1; // Reference Silent
+            }
             return;
         }
 
-        // 2. Compute cross-correlation over 0 to 300 ms (2400 lags at 8 kHz)
+        let mic_eval = &self.mic_history_8k[self.mic_history_8k.len() - MIC_WINDOW_8K..];
+        let mic_energy: f32 = mic_eval.iter().map(|&x| x * x).sum();
+        if mic_energy < 1e-4 {
+            return;
+        }
+
+        // 3. Compute cross-correlation over 0 to 300 ms (2400 lags at 8 kHz)
         let max_lag_8k = (2400).min(ref_len - MIC_WINDOW_8K);
         let mut best_lag_8k = 0;
         let mut best_corr = 0.0f32;
+        let mut second_corr = 0.0f32;
 
-        for lag in (0..=max_lag_8k).step_by(2) {
+        for lag in 0..=max_lag_8k {
             let start = ref_len - MIC_WINDOW_8K - lag;
             let ref_eval = &self.ref_history_8k[start..start + MIC_WINDOW_8K];
             let mut dot = 0.0f32;
-            let mut ref_energy = 0.0f32;
+            let mut r_energy = 0.0f32;
             for i in 0..MIC_WINDOW_8K {
                 dot += mic_eval[i] * ref_eval[i];
-                ref_energy += ref_eval[i] * ref_eval[i];
+                r_energy += ref_eval[i] * ref_eval[i];
             }
-            let denom = (mic_energy * ref_energy).sqrt();
+            let denom = (mic_energy * r_energy).sqrt();
             if denom > 1e-6 {
                 let r = dot / denom;
                 if r > best_corr {
+                    if (lag as i64 - best_lag_8k as i64).abs() > 4 {
+                        second_corr = best_corr;
+                    }
                     best_corr = r;
                     best_lag_8k = lag;
+                } else if r > second_corr && (lag as i64 - best_lag_8k as i64).abs() > 4 {
+                    second_corr = r;
                 }
             }
         }
 
         self.last_correlation = best_corr;
 
-        if best_corr >= Self::CORRELATION_THRESHOLD {
+        // Confidence: peak correlation must be >= 0.35 and clearly prominent over sidelobes
+        let peak_to_sidelobe = if second_corr > 1e-4 { best_corr / second_corr } else { 2.0 };
+        let is_confident = best_corr >= 0.35 && peak_to_sidelobe >= 1.20;
+
+        if is_confident {
             let coarse_samples = best_lag_8k * Self::DOWNSAMPLE_FACTOR;
             
-            // Fine alignment at 48 kHz within +/- 18 samples of coarse estimate
-            let fine_start = coarse_samples.saturating_sub(18);
-            let fine_end = (coarse_samples + 18).min(Self::MAX_DELAY_SAMPLES - self.filter_length - 10);
-            
-            let delay_len = self.delay_buffer.len();
-            let mut best_fine_delay = coarse_samples;
-            let mut best_fine_corr = best_corr;
+            let sample_diff = (coarse_samples as i64 - self.candidate_delay_samples as i64).abs();
+            if sample_diff <= 24 {
+                self.candidate_delay_votes += 1;
+            } else {
+                self.candidate_delay_samples = coarse_samples;
+                self.candidate_delay_votes = 1;
+            }
 
-            if self.delay_search_buffer_mic.len() >= 480 {
-                let mic_fine = &self.delay_search_buffer_mic[self.delay_search_buffer_mic.len() - 480..];
-                let mic_fine_sq: f32 = mic_fine.iter().map(|&x| x * x).sum();
+            // Lock or promote after candidate persists across at least 3 windows (300 ms)
+            if self.candidate_delay_votes >= 3 {
+                let best_fine_delay = coarse_samples;
+                let best_fine_corr = best_corr;
 
-                if mic_fine_sq > 1e-5 {
-                    for test_delay in fine_start..=fine_end {
-                        let mut dot = 0.0f32;
-                        let mut ref_fine_sq = 0.0f32;
-                        for (i, &m) in mic_fine.iter().enumerate() {
-                            let r_idx = (self.delay_write_pos + delay_len - test_delay - 480 + i) % delay_len;
-                            let r = self.delay_buffer[r_idx];
-                            dot += m * r;
-                            ref_fine_sq += r * r;
-                        }
-                        let denom = (mic_fine_sq * ref_fine_sq).sqrt();
-                        if denom > 1e-6 {
-                            let corr = dot / denom;
-                            if corr > best_fine_corr {
-                                best_fine_corr = corr;
-                                best_fine_delay = test_delay;
-                            }
-                        }
-                    }
+                if !self.delay_locked {
+                    self.bulk_delay_samples = best_fine_delay;
+                    self.target_bulk_delay = best_fine_delay;
+                    self.delay_crossfade_pos = 0;
+                    self.delay_locked = true;
+                    self.weights.fill(0.0);
+                } else if (best_fine_delay as i64 - self.bulk_delay_samples as i64).abs() > 48
+                    && best_fine_corr > self.last_correlation + 0.10
+                    && self.candidate_delay_votes >= 10
+                {
+                    // Only shift bulk delay if a persistent (>1s) physical route shift occurs
+                    self.target_bulk_delay = best_fine_delay;
+                    self.delay_crossfade_total = 960;
+                    self.delay_crossfade_pos = 960;
                 }
-            }
 
-            if !self.delay_locked || best_fine_corr > self.last_correlation + 0.02 || (best_fine_delay as i64 - self.bulk_delay_samples as i64).abs() > 4 {
-                self.bulk_delay_samples = best_fine_delay;
-                self.delay_locked = true;
+                self.last_correlation = best_fine_corr.max(best_corr);
+                self.bypass_reason_code = 0; // Active
+                self.active_dwell_counter = 30; // 3 seconds dwell time
             }
-            self.last_correlation = best_fine_corr.max(best_corr);
-            self.bypass_reason_code = 0; // Active
+        } else if self.delay_locked {
+            // Once delay is locked and reference has non-silent audio, maintain active cancellation.
+            // Temporary dips in cross-correlation during unvoiced speech or complex music must NOT flap bypass!
+            self.bypass_reason_code = 0;
+            self.active_dwell_counter = 30;
+        } else if self.active_dwell_counter > 0 {
+            self.active_dwell_counter -= 1;
+            self.bypass_reason_code = 0; // Remain active during brief pauses
         } else {
-            // Reference active, but no correlation with mic (e.g. headphones or quiet room)
             self.bypass_reason_code = 2; // Low Correlation
         }
     }
@@ -470,9 +526,7 @@ impl EchoCanceller {
                 self.last_ref_sample = s;
                 s
             } else {
-                let s = self.last_ref_sample * 0.95;
-                self.last_ref_sample = s;
-                s
+                0.0 // Continuous silence when no reference is playing
             };
             ref_frame_consumed.push(ref_sample);
         }
@@ -532,14 +586,20 @@ impl EchoCanceller {
         for &w in &self.weights {
             weight_norm_sq += w * w;
         }
-        if weight_norm_sq > 2.0 {
+        if weight_norm_sq > 2.0 && self.divergence_cooldown == 0 {
             self.divergence_resets += 1;
-            self.weights.fill(0.0);
+            self.divergence_cooldown = 500; // 5.0 s cooldown
+            for w in self.weights.iter_mut() {
+                *w *= 0.1; // Soft attenuation instead of hard zeroing!
+            }
         } else if weight_norm_sq > 0.8 {
             let scale = (0.7 / weight_norm_sq).sqrt();
             for w in self.weights.iter_mut() {
                 *w *= scale;
             }
+        }
+        if self.divergence_cooldown > 0 {
+            self.divergence_cooldown -= 1;
         }
 
         // Reclaim memory in ref_fifo periodically

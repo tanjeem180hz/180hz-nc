@@ -44,6 +44,35 @@
 
 ## 2. Completed Tasks & Measurements
 
+### Commit 42: Fix AEC Output Fluctuation, Crackling & Dropouts ("Fattic") with Continuous Reference Clock, DTD Hangover, and Offline Stress Suite
+- **AEC Stability & Quality Overhaul**:
+  1. **Continuous Reference Clock Across Silent Gaps (`stream.rs`)**:
+     - *Issue*: WASAPI loopback pauses callbacks when render audio is silent, causing reference clock freeze while microphone clock advances continuously. On resume, reference offset caused total desynchronization (up to 240,000 samples).
+     - *Fix*: Audio stream consumes exact 480-sample frames per 10 ms tick, padding with continuous exact `0.0` silence during render idle. Guarantees permanent phase-lock between reference and microphone clocks.
+  2. **Double-Talk Hangover & Audio-Frequency NLP Modulation Elimination (`aec.rs`)**:
+     - *Issue*: Instantaneous sample-amplitude DTD checks toggled between true/false on every sinusoidal zero crossing, modulating NLP gain at ~2500 Hz (the "jir jir" / "fattic" buzzing and crackling sound).
+     - *Fix*: Added a 480-sample (10 ms) `double_talk_hangover` state. During vocal peaks, hangover bridges the waveform zero crossings, smoothly releasing NLP gain (rate = 0.002) without audio-frequency gain modulation.
+  3. **Delay Hunting Elimination & Reflection Stability (`aec.rs`)**:
+     - *Issue*: Delay estimation re-locked onto room reflections 20–50 samples away, shifting bulk delay and wiping out converged FIR weights every second.
+     - *Fix*: Raised cross-correlation threshold to 0.35 with peak-to-sidelobe check ($\ge 1.20$) and persistence voting ($\ge 3$ consecutive windows). Suppressed bulk delay line shifts for small lags ($< 48$ samples), leaving reflection cancellation to the 512-tap FIR filter.
+  4. **Soft Divergence Attenuation (`aec.rs`)**:
+     - *Issue*: Hard-zeroing weights on divergence produced audio dropout clicks.
+     - *Fix*: Replaced with soft attenuation (`* 0.1`) and a 500-frame cooldown.
+  5. **Offline Stress Reproduction Suite (`test_aec_stress_reproduction.rs`)**:
+     - Built rigorous 12-second deterministic stress suite with far-end active segments, silent render pauses, double-talk voice, and room reflections.
+     - Dumps 4 WAV stages to `ab_samples/`: `aec_stress_raw_mic.wav`, `aec_stress_ref_received.wav`, `aec_stress_aec_out.wav`, `aec_stress_final.wav`.
+     - *Verified Acceptance Metrics*:
+       - `Converged Mean ERLE`: **31.53 dB** (Spec $\ge 20.0$ dB)
+       - `ERLE Fluctuation (StdDev)`: **2.66 dB** (Spec $< 3.0$ dB)
+       - `Steady Envelope Jumps`: **0 jumps** (Spec: 0)
+       - `Near-End Speech Preserved`: **0.15 dB delta** (Spec $< 1.0$ dB)
+       - `Pipeline Far-End Leakage`: **-59.1 dBFS** (Spec $\le -40.0$ dBFS)
+       - `Dropout Frames`: **0 frames** (Spec: 0)
+       - `Clicks Detected`: **0 clicks** (Spec: 0)
+       - `Filter Resets`: **0 resets** (Spec: 0)
+       - `Delay Jitter (StdDev)`: **0.0 samples** (Spec $< 96$ samples = 2 ms)
+     - Documented in `AEC_REPORT.md`.
+
 ### Commit 41: Implement Background Tray Minimization, Start with Windows Registry Integration, and Single-Instance Focus
 - **Part B: System Tray & Window Minimization on Close**:
   1. **Close Event Interception**: Handled `tauri::WindowEvent::CloseRequested` to inspect `close_to_tray` preference (default: `true`). When enabled, calls `api.prevent_close()` and `window.hide()`, keeping real-time audio streams, DSP noise cancellation, and loopback capture alive without interruption.

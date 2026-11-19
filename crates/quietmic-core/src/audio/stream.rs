@@ -608,7 +608,7 @@ impl AudioStreamController {
                     worker_pipeline.set_aec_enabled(aec_en);
                     worker_metrics.aec_enabled.store(aec_en, Ordering::Relaxed);
 
-                    // Drain AEC reference samples if loopback is active
+                    // Drain AEC reference samples with continuous sample clock:
                     if let Some(ref mut r_cons) = ref_cons {
                         let mut count = 0;
                         let mut ref_peak = 0.0f32;
@@ -625,38 +625,41 @@ impl AudioStreamController {
                             }
                         }
 
-                        // Jitter & Backlog Protection:
-                        // Prevent latency accumulation by draining excess unread samples
-                        let backlog = r_cons.occupied_len();
-                        if backlog > 2 * AudioPipeline::FRAME_SAMPLES {
-                            let excess = backlog - AudioPipeline::FRAME_SAMPLES;
-                            for _ in 0..excess {
-                                let _ = r_cons.try_pop();
-                            }
+                        // Exact silence padding if WASAPI loopback callback paused during render silence
+                        for i in count..AudioPipeline::FRAME_SAMPLES {
+                            ref_scratch[i] = 0.0;
                         }
 
-                        if count > 0 && aec_en {
+                        // Adaptive Clock Drift Compensation & Backlog Management:
+                        // Normal backlog is 0 to 480 samples (0 to 10 ms jitter buffer).
+                        // If backlog exceeds 4800 samples (100 ms), gently pop 1 extra sample.
+                        let backlog = r_cons.occupied_len();
+                        if backlog > 4800 {
+                            let _ = r_cons.try_pop();
+                        }
+
+                        if aec_en {
                             let feed_slice = if let Some(ref mut rs) = ref_resampler {
-                                if rs.process(&ref_scratch[..count], &mut ref_resampled).is_ok() && !ref_resampled.is_empty() {
+                                if rs.process(&ref_scratch, &mut ref_resampled).is_ok() && !ref_resampled.is_empty() {
                                     &ref_resampled[..]
                                 } else {
-                                    &ref_scratch[..count]
+                                    &ref_scratch[..]
                                 }
                             } else {
-                                &ref_scratch[..count]
+                                &ref_scratch[..]
                             };
                             worker_pipeline.feed_aec_reference(feed_slice);
                             let ref_db = if ref_peak > 1e-5 { 20.0 * ref_peak.log10() } else { -100.0 };
                             worker_metrics.aec_ref_peak_db.store(ref_db.to_bits(), Ordering::Relaxed);
                             worker_metrics.aec_frames_processed.fetch_add(1, Ordering::Relaxed);
-                            let erle = if aec_en { worker_pipeline.aec().last_erle_db() } else { 0.0 };
-                            let delay = if aec_en { worker_pipeline.aec().bulk_delay_ms() } else { 0.0 };
+                            let erle = worker_pipeline.aec().last_erle_db();
+                            let delay = worker_pipeline.aec().bulk_delay_ms();
                             worker_metrics.aec_erle_db.store(erle.to_bits(), Ordering::Relaxed);
                             worker_metrics.aec_delay_ms.store(delay.to_bits(), Ordering::Relaxed);
                             worker_metrics.aec_bypassed_frames.store(worker_pipeline.aec().bypassed_frames(), Ordering::Relaxed);
                             worker_metrics.aec_bypass_reason.store(worker_pipeline.aec().bypass_reason_code(), Ordering::Relaxed);
                             worker_metrics.aec_divergence_resets.store(worker_pipeline.aec().filter_divergence_resets(), Ordering::Relaxed);
-                        } else if !aec_en {
+                        } else {
                             worker_metrics.aec_ref_peak_db.store((-100.0f32).to_bits(), Ordering::Relaxed);
                             worker_metrics.aec_bypassed_frames.store(worker_pipeline.aec().bypassed_frames(), Ordering::Relaxed);
                             worker_metrics.aec_bypass_reason.store(worker_pipeline.aec().bypass_reason_code(), Ordering::Relaxed);

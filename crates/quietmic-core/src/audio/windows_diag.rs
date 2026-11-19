@@ -14,6 +14,8 @@ pub struct SystemAudioDiagnostic {
     pub default_output_sample_rate: u32,
     pub mic_boost_high_warning: bool,
     pub audio_enhancements_warning: bool,
+    pub windows_build_number: u32,
+    pub supports_process_loopback: bool,
     pub meeting_app_guidance: String,
     pub recommendations: Vec<String>,
 }
@@ -82,6 +84,16 @@ impl SystemAudioDiagnostic {
             "Windows Audio Enhancements: Check Sound Control Panel -> Microphone Properties -> Advanced. If 'Enable audio enhancements' is checked, uncheck it to ensure clean raw audio reaches the denoiser.".to_string(),
         );
 
+        let build_number = get_windows_build_number();
+        let supports_process_loopback = build_number >= 19041;
+
+        if !supports_process_loopback {
+            recommendations.push(format!(
+                "Windows Build {} detected. Windows 10 Build 19041+ is recommended for modern per-process loopback isolation.",
+                build_number
+            ));
+        }
+
         Self {
             mic_permission_granted,
             virtual_cable_installed: cable_status.is_installed,
@@ -93,10 +105,45 @@ impl SystemAudioDiagnostic {
             default_output_sample_rate,
             mic_boost_high_warning,
             audio_enhancements_warning,
+            windows_build_number: build_number,
+            supports_process_loopback,
             meeting_app_guidance,
             recommendations,
         }
     }
+}
+
+/// Queries the true Windows NT kernel build number via RtlGetVersion (bypassing application compatibility shims).
+#[cfg(windows)]
+pub fn get_windows_build_number() -> u32 {
+    use windows::Win32::System::SystemInformation::OSVERSIONINFOEXW;
+    type RtlGetVersionFn = unsafe extern "system" fn(*mut OSVERSIONINFOEXW) -> i32;
+
+    unsafe {
+        let ntdll = windows::Win32::System::LibraryLoader::GetModuleHandleW(windows::core::w!("ntdll.dll"));
+        if let Ok(handle) = ntdll {
+            if !handle.0.is_null() {
+                let func_name = std::ffi::CString::new("RtlGetVersion").unwrap();
+                if let Some(proc) = windows::Win32::System::LibraryLoader::GetProcAddress(
+                    handle,
+                    windows::core::PCSTR(func_name.as_ptr() as *const u8),
+                ) {
+                    let rtl_get_version: RtlGetVersionFn = std::mem::transmute(proc);
+                    let mut os_info: OSVERSIONINFOEXW = std::mem::zeroed();
+                    os_info.dwOSVersionInfoSize = std::mem::size_of::<OSVERSIONINFOEXW>() as u32;
+                    if rtl_get_version(&mut os_info) == 0 {
+                        return os_info.dwBuildNumber;
+                    }
+                }
+            }
+        }
+    }
+    19041
+}
+
+#[cfg(not(windows))]
+pub fn get_windows_build_number() -> u32 {
+    19041
 }
 
 #[cfg(windows)]

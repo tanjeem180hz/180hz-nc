@@ -81,8 +81,9 @@ fn test_aec_delays_20_80_150_300ms_erle_ge_20db() {
         let erle_db = 20.0 * (raw_rms / (clean_rms + 1e-6)).log10();
 
         println!(
-            "  Delay {} ms: Locked Delay = {} ms ({} samples), Raw RMS = {:.4}, Clean RMS = {:.5}, ERLE = {:.2} dB",
-            delay_ms, canceller.bulk_delay_ms(), canceller.bulk_delay_samples(), raw_rms, clean_rms, erle_db
+            "  Delay {} ms: Locked Delay = {} ms ({} samples), Raw RMS = {:.4}, Clean RMS = {:.5}, ERLE = {:.2} dB, dt={}, bypass_code={}, last_erle={:.2}",
+            delay_ms, canceller.bulk_delay_ms(), canceller.bulk_delay_samples(), raw_rms, clean_rms, erle_db,
+            canceller.is_double_talk(), canceller.bypass_reason_code(), canceller.last_erle_db()
         );
 
         assert!(

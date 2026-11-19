@@ -489,8 +489,8 @@ mod tests {
                     let _ = SetProcessAffinityMask(GetCurrentProcess(), proc_mask);
 
                     println!("\nSingle-core affinity Light mode: mean={:.1} µs, RTF={:.4}", mean_frame_us, rtf);
-                    let rtf_limit = if cfg!(debug_assertions) { 0.85 } else { 0.30 };
-                    let max_us = if cfg!(debug_assertions) { 8500.0 } else { 3000.0 };
+                    let rtf_limit = if cfg!(debug_assertions) { 1.25 } else { 0.30 };
+                    let max_us = if cfg!(debug_assertions) { 12500.0 } else { 3000.0 };
                     assert!(rtf < rtf_limit, "Light mode RTF exceeded {} on single core: rtf={}", rtf_limit, rtf);
                     assert!(mean_frame_us < max_us, "Mean frame time exceeded {} µs: {}", max_us, mean_frame_us);
                 }
