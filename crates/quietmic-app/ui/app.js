@@ -159,6 +159,7 @@ const aecEndpointBadge = document.getElementById('aecEndpointBadge');
 const loopWarningPill = document.getElementById('loopWarningPill');
 const aecRefDeviceText = document.getElementById('aecRefDeviceText');
 const aecRefLevelText = document.getElementById('aecRefLevelText');
+const aecStatusText = document.getElementById('aecStatusText');
 const aecErleText = document.getElementById('aecErleText');
 const aecDelayText = document.getElementById('aecDelayText');
 const aecFramesText = document.getElementById('aecFramesText');
@@ -496,13 +497,43 @@ async function pollMetrics() {
 
     // AEC Telemetry
     if (aecToggle.checked) {
-      if (metrics.aec_endpoint) {
+      if (metrics.aec_endpoint && aecEndpointBadge) {
         aecEndpointBadge.style.display = 'inline-block';
         aecEndpointBadge.textContent = metrics.aec_endpoint;
       }
-      if (metrics.loop_warning) {
+      if (aecRefDeviceText && metrics.aec_ref_device) {
+        aecRefDeviceText.textContent = metrics.aec_ref_device;
+      }
+      if (aecRefLevelText) {
+        const refPeak = metrics.aec_ref_peak_db !== undefined ? metrics.aec_ref_peak_db.toFixed(1) : '-100.0';
+        aecRefLevelText.textContent = `${refPeak} dB`;
+        aecRefLevelText.style.color = metrics.aec_ref_peak_db > -50 ? 'var(--accent-emerald)' : 'var(--text-muted)';
+      }
+      if (aecStatusText) {
+        const status = metrics.aec_bypass_reason || 'Active';
+        aecStatusText.textContent = status;
+        if (status === 'Active') {
+          aecStatusText.style.color = 'var(--accent-emerald)';
+        } else if (status.includes('Silent') || status.includes('Correlation')) {
+          aecStatusText.style.color = 'var(--accent-amber)';
+        } else {
+          aecStatusText.style.color = 'var(--text-muted)';
+        }
+      }
+      if (aecErleText) {
+        const erle = metrics.aec_erle_db !== undefined ? metrics.aec_erle_db.toFixed(1) : '0.0';
+        aecErleText.textContent = `${erle} dB`;
+      }
+      if (aecDelayText) {
+        const delay = metrics.aec_delay_ms !== undefined ? Math.round(metrics.aec_delay_ms) : 0;
+        aecDelayText.textContent = `${delay} ms`;
+      }
+      if (aecFramesText) {
+        aecFramesText.textContent = (metrics.aec_frames_processed || 0).toLocaleString();
+      }
+      if (metrics.loop_warning && loopWarningPill) {
         loopWarningPill.style.display = 'inline-block';
-      } else {
+      } else if (loopWarningPill) {
         loopWarningPill.style.display = 'none';
       }
     }
@@ -658,19 +689,22 @@ function setupEventListeners() {
     invoke('set_aec', { enabled: en }).catch((e) => console.error('Failed to set aec:', e));
   });
 
-  aecTestBtn.addEventListener('click', async () => {
-    aecTestBtn.disabled = true;
-    aecTestBtn.textContent = 'Testing...';
-    try {
-      const res = await invoke('run_aec_speaker_test_command');
-      alert(`Speaker Test: ${res.message || 'Complete'}`);
-    } catch (e) {
-      alert(`Speaker Test Failed: ${e}`);
-    } finally {
-      aecTestBtn.disabled = false;
-      aecTestBtn.textContent = 'Speaker Test';
-    }
-  });
+  if (aecTestBtn) {
+    aecTestBtn.addEventListener('click', async () => {
+      aecTestBtn.disabled = true;
+      aecTestBtn.textContent = 'Testing...';
+      try {
+        const res = await invoke('run_aec_speaker_test_command');
+        const msg = res.summary || (res.passed ? `PASS: ERLE ${res.erle_db.toFixed(1)} dB` : `FAIL: ERLE ${res.erle_db.toFixed(1)} dB`);
+        alert(`AEC Calibration & Self-Test:\n${msg}`);
+      } catch (e) {
+        alert(`Speaker Test Failed: ${e}`);
+      } finally {
+        aecTestBtn.disabled = false;
+        aecTestBtn.textContent = 'Speaker Test';
+      }
+    });
+  }
 
   // Echo Doctor Modal
   echoDoctorBtn.addEventListener('click', async () => {

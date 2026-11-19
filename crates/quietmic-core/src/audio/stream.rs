@@ -32,6 +32,10 @@ pub struct AudioMetrics {
     pub aec_erle_db: AtomicU32,
     pub aec_delay_ms: AtomicU32,
     pub aec_endpoint_type: AtomicU32, // 0 = Unknown, 1 = Headphones, 2 = Headset, 3 = Speakers, 4 = Bluetooth
+    pub ref_frames_received: AtomicU64,
+    pub aec_bypassed_frames: AtomicU64,
+    pub aec_bypass_reason: AtomicU32, // 0=Active, 1=RefSilent, 2=LowCorr, 3=Headphones, 4=Error, 5=Disabled
+    pub aec_divergence_resets: AtomicU64,
     pub loop_warning_active: AtomicBool,
     pub raw_waveform: [AtomicU32; Self::WAVEFORM_SNAPSHOT_LEN],
     pub clean_waveform: [AtomicU32; Self::WAVEFORM_SNAPSHOT_LEN],
@@ -60,6 +64,10 @@ impl AudioMetrics {
             aec_erle_db: AtomicU32::new(0.0f32.to_bits()),
             aec_delay_ms: AtomicU32::new(0.0f32.to_bits()),
             aec_endpoint_type: AtomicU32::new(0),
+            ref_frames_received: AtomicU64::new(0),
+            aec_bypassed_frames: AtomicU64::new(0),
+            aec_bypass_reason: AtomicU32::new(5),
+            aec_divergence_resets: AtomicU64::new(0),
             loop_warning_active: AtomicBool::new(false),
             raw_waveform: std::array::from_fn(|_| AtomicU32::new(0)),
             clean_waveform: std::array::from_fn(|_| AtomicU32::new(0)),
@@ -138,6 +146,33 @@ impl AudioMetrics {
 
     pub fn is_loop_warning_active(&self) -> bool {
         self.loop_warning_active.load(Ordering::Relaxed)
+    }
+
+    pub fn get_ref_frames_received(&self) -> u64 {
+        self.ref_frames_received.load(Ordering::Relaxed)
+    }
+
+    pub fn get_aec_bypassed_frames(&self) -> u64 {
+        self.aec_bypassed_frames.load(Ordering::Relaxed)
+    }
+
+    pub fn get_aec_bypass_reason(&self) -> u32 {
+        self.aec_bypass_reason.load(Ordering::Relaxed)
+    }
+
+    pub fn get_aec_bypass_reason_str(&self) -> &'static str {
+        match self.aec_bypass_reason.load(Ordering::Relaxed) {
+            0 => "Active",
+            1 => "Reference Silent",
+            2 => "Low Correlation",
+            3 => "Headphones Detected",
+            4 => "Stream Error",
+            _ => "Disabled",
+        }
+    }
+
+    pub fn get_aec_divergence_resets(&self) -> u64 {
+        self.aec_divergence_resets.load(Ordering::Relaxed)
     }
 
     pub fn update_waveform_snapshot(&self, raw: &[f32], clean: &[f32]) {
@@ -428,32 +463,81 @@ impl AudioStreamController {
                 let ref_rb = HeapRb::<f32>::new(Self::RB_CAPACITY);
                 let (mut ref_prod, ref_cons) = ref_rb.split();
                 let is_running_ref = Arc::clone(&running);
+                let metrics_ref = Arc::clone(&metrics);
 
                 if let Ok(mut g) = metrics.aec_ref_device_name.write() {
                     *g = format!("{} ({})", spk_name, endpoint.display_name());
                 }
                 metrics.aec_ref_sample_rate.store(spk_sample_rate, Ordering::Relaxed);
 
-                let stream_res = speaker_dev.build_input_stream(
-                    &spk_cfg.into(),
-                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                        if !is_running_ref.load(Ordering::Relaxed) {
-                            return;
-                        }
-                        if spk_channels > 1 {
-                            for frame in data.chunks_exact(spk_channels) {
-                                let mono = frame.iter().sum::<f32>() / spk_channels as f32;
-                                let _ = ref_prod.try_push(mono);
+                let stream_res = match spk_cfg.sample_format() {
+                    cpal::SampleFormat::F32 => speaker_dev.build_input_stream(
+                        &spk_cfg.into(),
+                        move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                            if !is_running_ref.load(Ordering::Relaxed) {
+                                return;
                             }
-                        } else {
-                            for &sample in data {
-                                let _ = ref_prod.try_push(sample);
+                            metrics_ref.ref_frames_received.fetch_add(1, Ordering::Relaxed);
+                            if spk_channels > 1 {
+                                for frame in data.chunks_exact(spk_channels) {
+                                    let mono = frame.iter().sum::<f32>() / spk_channels as f32;
+                                    let _ = ref_prod.try_push(mono);
+                                }
+                            } else {
+                                for &sample in data {
+                                    let _ = ref_prod.try_push(sample);
+                                }
                             }
-                        }
-                    },
-                    |err| tracing::warn!("AEC loopback reference stream warning: {}", err),
-                    None,
-                );
+                        },
+                        |err| tracing::warn!("AEC loopback reference stream warning: {}", err),
+                        None,
+                    ),
+                    cpal::SampleFormat::I16 => speaker_dev.build_input_stream(
+                        &spk_cfg.into(),
+                        move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                            if !is_running_ref.load(Ordering::Relaxed) {
+                                return;
+                            }
+                            metrics_ref.ref_frames_received.fetch_add(1, Ordering::Relaxed);
+                            if spk_channels > 1 {
+                                for frame in data.chunks_exact(spk_channels) {
+                                    let sum: f32 = frame.iter().map(|&s| s as f32 / 32768.0).sum();
+                                    let mono = sum / spk_channels as f32;
+                                    let _ = ref_prod.try_push(mono);
+                                }
+                            } else {
+                                for &sample in data {
+                                    let _ = ref_prod.try_push(sample as f32 / 32768.0);
+                                }
+                            }
+                        },
+                        |err| tracing::warn!("AEC loopback reference stream warning: {}", err),
+                        None,
+                    ),
+                    cpal::SampleFormat::U16 => speaker_dev.build_input_stream(
+                        &spk_cfg.into(),
+                        move |data: &[u16], _: &cpal::InputCallbackInfo| {
+                            if !is_running_ref.load(Ordering::Relaxed) {
+                                return;
+                            }
+                            metrics_ref.ref_frames_received.fetch_add(1, Ordering::Relaxed);
+                            if spk_channels > 1 {
+                                for frame in data.chunks_exact(spk_channels) {
+                                    let sum: f32 = frame.iter().map(|&s| (s as f32 - 32768.0) / 32768.0).sum();
+                                    let mono = sum / spk_channels as f32;
+                                    let _ = ref_prod.try_push(mono);
+                                }
+                            } else {
+                                for &sample in data {
+                                    let _ = ref_prod.try_push((sample as f32 - 32768.0) / 32768.0);
+                                }
+                            }
+                        },
+                        |err| tracing::warn!("AEC loopback reference stream warning: {}", err),
+                        None,
+                    ),
+                    _ => Err(cpal::BuildStreamError::StreamConfigNotSupported),
+                };
 
                 match stream_res {
                     Ok(st) => {
@@ -521,10 +605,7 @@ impl AudioStreamController {
                     worker_pipeline.set_sensitivity_threshold(sens_thresh);
 
                     let aec_en = worker_controls.aec_enabled.load(Ordering::Relaxed);
-                    let endpoint_code = worker_metrics.aec_endpoint_type.load(Ordering::Relaxed);
-                    let is_headphones = endpoint_code == 1 || endpoint_code == 2;
-                    let effective_aec_en = aec_en && !is_headphones;
-                    worker_pipeline.set_aec_enabled(effective_aec_en);
+                    worker_pipeline.set_aec_enabled(aec_en);
                     worker_metrics.aec_enabled.store(aec_en, Ordering::Relaxed);
 
                     // Drain AEC reference samples if loopback is active
@@ -564,18 +645,22 @@ impl AudioStreamController {
                             } else {
                                 &ref_scratch[..count]
                             };
-                            if effective_aec_en {
-                                worker_pipeline.feed_aec_reference(feed_slice);
-                            }
+                            worker_pipeline.feed_aec_reference(feed_slice);
                             let ref_db = if ref_peak > 1e-5 { 20.0 * ref_peak.log10() } else { -100.0 };
                             worker_metrics.aec_ref_peak_db.store(ref_db.to_bits(), Ordering::Relaxed);
                             worker_metrics.aec_frames_processed.fetch_add(1, Ordering::Relaxed);
-                            let erle = if effective_aec_en { worker_pipeline.aec().last_erle_db() } else { 0.0 };
-                            let delay = if effective_aec_en { worker_pipeline.aec().bulk_delay_ms() } else { 0.0 };
+                            let erle = if aec_en { worker_pipeline.aec().last_erle_db() } else { 0.0 };
+                            let delay = if aec_en { worker_pipeline.aec().bulk_delay_ms() } else { 0.0 };
                             worker_metrics.aec_erle_db.store(erle.to_bits(), Ordering::Relaxed);
                             worker_metrics.aec_delay_ms.store(delay.to_bits(), Ordering::Relaxed);
+                            worker_metrics.aec_bypassed_frames.store(worker_pipeline.aec().bypassed_frames(), Ordering::Relaxed);
+                            worker_metrics.aec_bypass_reason.store(worker_pipeline.aec().bypass_reason_code(), Ordering::Relaxed);
+                            worker_metrics.aec_divergence_resets.store(worker_pipeline.aec().filter_divergence_resets(), Ordering::Relaxed);
                         } else if !aec_en {
                             worker_metrics.aec_ref_peak_db.store((-100.0f32).to_bits(), Ordering::Relaxed);
+                            worker_metrics.aec_bypassed_frames.store(worker_pipeline.aec().bypassed_frames(), Ordering::Relaxed);
+                            worker_metrics.aec_bypass_reason.store(worker_pipeline.aec().bypass_reason_code(), Ordering::Relaxed);
+                            worker_metrics.aec_divergence_resets.store(worker_pipeline.aec().filter_divergence_resets(), Ordering::Relaxed);
                         }
                     }
 

@@ -18,7 +18,7 @@ pub struct EchoCanceller {
     ref_ring: Vec<f32>,        // Contiguous double buffer for zero-modulo windowing
     ring_idx: usize,
     step_size: f32,            // Normalized adaptation rate mu
-    delay_buffer: Vec<f32>,    // Bulk delay line (9600 samples = 200 ms)
+    delay_buffer: Vec<f32>,    // Bulk delay line (24000 samples = 500 ms)
     delay_write_pos: usize,
     bulk_delay_samples: usize, // Estimated delay between speaker render and mic capture
     delay_search_buffer_ref: Vec<f32>,
@@ -34,13 +34,25 @@ pub struct EchoCanceller {
     last_ref_sample: f32,
     ref_fifo: Vec<f32>,
     ref_fifo_read: usize,
+    ref_history_8k: Vec<f32>,
+    mic_history_8k: Vec<f32>,
+    delay_locked: bool,
+    delay_update_counter: usize,
+    last_correlation: f32,
+    bypass_reason_code: u32, // 0=Active, 1=RefSilent, 2=LowCorr, 3=Headphones, 4=Error, 5=Disabled
+    bypassed_frames: u64,
+    divergence_resets: u64,
 }
 
 impl EchoCanceller {
     pub const DEFAULT_TAPS: usize = 512;        // 10.6 ms at 48 kHz
-    pub const MAX_DELAY_SAMPLES: usize = 9600;   // 200 ms at 48 kHz
+    pub const MAX_DELAY_SAMPLES: usize = 24000;  // 500 ms at 48 kHz
     pub const DELAY_SEARCH_WINDOW: usize = 2400; // 50 ms search window
     pub const FAR_END_ACTIVE_THRESHOLD: f32 = 0.001; // -60 dBFS minimum far-end activity across 512 taps
+    pub const DOWNSAMPLE_FACTOR: usize = 6;      // 48 kHz -> 8 kHz
+    pub const MAX_REF_8K: usize = 4000;          // 500 ms at 8 kHz
+    pub const MAX_MIC_8K: usize = 800;           // 100 ms at 8 kHz
+    pub const CORRELATION_THRESHOLD: f32 = 0.15;
 
     pub fn new(filter_length: usize) -> Self {
         let filter_length = filter_length.clamp(64, 1024);
@@ -67,6 +79,14 @@ impl EchoCanceller {
             last_ref_sample: 0.0,
             ref_fifo: Vec::with_capacity(Self::MAX_DELAY_SAMPLES),
             ref_fifo_read: 0,
+            ref_history_8k: Vec::with_capacity(Self::MAX_REF_8K + 200),
+            mic_history_8k: Vec::with_capacity(Self::MAX_MIC_8K + 200),
+            delay_locked: false,
+            delay_update_counter: 0,
+            last_correlation: 0.0,
+            bypass_reason_code: 5, // Initially disabled
+            bypassed_frames: 0,
+            divergence_resets: 0,
         }
     }
 
@@ -76,6 +96,11 @@ impl EchoCanceller {
 
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
+        if !enabled {
+            self.bypass_reason_code = 5;
+        } else if self.bypass_reason_code == 5 {
+            self.bypass_reason_code = 0;
+        }
     }
 
     pub fn is_enabled(&self) -> bool {
@@ -96,11 +121,21 @@ impl EchoCanceller {
         self.last_ref_sample = 0.0;
         self.ref_fifo.clear();
         self.ref_fifo_read = 0;
+        self.ref_history_8k.clear();
+        self.mic_history_8k.clear();
+        self.delay_locked = false;
+        self.delay_update_counter = 0;
+        self.last_correlation = 0.0;
+        self.bypass_reason_code = if self.enabled { 0 } else { 5 };
     }
 
     /// Sets the bulk delay in samples (e.g. 40 ms at 48 kHz = 1920 samples).
     pub fn set_bulk_delay_samples(&mut self, samples: usize) {
         self.bulk_delay_samples = samples.min(Self::MAX_DELAY_SAMPLES - self.filter_length - 10);
+        self.delay_locked = true;
+        if self.enabled {
+            self.bypass_reason_code = 0;
+        }
     }
 
     pub fn bulk_delay_samples(&self) -> usize {
@@ -127,6 +162,26 @@ impl EchoCanceller {
         self.mic_frames_processed
     }
 
+    pub fn bypass_reason_code(&self) -> u32 {
+        self.bypass_reason_code
+    }
+
+    pub fn bypassed_frames(&self) -> u64 {
+        self.bypassed_frames
+    }
+
+    pub fn filter_divergence_resets(&self) -> u64 {
+        self.divergence_resets
+    }
+
+    pub fn last_correlation(&self) -> f32 {
+        self.last_correlation
+    }
+
+    pub fn is_delay_locked(&self) -> bool {
+        self.delay_locked
+    }
+
     /// Feeds a chunk of reference audio samples captured from the loudspeaker stream.
     pub fn feed_reference(&mut self, ref_samples: &[f32]) {
         if !self.enabled || ref_samples.is_empty() {
@@ -141,12 +196,9 @@ impl EchoCanceller {
             self.ref_fifo_read = 0;
         }
 
-        // Bounded jitter absorption: keep unread reference buffer within 3 frames (1440 samples = 30 ms).
-        // If unread samples accumulate beyond 3 frames due to callback jitter or clock drift,
-        // drain the oldest excess to strictly prevent acoustic latency drift!
-        const MAX_UNREAD_SAMPLES: usize = 1440;
-        if self.ref_fifo.len() > MAX_UNREAD_SAMPLES {
-            let excess = self.ref_fifo.len() - MAX_UNREAD_SAMPLES;
+        // Bounded jitter absorption: keep unread reference buffer within MAX_DELAY_SAMPLES (24000 samples = 500 ms)
+        if self.ref_fifo.len() > Self::MAX_DELAY_SAMPLES {
+            let excess = self.ref_fifo.len() - Self::MAX_DELAY_SAMPLES;
             self.ref_fifo.drain(0..excess);
         }
 
@@ -294,31 +346,173 @@ impl EchoCanceller {
         error * (1.0 - self.smoothed_nlp_gain)
     }
 
+    /// Continuous delay tracking using downsampled (8 kHz) normalized cross-correlation.
+    /// Runs lock-free in audio DSP thread without heap reallocation.
+    pub fn update_continuous_delay_estimate(&mut self) {
+        const MIC_WINDOW_8K: usize = 600; // 75 ms
+        if self.mic_history_8k.len() < MIC_WINDOW_8K || self.ref_history_8k.len() < MIC_WINDOW_8K + 2400 {
+            return;
+        }
+
+        let mic_eval = &self.mic_history_8k[self.mic_history_8k.len() - MIC_WINDOW_8K..];
+        let mic_energy: f32 = mic_eval.iter().map(|&x| x * x).sum();
+        let ref_len = self.ref_history_8k.len();
+        let ref_recent_eval = &self.ref_history_8k[ref_len - MIC_WINDOW_8K..];
+        let ref_recent_energy: f32 = ref_recent_eval.iter().map(|&x| x * x).sum();
+
+        // 1. Silent reference check
+        if ref_recent_energy < 1e-4 {
+            self.bypass_reason_code = 1; // Reference Silent
+            return;
+        }
+
+        // 2. Compute cross-correlation over 0 to 300 ms (2400 lags at 8 kHz)
+        let max_lag_8k = (2400).min(ref_len - MIC_WINDOW_8K);
+        let mut best_lag_8k = 0;
+        let mut best_corr = 0.0f32;
+
+        for lag in (0..=max_lag_8k).step_by(2) {
+            let start = ref_len - MIC_WINDOW_8K - lag;
+            let ref_eval = &self.ref_history_8k[start..start + MIC_WINDOW_8K];
+            let mut dot = 0.0f32;
+            let mut ref_energy = 0.0f32;
+            for i in 0..MIC_WINDOW_8K {
+                dot += mic_eval[i] * ref_eval[i];
+                ref_energy += ref_eval[i] * ref_eval[i];
+            }
+            let denom = (mic_energy * ref_energy).sqrt();
+            if denom > 1e-6 {
+                let r = dot / denom;
+                if r > best_corr {
+                    best_corr = r;
+                    best_lag_8k = lag;
+                }
+            }
+        }
+
+        self.last_correlation = best_corr;
+
+        if best_corr >= Self::CORRELATION_THRESHOLD {
+            let coarse_samples = best_lag_8k * Self::DOWNSAMPLE_FACTOR;
+            
+            // Fine alignment at 48 kHz within +/- 18 samples of coarse estimate
+            let fine_start = coarse_samples.saturating_sub(18);
+            let fine_end = (coarse_samples + 18).min(Self::MAX_DELAY_SAMPLES - self.filter_length - 10);
+            
+            let delay_len = self.delay_buffer.len();
+            let mut best_fine_delay = coarse_samples;
+            let mut best_fine_corr = best_corr;
+
+            if self.delay_search_buffer_mic.len() >= 480 {
+                let mic_fine = &self.delay_search_buffer_mic[self.delay_search_buffer_mic.len() - 480..];
+                let mic_fine_sq: f32 = mic_fine.iter().map(|&x| x * x).sum();
+
+                if mic_fine_sq > 1e-5 {
+                    for test_delay in fine_start..=fine_end {
+                        let mut dot = 0.0f32;
+                        let mut ref_fine_sq = 0.0f32;
+                        for (i, &m) in mic_fine.iter().enumerate() {
+                            let r_idx = (self.delay_write_pos + delay_len - test_delay - 480 + i) % delay_len;
+                            let r = self.delay_buffer[r_idx];
+                            dot += m * r;
+                            ref_fine_sq += r * r;
+                        }
+                        let denom = (mic_fine_sq * ref_fine_sq).sqrt();
+                        if denom > 1e-6 {
+                            let corr = dot / denom;
+                            if corr > best_fine_corr {
+                                best_fine_corr = corr;
+                                best_fine_delay = test_delay;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !self.delay_locked || best_fine_corr > self.last_correlation + 0.02 || (best_fine_delay as i64 - self.bulk_delay_samples as i64).abs() > 4 {
+                self.bulk_delay_samples = best_fine_delay;
+                self.delay_locked = true;
+            }
+            self.last_correlation = best_fine_corr.max(best_corr);
+            self.bypass_reason_code = 0; // Active
+        } else {
+            // Reference active, but no correlation with mic (e.g. headphones or quiet room)
+            self.bypass_reason_code = 2; // Low Correlation
+        }
+    }
+
+    /// Passthrough sample bypass when reference is silent or uncorrelated, preserving delay line state.
+    #[inline(always)]
+    pub fn process_sample_bypass(&mut self, mic_sample: f32, raw_ref_sample: f32) -> f32 {
+        let delay_len = self.delay_buffer.len();
+        self.delay_buffer[self.delay_write_pos] = raw_ref_sample;
+        self.delay_write_pos = (self.delay_write_pos + 1) % delay_len;
+        mic_sample
+    }
+
     /// Processes microphone frame in-place, draining time-aligned reference audio from ref_fifo.
     pub fn process_mic_frame(&mut self, mic_frame: &mut [f32]) {
         if !self.enabled {
+            self.bypass_reason_code = 5; // Disabled
+            self.bypassed_frames += 1;
             return;
         }
 
         self.mic_frames_processed += 1;
 
-        let mut in_mic_energy = 0.0f32;
-        let mut out_err_energy = 0.0f32;
+        let frame_len = mic_frame.len();
+        let mut ref_frame_consumed = Vec::with_capacity(frame_len);
 
-        for sample in mic_frame.iter_mut() {
+        for _ in 0..frame_len {
             let ref_sample = if self.ref_fifo_read < self.ref_fifo.len() {
                 let s = self.ref_fifo[self.ref_fifo_read];
                 self.ref_fifo_read += 1;
                 self.last_ref_sample = s;
                 s
             } else {
-                // Continuous hold-decay: if FIFO underflows by a few samples due to clock drift,
-                // smoothly decay the previous sample instead of slamming to 0.0 (prevents 100 Hz buzzing!)
                 let s = self.last_ref_sample * 0.95;
                 self.last_ref_sample = s;
                 s
             };
+            ref_frame_consumed.push(ref_sample);
+        }
 
+        // Downsample factor of 6 for real-time 8 kHz correlation tracking
+        for chunk in ref_frame_consumed.chunks(Self::DOWNSAMPLE_FACTOR) {
+            let avg: f32 = chunk.iter().sum::<f32>() / chunk.len() as f32;
+            self.ref_history_8k.push(avg);
+        }
+        for chunk in mic_frame.chunks(Self::DOWNSAMPLE_FACTOR) {
+            let avg: f32 = chunk.iter().sum::<f32>() / chunk.len() as f32;
+            self.mic_history_8k.push(avg);
+        }
+
+        if self.ref_history_8k.len() > Self::MAX_REF_8K {
+            let excess = self.ref_history_8k.len() - Self::MAX_REF_8K;
+            self.ref_history_8k.drain(0..excess);
+        }
+        if self.mic_history_8k.len() > Self::MAX_MIC_8K {
+            let excess = self.mic_history_8k.len() - Self::MAX_MIC_8K;
+            self.mic_history_8k.drain(0..excess);
+        }
+
+        self.delay_search_buffer_mic.extend_from_slice(mic_frame);
+        if self.delay_search_buffer_mic.len() > 2400 {
+            let excess = self.delay_search_buffer_mic.len() - 2400;
+            self.delay_search_buffer_mic.drain(0..excess);
+        }
+
+        // Update continuous delay estimate periodically (every 5 frames = 50 ms)
+        self.delay_update_counter += 1;
+        if self.delay_update_counter >= 5 || !self.delay_locked {
+            self.delay_update_counter = 0;
+            self.update_continuous_delay_estimate();
+        }
+
+        let mut in_mic_energy = 0.0f32;
+        let mut out_err_energy = 0.0f32;
+
+        for (sample, &ref_sample) in mic_frame.iter_mut().zip(&ref_frame_consumed) {
             let in_val = *sample;
             let out_val = self.process_sample(in_val, ref_sample);
             *sample = out_val;
@@ -334,16 +528,14 @@ impl EchoCanceller {
         }
 
         // Divergence & weight energy ceiling protection:
-        // Acoustic coupling in any physical room cannot exceed unity gain (1.0).
         let mut weight_norm_sq = 0.0f32;
         for &w in &self.weights {
             weight_norm_sq += w * w;
         }
         if weight_norm_sq > 2.0 {
-            // Severe divergence detected -> safely reset weights
+            self.divergence_resets += 1;
             self.weights.fill(0.0);
         } else if weight_norm_sq > 0.8 {
-            // Rescale weights to keep total filter gain safely bounded
             let scale = (0.7 / weight_norm_sq).sqrt();
             for w in self.weights.iter_mut() {
                 *w *= scale;
