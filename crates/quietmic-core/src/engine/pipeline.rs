@@ -37,6 +37,8 @@ pub struct EngineRuntimeParameters {
     pub aec_enabled: bool,
     pub comfort_noise_enabled: bool,
     pub transient_suppression_enabled: bool,
+    pub auto_sensitivity_enabled: bool,
+    pub input_gain: f32,
 }
 
 /// Master Audio Processing Pipeline.
@@ -85,13 +87,16 @@ impl AudioPipeline {
         let mut standard = StandardEngine::new();
         standard.set_suppression(1.0);
 
+        let mut vad = SilenceDetector::default_48k();
+        vad.set_auto_sensitivity(false);
+
         Ok(Self {
             mode: EngineMode::Standard,
             active_engine: ActiveEngine::Standard(Box::new(standard)),
             enrolled_voiceprint: None,
             hpf: HighPassFilter::default_48k(),
             aec: EchoCanceller::default_preset(),
-            vad: SilenceDetector::default_48k(),
+            vad,
             auto_sensitivity: AutoSensitivityAdapter::default_preset(),
             transient: TransientSuppressor::new(TransientSuppressor::LOOKAHEAD_5MS),
             residual: ResidualSuppressor::default_preset(),
@@ -231,7 +236,7 @@ impl AudioPipeline {
     /// Auto sensitivity adjustment toggle.
     pub fn set_auto_sensitivity(&mut self, enabled: bool) {
         self.auto_sensitivity.set_enabled(enabled);
-        self.vad.set_auto_sensitivity(enabled);
+        self.vad.set_auto_sensitivity(false);
     }
 
     pub fn is_auto_sensitivity(&self) -> bool {
@@ -345,6 +350,8 @@ impl AudioPipeline {
             aec_enabled: self.aec.is_enabled(),
             comfort_noise_enabled: self.comfort_noise.is_enabled(),
             transient_suppression_enabled: self.transient.is_enabled(),
+            auto_sensitivity_enabled: self.auto_sensitivity.is_enabled(),
+            input_gain: self.auto_sensitivity.current_gain(),
         }
     }
 
@@ -445,7 +452,7 @@ impl AudioPipeline {
         self.transient.process_frame(&mut self.wet_buffer);
 
         // Step 3c: Auto-Sensitivity & Dynamic Level Calibration
-        let (auto_in_gain, dynamic_thresh_dbfs, speech_active) = self.auto_sensitivity.update(&self.wet_buffer);
+        let (auto_in_gain, dynamic_thresh_dbfs, _speech_active) = self.auto_sensitivity.update(&self.wet_buffer);
         self.vad.set_threshold_dbfs(dynamic_thresh_dbfs);
 
         // Stage 3: After AEC & Transient Suppression
@@ -454,7 +461,7 @@ impl AudioPipeline {
         }
 
         // Step 4: Input Sensitivity Detection (Silence & Noise Gate)
-        let is_active = speech_active || self.vad.update(&self.wet_buffer);
+        let is_active = self.vad.update(&self.wet_buffer);
 
         // Engine input normalization: normalize engine input to healthy ~ -20 dBFS target
         let should_normalize = (auto_in_gain - 1.0).abs() > 0.01;

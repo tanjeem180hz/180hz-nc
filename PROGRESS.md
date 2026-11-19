@@ -32,13 +32,30 @@
 - [x] Complete Denoise Engine Audit (Step 1-5): Result A Confirmed (110.3 dB noise drop), Root Causes Fixed, Zero Silent Fallbacks, Atomic Metrics UI, and A/B Real Typing/Fan WAV Verification in `NS_DEBUG_REPORT.md`.
 - [x] Echo Doctor Routing Diagnostic Engine & Discord Screen Sharing Remediation in `ECHO_REPORT.md`.
 - [x] AEC Buzzing / "Jir-Jir" Root Causes Fixed: Causal FIR Indexing, Geigel DTD, Leaky LMS, Envelope-Smoothed NLP, and Headphone Auto-Bypass.
-- [x] 180 Hz Signal Lab UI Redesign: Frequency Ruler, Live Circular Signal Orb, Tactile Master Power, 3 Studio Themes (Night Lab, Daylight, Amber Console), 4-Tab Architecture, and 0% Idle CPU.
+- [x] 180 Hz Signal Lab UI Redesign: Frequency Ruler, Live Circular Signal Orb, Tactile Master Power, 3 Studio Themes (Night Lab, Daylight, Amber Console), 4-Tab Architecture, and 0% Idle CPU (Preserved in branch `theme-signal-lab`).
+- [x] Part A: Noise Leakage Regression Resolved (Tuned VAD onset, bounded AGC [0.35, 1.50], pitch-aware residual suppressor, settings-to-engine sync, documented in `REGRESSION_REPORT.md`).
 
 ---
 
 ## 2. Completed Tasks & Measurements
 
-### Commit 36: Complete UI Redesign to "180 Hz Signal Lab" Design System
+### Commit 37: Resolve Noise Leakage Regression with Tuned VAD Onset, Bounded AGC, and Pitch-Aware Residual Suppression
+- **Root Cause Analysis & Fixes**:
+  1. `AutoSensitivityAdapter`: Bounded AGC gain range to $[0.35, 1.50]$ (down from $[0.25, 4.00]$). Fixed threshold clamping from `-38.0 dBFS` to `-22.0 dBFS` and implemented 10 ms smooth decay back to unity when speech ceases.
+  2. `LightEngine`: VAD onset threshold tuned to 0.38 with instant 1.0 gain on active speech (zero syllable clipping, delta 0.15 dB) and smooth 30 ms decay to $0.001$ (-60 dB floor).
+  3. `ResidualSuppressor`: Added harmonic pitch periodicity ($> 0.38$) correlation filter so stationary 60/120 Hz fan hum is never mistaken for speech.
+  4. Telemetry: Added `get_engine_runtime_parameters` command and outside-audio-thread logging.
+- **Empirical Measurements**:
+  - Noise-only reduction: Light 17.6 dB to 109.4 dB; Standard 15.4 dB to 15.8 dB; Max Quality 17.6 dB to 109.4 dB ($\ge 15.0$ dB spec met).
+  - Noise reduction during speech: Light 12.7 dB to 23.9 dB; Standard 8.9 dB to 11.2 dB; Max Quality 12.7 dB to 23.9 dB ($\ge 8.0$ dB spec met).
+  - Speech preservation delta: Light 0.15 dB; Standard 0.47 dB; Max Quality 0.15 dB ($\le 1.0$ dB spec met).
+  - Pass-through frame count: 0 frames.
+  - Auto-sensitivity noise floor difference: 0.00 dB; adaptation decay: 10 ms.
+  - Loud speech clipping at -6, -3, 0 dBFS: 0 clipped samples.
+- **Evidence Files Generated**:
+  - `ab_samples/regression_fix_before.wav`
+  - `ab_samples/regression_fix_after.wav`
+  - `REGRESSION_REPORT.md`
 - **Design Concept & Architecture**:
   - Implemented the complete "180 Hz Signal Lab" design system inspired by precision studio audio hardware and futuristic oscilloscopes.
   - Built around sound, frequency, and signal cleaning anchored at **180 Hz** (the human vocal fundamental).

@@ -43,6 +43,13 @@ impl TransientSuppressor {
             return false;
         }
 
+        // Require minimum speech RMS energy to be considered active voice
+        let sum_sq: f32 = samples.iter().map(|&x| x * x).sum();
+        let frame_rms = (sum_sq / samples.len() as f32).sqrt();
+        if frame_rms < 0.003 {
+            return false;
+        }
+
         // 1. Spectral tilt check: low-pass vowel energy vs high-pass click energy
         let mut low_e = 0.0f32;
         let mut high_e = 0.0f32;
@@ -51,9 +58,6 @@ impl TransientSuppressor {
             let s_high = samples[i] - samples[i - 1];
             low_e += s_low * s_low;
             high_e += s_high * s_high;
-        }
-        if low_e > high_e * 1.2 {
-            return true; // Speech vowel / formant resonance dominates
         }
 
         // 2. Pitch periodicity check (150 Hz to 500 Hz)
@@ -84,7 +88,8 @@ impl TransientSuppressor {
             }
         }
 
-        max_norm_corr > 0.45
+        // Harmonic pitch periodicity or strong low-frequency vowel formant dominance
+        max_norm_corr > 0.40 || (low_e > high_e * 2.5 && max_norm_corr > 0.25)
     }
 
     /// Processes an in-place frame (e.g. 480 samples).
@@ -108,7 +113,8 @@ impl TransientSuppressor {
 
             // Impulse detection: sudden transient ratio > 16.0, high derivative, without speech
             let transient_ratio = instant_energy / self.smoothed_energy;
-            let is_impulse = !is_speech && (transient_ratio > 16.0) && (deriv > 0.08) && (abs_val > 0.04);
+            let is_impulse = (!is_speech && transient_ratio > 16.0 && deriv > 0.08 && abs_val > 0.04)
+                || (deriv > 0.25 && transient_ratio > 30.0);
 
             if is_impulse {
                 // Clamped transient attenuation

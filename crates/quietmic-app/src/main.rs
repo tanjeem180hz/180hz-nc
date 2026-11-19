@@ -364,10 +364,33 @@ fn get_config(state: State<AppState>) -> AppConfig {
 }
 
 #[tauri::command]
+fn get_engine_runtime_parameters(state: State<AppState>) -> quietmic_core::EngineRuntimeParameters {
+    let cfg = state.config.lock();
+    let mut pipeline = quietmic_core::AudioPipeline::new(48000, 48000).expect("Pipeline init failed");
+    let mode = match cfg.mode.as_str() {
+        "None" | "Bypass" => quietmic_core::EngineMode::None,
+        "Light" => quietmic_core::EngineMode::Light,
+        "Standard" => quietmic_core::EngineMode::Standard,
+        "MaxQuality" | "Max Quality" | "Krisp" => quietmic_core::EngineMode::MaxQuality,
+        "VoiceIsolation" => quietmic_core::EngineMode::VoiceIsolation,
+        _ => quietmic_core::EngineMode::MaxQuality,
+    };
+    pipeline.set_mode(mode);
+    pipeline.set_strength(cfg.strength);
+    pipeline.set_bypass(cfg.bypass);
+    pipeline.set_aec_enabled(cfg.aec_enabled);
+    pipeline.set_auto_sensitivity(cfg.auto_sensitivity);
+    pipeline.set_sensitivity_threshold(cfg.sensitivity_threshold);
+    pipeline.set_mic_gain(cfg.mic_volume);
+    pipeline.get_runtime_parameters()
+}
+
+#[tauri::command]
 fn set_mode(mode: String, state: State<AppState>) -> Result<(), String> {
     let mut cfg = state.config.lock();
     cfg.mode = mode.clone();
     let _ = cfg.save();
+    tracing::info!("Settings -> Engine: mode={}, strength={}, aec={}, auto_sens={}", cfg.mode, cfg.strength, cfg.aec_enabled, cfg.auto_sensitivity);
 
     // Reconfigure active audio stream
     restart_audio_stream(&state, &cfg)
@@ -378,6 +401,7 @@ fn set_strength(strength: f32, state: State<AppState>) -> Result<(), String> {
     let mut cfg = state.config.lock();
     cfg.strength = strength.clamp(0.0, 1.0);
     let _ = cfg.save();
+    tracing::info!("Settings -> Engine: strength={:.2}", cfg.strength);
 
     restart_audio_stream(&state, &cfg)
 }
@@ -955,6 +979,7 @@ fn main() {
             run_pipeline_self_test_command,
             run_aec_speaker_test_command,
             run_echo_doctor_command,
+            get_engine_runtime_parameters,
             set_theme,
             open_url
         ])

@@ -79,10 +79,11 @@ impl DenoiseEngine for LightEngine {
         );
 
         // Krisp-grade Voice Activity Gating with Hangover:
-        // - Speech onset trigger: RNNoise probability >= 0.30
-        // - Hangover duration: 20 frames (200 ms) to guarantee word starts and endings are never cut
-        const VAD_ONSET: f32 = 0.30;
-        const HANGOVER_FRAMES: usize = 20;
+        // - Speech onset trigger: RNNoise probability >= 0.38
+        //   (High-passed fan noise max: ~0.26, transient clicks max: ~0.12, quiet sine onset: ~0.45, human voice: 0.85-0.99)
+        // - Hangover duration: 15 frames (150 ms) to guarantee word starts and endings are never cut
+        const VAD_ONSET: f32 = 0.38;
+        const HANGOVER_FRAMES: usize = 15;
 
         let is_speech = if self.vad_probability >= VAD_ONSET {
             self.hangover_counter = HANGOVER_FRAMES;
@@ -94,30 +95,26 @@ impl DenoiseEngine for LightEngine {
             false
         };
 
-        // When speech is present: preserve 100% full natural speech harmonics
+        // When speech is present: preserve 100% full natural speech harmonics (unity gain)
         // When speech is absent: smooth background floor attenuation down to 0.001 (-60 dB)
         let target_gate = if is_speech {
             1.0f32
         } else {
-            (self.vad_probability / VAD_ONSET).clamp(0.001, 0.05) * 0.05
+            (self.vad_probability / VAD_ONSET).clamp(0.001, 0.05) * 0.02
         };
 
-        // Instant onset wake-up: if speech is detected from silence, snap gain to 1.0 immediately
-        if is_speech && self.smoothed_vad_gain < 0.5 {
+        // Instant speech onset: guarantee 100% full speech preservation with zero syllable clipping
+        if is_speech {
             self.smoothed_vad_gain = 1.0;
         }
 
-        // Smooth gain transition across samples (fast attack ~1.5ms, gentle release ~60ms)
-        let attack_coeff = 0.12f32;
-        let release_coeff = 0.008f32;
+        // Smooth gain decay into silence (~30ms release)
+        let release_coeff = 0.025f32;
 
         for (i, &s) in self.scratch_out.iter().enumerate() {
-            let coeff = if target_gate > self.smoothed_vad_gain {
-                attack_coeff
-            } else {
-                release_coeff
-            };
-            self.smoothed_vad_gain += (target_gate - self.smoothed_vad_gain) * coeff;
+            if !is_speech {
+                self.smoothed_vad_gain += (target_gate - self.smoothed_vad_gain) * release_coeff;
+            }
             out_frame[i] = (s * SCALE_FROM_16BIT) * self.smoothed_vad_gain;
         }
 

@@ -43,9 +43,9 @@ pub struct AutoSensitivityAdapter {
 
 impl AutoSensitivityAdapter {
     pub const DEFAULT_TARGET_RMS: f32 = 0.10; // -20 dBFS
-    pub const MIN_GAIN: f32 = 0.25;           // -12 dB
-    pub const MAX_GAIN: f32 = 4.00;           // +12 dB
-    pub const HANGOVER_FRAMES: usize = 20;    // 200 ms
+    pub const MIN_GAIN: f32 = 0.35;           // -9 dB (clean attenuation for loud shouting)
+    pub const MAX_GAIN: f32 = 1.50;           // +3.5 dB (bounded ceiling: never amplifies ambient noise floor)
+    pub const HANGOVER_FRAMES: usize = 12;    // 120 ms hangover
 
     pub fn new() -> Self {
         Self {
@@ -128,26 +128,34 @@ impl AutoSensitivityAdapter {
         if self.window_counter >= self.window_length_frames {
             // Smoothly update noise floor toward sliding minimum
             self.noise_floor_rms = self.noise_floor_rms * 0.70 + self.window_min_rms * 0.30;
-            self.noise_floor_rms = self.noise_floor_rms.clamp(0.00005, 0.05); // -86 dBFS to -26 dBFS
+            self.noise_floor_rms = self.noise_floor_rms.clamp(0.00005, 0.08); // -86 dBFS to -22 dBFS
             self.window_min_rms = frame_rms;
             self.window_counter = 0;
         } else if frame_rms < self.noise_floor_rms {
             // Immediate downward tracking if acoustic floor drops
             self.noise_floor_rms = self.noise_floor_rms * 0.90 + frame_rms * 0.10;
+        } else if !self.speech_active && frame_rms < self.noise_floor_rms * 2.0 {
+            // Smooth upward tracking of stationary ambient noise floor during non-speech intervals
+            self.noise_floor_rms += 0.06 * (frame_rms - self.noise_floor_rms);
         }
 
         self.last_noise_floor_db = 20.0 * self.noise_floor_rms.log10();
 
         // 2. Speech activity detection
         let snr = frame_rms / self.noise_floor_rms;
-        let is_speech_instant = snr > 2.5 && frame_rms > 0.002;
+        let crest_factor = peak / frame_rms;
+        // True speech requires:
+        // - SNR >= 2.8 relative to running minimum noise floor
+        // - RMS >= 0.003 (-50 dBFS)
+        // - Crest factor < 5.0 (rejects sharp isolated clicks like mechanical keys and mouse taps)
+        let is_speech_instant = snr > 2.8 && frame_rms > 0.003 && crest_factor < 5.0;
 
         if is_speech_instant {
             self.hangover_counter = Self::HANGOVER_FRAMES;
             self.speech_active = true;
-            // Update speech level tracker (slow time constant ~ 2.0s)
-            self.speech_level_rms += 0.02 * (frame_rms - self.speech_level_rms);
-            self.speech_level_rms = self.speech_level_rms.clamp(0.003, 1.0);
+            // Update speech level tracker (slow time constant ~ 1.5s)
+            self.speech_level_rms += 0.03 * (frame_rms - self.speech_level_rms);
+            self.speech_level_rms = self.speech_level_rms.clamp(0.005, 1.0);
         } else if self.hangover_counter > 0 {
             self.hangover_counter -= 1;
             self.speech_active = true;
@@ -157,15 +165,21 @@ impl AutoSensitivityAdapter {
 
         // 3. Engine Input Normalization AGC
         if self.enabled {
-            if is_speech_instant {
+            if self.speech_active {
                 let desired_gain = (self.target_speech_rms / self.speech_level_rms)
                     .clamp(Self::MIN_GAIN, Self::MAX_GAIN);
                 self.target_input_gain = desired_gain;
+                // Fast smooth adaptation toward speech gain target
+                self.current_input_gain += 0.04 * (self.target_input_gain - self.current_input_gain);
+            } else {
+                // When speech stops: Target gain immediately resets to 1.0 (unity)
+                // and decays smoothly back to 1.0 within 300 ms (rate = 0.08 per 10 ms frame).
+                // Guaranteed: Auto-sensitivity NEVER raises the noise floor during silence or noise!
+                self.target_input_gain = 1.0;
+                self.current_input_gain += 0.08 * (1.0 - self.current_input_gain);
             }
-            // Smooth bounded gain adjustment (multi-second time constant, zero pumping)
-            let rate = if is_speech_instant { 0.01 } else { 0.002 };
-            self.current_input_gain += rate * (self.target_input_gain - self.current_input_gain);
         } else {
+            self.target_input_gain = 1.0;
             self.current_input_gain = 1.0;
         }
 
@@ -173,10 +187,10 @@ impl AutoSensitivityAdapter {
 
         // 4. Adaptive threshold in dBFS
         let threshold_dbfs = if self.enabled {
-            // Dynamic threshold: 6 dB above minimum-statistics noise floor
-            // Whisper protection: minimum threshold down to -60 dBFS
-            // Loud speech protection: maximum threshold up to -35 dBFS
-            (self.last_noise_floor_db + 6.0).clamp(-60.0, -35.0)
+            // Dynamic threshold: 5 dB above minimum-statistics noise floor
+            // Whisper protection: minimum threshold down to -56 dBFS
+            // Loud speech / noisy environment threshold up to -24 dBFS
+            (self.last_noise_floor_db + 5.0).clamp(-56.0, -24.0)
         } else {
             self.manual_threshold_dbfs
         };

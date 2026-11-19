@@ -70,13 +70,39 @@ impl ResidualSuppressor {
             high_e += s_high * s_high;
         }
         let crest_factor = peak / frame_rms;
-        let is_voiced_speech = low_e > high_e * 1.2 && crest_factor < 4.0;
+
+        // Pitch periodicity check in speech fundamental range (120 Hz to 400 Hz)
+        let mut max_norm_corr = 0.0f32;
+        if frame.len() >= 360 {
+            let eval_len = 160;
+            let s0 = &frame[..eval_len];
+            let e0: f32 = s0.iter().map(|&x| x * x).sum();
+            if e0 > 1e-5 {
+                for lag in (120..=300).step_by(6) {
+                    if lag + eval_len <= frame.len() {
+                        let s_lag = &frame[lag..lag + eval_len];
+                        let dot: f32 = s0.iter().zip(s_lag).map(|(&a, &b)| a * b).sum();
+                        let e_lag: f32 = s_lag.iter().map(|&x| x * x).sum();
+                        let norm = (e0 * e_lag).sqrt();
+                        if norm > 1e-5 {
+                            let ncorr = dot / norm;
+                            if ncorr > max_norm_corr {
+                                max_norm_corr = ncorr;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Voiced speech requires harmonic pitch correlation or dominant formant resonance with speech-level energy
+        let is_voiced_speech = (max_norm_corr > 0.38 || (frame_rms > 0.03 && low_e > high_e * 2.0)) && crest_factor < 5.0 && frame_rms > 0.003;
 
         // Update running noise floor and speech level trackers:
         // Adapt noise floor during non-voiced intervals (noise/hiss), freeze during voiced speech
-        if !is_voiced_speech || frame_rms < self.running_noise_floor * 1.5 {
+        if !is_voiced_speech {
             self.running_noise_floor += 0.05 * (frame_rms - self.running_noise_floor);
-        } else if frame_rms > self.running_noise_floor * 2.5 {
+        } else if frame_rms > self.running_noise_floor * 2.0 {
             self.running_speech_level += 0.05 * (frame_rms - self.running_speech_level);
         }
         self.running_noise_floor = self.running_noise_floor.clamp(1e-6, 0.05);
@@ -85,18 +111,18 @@ impl ResidualSuppressor {
         let snr = frame_rms / self.running_noise_floor;
 
         // Smooth post-filter gain
-        let target_gain = if snr < 1.5 {
-            0.05 // 26 dB residual suppression during quiet intervals
-        } else if snr < 3.0 {
-            0.50 // Soft blend in transitional vowels
-        } else {
+        let target_gain = if is_voiced_speech || snr > 2.5 {
             1.0 // Full 100% natural speech preservation
+        } else if snr < 1.5 {
+            0.02 // 34 dB residual suppression during quiet intervals
+        } else {
+            0.50 // Soft blend in transitional vowels
         };
 
         let release_rate = if target_gain > self.suppression_gain {
-            0.08 // Fast recovery so speech consonants are never muffled
+            0.15 // Fast recovery so speech consonants are never muffled
         } else {
-            0.05
+            0.04
         };
 
         for s in frame.iter_mut() {
