@@ -49,6 +49,16 @@ pub struct AppConfig {
     pub ptt_key: String,          // Key binding for PTT (default "Space")
     #[serde(default = "default_theme")]
     pub theme: String,            // "night-lab", "daylight", "amber-console"
+    #[serde(default = "default_true")]
+    pub close_to_tray: bool,      // Close button minimizes to tray instead of quitting (default true)
+    #[serde(default)]
+    pub shown_tray_toast: bool,   // First-time minimize-to-tray toast shown (default false)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutostartStatus {
+    pub enabled: bool,
+    pub disabled_by_os: bool,
 }
 
 impl Default for AppConfig {
@@ -72,6 +82,8 @@ impl Default for AppConfig {
             push_to_talk: false,
             ptt_key: "Space".to_string(),
             theme: "night-lab".to_string(),
+            close_to_tray: true,
+            shown_tray_toast: false,
         }
     }
 }
@@ -213,6 +225,60 @@ impl AppConfig {
         Ok(())
     }
 
+    /// Queries the real state of Windows Auto-Start from Registry, detecting if disabled by Task Manager.
+    #[cfg(windows)]
+    pub fn get_windows_autostart_status() -> AutostartStatus {
+        use windows::core::HSTRING;
+        use windows::Win32::System::Registry::{
+            RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
+        };
+
+        let mut enabled = false;
+        let mut disabled_by_os = false;
+
+        unsafe {
+            let subkey = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+            let mut hkey = HKEY::default();
+            if RegOpenKeyExW(HKEY_CURRENT_USER, &subkey, 0, KEY_READ, &mut hkey).is_ok() {
+                let app_name = HSTRING::from("180hz nc");
+                let mut size = 0u32;
+                if RegQueryValueExW(hkey, &app_name, None, None, None, Some(&mut size)).is_ok() && size > 0 {
+                    enabled = true;
+                }
+                let _ = RegCloseKey(hkey);
+            }
+
+            // Check Task Manager StartupApproved key
+            let startup_subkey = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run");
+            let mut startup_hkey = HKEY::default();
+            if RegOpenKeyExW(HKEY_CURRENT_USER, &startup_subkey, 0, KEY_READ, &mut startup_hkey).is_ok() {
+                let app_name = HSTRING::from("180hz nc");
+                let mut data = [0u8; 16];
+                let mut size = data.len() as u32;
+                if RegQueryValueExW(startup_hkey, &app_name, None, None, Some(data.as_mut_ptr()), Some(&mut size)).is_ok() && size > 0 {
+                    // Windows sets byte 0 to 0x03 or odd value when disabled by user in Task Manager
+                    if data[0] == 0x03 || data[0] == 0x01 || (data[0] % 2 != 0 && data[0] != 0x02) {
+                        disabled_by_os = true;
+                    }
+                }
+                let _ = RegCloseKey(startup_hkey);
+            }
+        }
+
+        AutostartStatus {
+            enabled,
+            disabled_by_os,
+        }
+    }
+
+    #[cfg(not(windows))]
+    pub fn get_windows_autostart_status() -> AutostartStatus {
+        AutostartStatus {
+            enabled: false,
+            disabled_by_os: false,
+        }
+    }
+
     #[cfg(not(windows))]
     pub fn set_windows_autostart(_enable: bool) -> Result<(), String> {
         Ok(())
@@ -239,12 +305,18 @@ mod tests {
         assert_eq!(cfg.sensitivity_threshold, deserialized.sensitivity_threshold);
         assert_eq!(cfg.push_to_talk, deserialized.push_to_talk);
         assert_eq!(cfg.ptt_key, deserialized.ptt_key);
+        assert_eq!(cfg.close_to_tray, deserialized.close_to_tray);
+        assert_eq!(cfg.shown_tray_toast, deserialized.shown_tray_toast);
     }
 
     #[test]
     fn test_windows_autostart_registry() {
         // Test setting autostart true then false in HKCU Run key
         assert!(AppConfig::set_windows_autostart(true).is_ok());
+        let st = AppConfig::get_windows_autostart_status();
+        assert!(st.enabled);
         assert!(AppConfig::set_windows_autostart(false).is_ok());
+        let st2 = AppConfig::get_windows_autostart_status();
+        assert!(!st2.enabled);
     }
 }

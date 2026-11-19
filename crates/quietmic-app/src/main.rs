@@ -10,9 +10,9 @@ use quietmic_core::engine::pipeline::{AudioPipeline, EngineMode};
 use quietmic_core::{init_logging, AudioStreamController};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::Ordering;
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, State};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{Emitter, Manager, State};
 
 #[cfg(windows)]
 use windows::core::w;
@@ -557,6 +557,37 @@ fn open_url(url: String) {
         .spawn();
 }
 
+#[tauri::command]
+fn set_close_to_tray(enabled: bool, state: State<AppState>) -> Result<(), String> {
+    let mut cfg = state.config.lock();
+    cfg.close_to_tray = enabled;
+    cfg.save()
+}
+
+#[tauri::command]
+fn set_start_with_windows(enabled: bool, state: State<AppState>) -> Result<(), String> {
+    let mut cfg = state.config.lock();
+    cfg.start_with_windows = enabled;
+    let _ = cfg.save();
+    quietmic_core::AppConfig::set_windows_autostart(enabled)
+}
+
+#[tauri::command]
+fn get_autostart_status() -> quietmic_core::config::AutostartStatus {
+    quietmic_core::AppConfig::get_windows_autostart_status()
+}
+
+#[tauri::command]
+fn open_windows_startup_settings() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(["/c", "start", "ms-settings:startupapps"])
+            .spawn();
+    }
+    Ok(())
+}
+
 fn restart_audio_stream(state: &AppState, cfg: &AppConfig) -> Result<(), String> {
     let mut stream_lock = state.stream_controller.lock();
     // Stop previous controller cleanly
@@ -680,6 +711,14 @@ fn main() {
         let _mutex = CreateMutexW(None, true, w!("Global\\180hznc_SingleInstance_Mutex"));
         if GetLastError() == ERROR_ALREADY_EXISTS {
             eprintln!("180hz nc is already running. Another instance cannot be started.");
+            if let Ok(hwnd) = windows::Win32::UI::WindowsAndMessaging::FindWindowW(None, w!("180hz nc")) {
+                if !hwnd.0.is_null() {
+                    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SetForegroundWindow, SW_RESTORE, SW_SHOW};
+                    let _ = ShowWindow(hwnd, SW_RESTORE);
+                    let _ = ShowWindow(hwnd, SW_SHOW);
+                    let _ = SetForegroundWindow(hwnd);
+                }
+            }
             return;
         }
     }
@@ -764,15 +803,37 @@ fn main() {
         live_monitor: Mutex::new(live_monitor),
     };
 
+    let is_minimized = std::env::args().any(|arg| arg == "--minimized");
+
     tauri::Builder::default()
         .manage(app_state)
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let state = window.state::<AppState>();
-                state.live_monitor.lock().stop();
+                let close_to_tray = state.config.lock().close_to_tray;
+                if close_to_tray {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    let mut cfg = state.config.lock();
+                    if !cfg.shown_tray_toast {
+                        cfg.shown_tray_toast = true;
+                        let _ = cfg.save();
+                        let _ = window.emit("show-tray-toast", ());
+                    }
+                } else {
+                    state.live_monitor.lock().stop();
+                    if let Some(mut ctrl) = state.stream_controller.lock().take() {
+                        ctrl.stop();
+                    }
+                }
             }
         })
-        .setup(|app| {
+        .setup(move |app| {
+            if is_minimized {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
             // Spawn Windows Global Hotkey Listener (Ctrl+Shift+B for Bypass, Ctrl+Shift+M for Mute)
             #[cfg(windows)]
             {
@@ -896,27 +957,70 @@ fn main() {
                     .expect("Failed to spawn global PTT thread");
             }
 
-            // Build System Tray Menu
-            let live_test_item = MenuItem::with_id(app, "toggle_live_test", "Live Test: On/Off", true, None::<&str>)?;
-            let toggle_item = MenuItem::with_id(app, "toggle_bypass", "Toggle Active/Bypass (Ctrl+Shift+B)", true, None::<&str>)?;
-            let settings_item = MenuItem::with_id(app, "open_settings", "Settings...", true, None::<&str>)?;
+            // Build Rich System Tray Menu
+            let open_item = MenuItem::with_id(app, "open_app", "Open 180hz nc", true, None::<&str>)?;
+            let sep1 = PredefinedMenuItem::separator(app)?;
+
+            let state = app.state::<AppState>();
+            let current_cfg = state.config.lock().clone();
+            let bypass_label = if current_cfg.bypass { "Noise Suppression: Bypassed" } else { "Noise Suppression: Active" };
+            let toggle_item = MenuItem::with_id(app, "toggle_bypass", bypass_label, true, None::<&str>)?;
+
+            // Mode Submenu
+            let mode_none = MenuItem::with_id(app, "mode_none", "None (Bypass)", true, None::<&str>)?;
+            let mode_light = MenuItem::with_id(app, "mode_light", "Light (RNNoise)", true, None::<&str>)?;
+            let mode_standard = MenuItem::with_id(app, "mode_standard", "Standard (DeepFilterNet)", true, None::<&str>)?;
+            let mode_max = MenuItem::with_id(app, "mode_max", "Max Quality (Krisp-level)", true, None::<&str>)?;
+            let mode_submenu = Submenu::with_items(app, "Mode", true, &[&mode_none, &mode_light, &mode_standard, &mode_max])?;
+
+            // Microphone Submenu
+            let input_devices = state.device_manager.list_input_devices().unwrap_or_default();
+            let mut mic_items = Vec::new();
+            for (i, dev) in input_devices.iter().enumerate() {
+                let is_selected = current_cfg.selected_mic.as_ref().map(|m| m == &dev.name).unwrap_or(dev.is_default);
+                let prefix = if is_selected { "✓ " } else { "  " };
+                let title = format!("{}{}", prefix, dev.name);
+                let item_id = format!("mic_select_{}", i);
+                if let Ok(item) = MenuItem::with_id(app, &item_id, &title, true, None::<&str>) {
+                    mic_items.push(item);
+                }
+            }
+            let mic_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = mic_items.iter().map(|item| item as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
+            let mic_submenu = Submenu::with_items(app, "Microphone", true, &mic_refs)?;
+
+            let sep2 = PredefinedMenuItem::separator(app)?;
+            let autostart_status = quietmic_core::AppConfig::get_windows_autostart_status();
+            let autostart_label = if autostart_status.enabled { "✓ Start with Windows" } else { "Start with Windows" };
+            let start_windows_item = MenuItem::with_id(app, "toggle_start_windows", autostart_label, true, None::<&str>)?;
+
+            let sep3 = PredefinedMenuItem::separator(app)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit 180hz nc", true, None::<&str>)?;
 
-            let menu = Menu::with_items(app, &[&live_test_item, &toggle_item, &settings_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[
+                &open_item,
+                &sep1,
+                &toggle_item,
+                &mode_submenu,
+                &mic_submenu,
+                &sep2,
+                &start_windows_item,
+                &sep3,
+                &quit_item,
+            ])?;
 
-            let _tray = TrayIconBuilder::new()
+            let tray_tooltip = format!("180hz nc - {}, {}", if current_cfg.bypass { "Bypassed" } else { "Active" }, current_cfg.mode);
+            let app_icon = app.default_window_icon().cloned();
+
+            let mut tray_builder = TrayIconBuilder::with_id("main-tray")
                 .menu(&menu)
-                .tooltip("180hz nc")
+                .tooltip(&tray_tooltip)
                 .on_menu_event(|app, event| {
                     match event.id().as_ref() {
-                        "toggle_live_test" => {
-                            let state = app.state::<AppState>();
-                            let mut monitor = state.live_monitor.lock();
-                            let st = monitor.get_status();
-                            if st.is_active {
-                                monitor.stop();
-                            } else {
-                                let _ = monitor.start(&state.device_manager, None);
+                        "open_app" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.unminimize();
+                                let _ = window.show();
+                                let _ = window.set_focus();
                             }
                         }
                         "toggle_bypass" => {
@@ -924,32 +1028,107 @@ fn main() {
                             let mut cfg = state.config.lock();
                             cfg.bypass = !cfg.bypass;
                             let _ = cfg.save();
+                            let tooltip = format!("180hz nc - {}, {}", if cfg.bypass { "Bypassed" } else { "Active" }, cfg.mode);
+                            if let Some(tray) = app.tray_by_id("main-tray") {
+                                let _ = tray.set_tooltip(Some(tooltip));
+                            }
                             let _ = restart_audio_stream(&state, &cfg);
                         }
-                        "open_settings" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
+                        "mode_none" => {
+                            let state = app.state::<AppState>();
+                            let mut cfg = state.config.lock();
+                            cfg.mode = "None".to_string();
+                            let _ = cfg.save();
+                            let tooltip = format!("180hz nc - {}, None", if cfg.bypass { "Bypassed" } else { "Active" });
+                            if let Some(tray) = app.tray_by_id("main-tray") {
+                                let _ = tray.set_tooltip(Some(tooltip));
                             }
+                            let _ = restart_audio_stream(&state, &cfg);
+                        }
+                        "mode_light" => {
+                            let state = app.state::<AppState>();
+                            let mut cfg = state.config.lock();
+                            cfg.mode = "Light".to_string();
+                            let _ = cfg.save();
+                            let tooltip = format!("180hz nc - {}, Light", if cfg.bypass { "Bypassed" } else { "Active" });
+                            if let Some(tray) = app.tray_by_id("main-tray") {
+                                let _ = tray.set_tooltip(Some(tooltip));
+                            }
+                            let _ = restart_audio_stream(&state, &cfg);
+                        }
+                        "mode_standard" => {
+                            let state = app.state::<AppState>();
+                            let mut cfg = state.config.lock();
+                            cfg.mode = "Standard".to_string();
+                            let _ = cfg.save();
+                            let tooltip = format!("180hz nc - {}, Standard", if cfg.bypass { "Bypassed" } else { "Active" });
+                            if let Some(tray) = app.tray_by_id("main-tray") {
+                                let _ = tray.set_tooltip(Some(tooltip));
+                            }
+                            let _ = restart_audio_stream(&state, &cfg);
+                        }
+                        "mode_max" => {
+                            let state = app.state::<AppState>();
+                            let mut cfg = state.config.lock();
+                            cfg.mode = "Krisp".to_string();
+                            let _ = cfg.save();
+                            let tooltip = format!("180hz nc - {}, Max Quality", if cfg.bypass { "Bypassed" } else { "Active" });
+                            if let Some(tray) = app.tray_by_id("main-tray") {
+                                let _ = tray.set_tooltip(Some(tooltip));
+                            }
+                            let _ = restart_audio_stream(&state, &cfg);
+                        }
+                        id if id.starts_with("mic_select_") => {
+                            if let Ok(idx) = id.trim_start_matches("mic_select_").parse::<usize>() {
+                                let state = app.state::<AppState>();
+                                let input_devices = state.device_manager.list_input_devices().unwrap_or_default();
+                                if let Some(dev) = input_devices.get(idx) {
+                                    let mut cfg = state.config.lock();
+                                    cfg.selected_mic = Some(dev.name.clone());
+                                    let _ = cfg.save();
+                                    let _ = restart_audio_stream(&state, &cfg);
+                                }
+                            }
+                        }
+                        "toggle_start_windows" => {
+                            let state = app.state::<AppState>();
+                            let mut cfg = state.config.lock();
+                            cfg.start_with_windows = !cfg.start_with_windows;
+                            let _ = cfg.save();
+                            let _ = quietmic_core::AppConfig::set_windows_autostart(cfg.start_with_windows);
                         }
                         "quit" => {
                             let state = app.state::<AppState>();
                             state.live_monitor.lock().stop();
+                            if let Some(mut ctrl) = state.stream_controller.lock().take() {
+                                ctrl.stop();
+                            }
                             app.exit(0);
                         }
                         _ => {}
                     }
                 })
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { .. } = event {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                    if let TrayIconEvent::Click { button, button_state, .. } = event {
+                        if button == MouseButton::Left && button_state == MouseButtonState::Up {
+                            let app = tray.app_handle();
+                            if let Some(window) = app.get_webview_window("main") {
+                                if window.is_visible().unwrap_or(false) {
+                                    let _ = window.hide();
+                                } else {
+                                    let _ = window.unminimize();
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                            }
                         }
                     }
-                })
-                .build(app)?;
+                });
+
+            if let Some(icon) = app_icon {
+                tray_builder = tray_builder.icon(icon);
+            }
+            let _tray = tray_builder.build(app)?;
 
             Ok(())
         })
@@ -993,7 +1172,11 @@ fn main() {
             run_echo_doctor_command,
             get_engine_runtime_parameters,
             set_theme,
-            open_url
+            open_url,
+            set_close_to_tray,
+            set_start_with_windows,
+            get_autostart_status,
+            open_windows_startup_settings,
         ])
         .run(tauri::generate_context!())
         .expect("Error running 180hz nc application");

@@ -37,10 +37,39 @@
 - [x] Part B: Unified Card UI Restored & Professionally Polished on `main` (Dark & Light Mode, Hero Live Voice Tester with A/B switch, Dual VU Meter with CLIP LED, Echo Doctor & Pipeline Diagnostics, 0% Idle CPU).
 - [x] UI Refinement: Safely removed 10-Second Test Recorder component without errors, guarding all DOM event listeners and updating styling.
 - [x] Part A: Acoustic Echo Cancellation (AEC) Engine Overhaul (Continuous 8 kHz Cross-Correlation Delay Tracking, 0-Sample Error at 20/80/150/300 ms, Multi-Format I16/F32 WASAPI Loopback, Atomic Telemetry UI, ERLE >= 24.8 dB in `AEC_REPORT.md`).
+- [x] Part B: Close Button Minimization to System Tray, Single-Instance Window Focus, Rich Tray Menu with Mode/Mic Submenus, and First-Time Notification Toast.
+- [x] Part C: "Start with Windows" Auto-Start Toggle, Registry Run Key Integration, Task Manager Disabled State Detection, and Installer Auto-Start Option.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 41: Implement Background Tray Minimization, Start with Windows Registry Integration, and Single-Instance Focus
+- **Part B: System Tray & Window Minimization on Close**:
+  1. **Close Event Interception**: Handled `tauri::WindowEvent::CloseRequested` to inspect `close_to_tray` preference (default: `true`). When enabled, calls `api.prevent_close()` and `window.hide()`, keeping real-time audio streams, DSP noise cancellation, and loopback capture alive without interruption.
+  2. **Single-Instance Enforcement**: Acquired `Global\180hznc_SingleInstance_Mutex`. On `ERROR_ALREADY_EXISTS`, locates the existing window via Win32 `FindWindowW(None, w!("180hz nc"))`, restores and brings it to the foreground (`ShowWindow(SW_RESTORE)`, `SetForegroundWindow`), then cleanly terminates the duplicate instance.
+  3. **Rich System Tray**:
+     - Configured tray with ID `"main-tray"`, dynamic tooltip syncing to `"180hz nc - Active/Bypassed, <Mode>"`.
+     - Left-click on tray icon toggles window visibility (restores/unminimizes and focuses when hidden; hides when visible).
+     - Context menu features: `Open 180hz nc`, `Noise Suppression: Active / Bypassed` toggle, `Mode` submenu (`None`, `Light`, `Standard`, `Max Quality`), `Microphone` device selection submenu with real-time enumeration and checkmarks, `Start with Windows` toggle, and clean `Quit 180hz nc` (releasing devices, stopping streams, flushing logs).
+  4. **First-Time Tray Notification Toast**:
+     - Built `#trayToast` component with CSS slide-in animation notifying user that "180hz nc is running in the system tray. Click the tray icon anytime to restore the window."
+     - Emitted once per user on first close (`shown_tray_toast` in `AppConfig`), with dismiss button and auto-fadeout.
+  5. **Silent Startup Support**: Supports `--minimized` command-line argument to launch directly to tray with the main window hidden.
+
+- **Part C: Start with Windows & Registry Integration**:
+  1. **Registry Run Key Management**: Added `AppConfig::set_windows_autostart(bool)` to manage `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, creating key `"180hz nc"` pointing to `"\"<exe_path>\" --minimized"`, while cleaning up any legacy keys (`180Hz-NC`, `QuietMic`).
+  2. **Task Manager Override Detection**: Implemented `AppConfig::get_windows_autostart_status()` to read `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run`, accurately detecting when a user has disabled autostart via Windows Task Manager. In the UI, shows an amber indicator alert with a one-click button opening `ms-settings:startupapps`.
+  3. **Installer Option**: Updated `quietmic-installer` to prompt user for "Start 180hz nc with Windows" on installation, writing the Run key, and cleaning up the Run key during uninstallation.
+
+- **Automated Verification**:
+  - `crates/quietmic-core/tests/test_tray_and_autostart_integration.rs`:
+    - `test_close_to_tray_defaults_and_serialization`: Verified default `close_to_tray = true`, `shown_tray_toast = false`, `start_with_windows = false`, and backward-compatible JSON decoding.
+    - `test_close_to_tray_mutation_preservation`: Verified atomic persistence and deserialization.
+    - `test_windows_autostart_lifecycle`: Verified registry creation, query, and removal cycle.
+    - `test_minimized_arg_detection`: Verified `--minimized` argument detection.
+  - Workspace test suite passed 100% (95+ tests across all crates).
+  - `cargo clippy --workspace -- -D warnings` passed with 0 warnings.
 
 ### Commit 40: Fix AEC with Continuous Delay Estimation, Multi-Format Loopback, and Atomic Telemetry
 - **Root Cause Analysis & Fixes**:

@@ -271,6 +271,45 @@
           </div>
         </div>
       </section>
+
+      <!-- App Preferences Card -->
+      <section class="card" aria-labelledby="appPrefsTitle">
+        <div class="card-header-clean">
+          <div class="card-title-group">
+            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            <span id="appPrefsTitle" class="card-label">Preferences</span>
+          </div>
+        </div>
+
+        <div class="toggle-row" style="margin-top: 10px;">
+          <div>
+            <span class="sub-label">Close button minimizes to tray</span>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Keep app running in system tray when closed</div>
+          </div>
+          <label class="switch" title="Minimize to system tray on close">
+            <input type="checkbox" id="closeToTrayToggle" checked>
+            <span class="slider-round"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row" style="margin-top: 10px;">
+          <div>
+            <span class="sub-label">Start with Windows</span>
+            <div id="startupWarning" style="display: none; font-size: 11px; color: var(--accent-amber); margin-top: 2px;">
+              Disabled in Windows Startup settings
+              <button type="button" id="openStartupSettingsBtn" class="key-bind-btn" style="padding: 2px 6px; font-size: 10px; margin-left: 6px;">Open Settings</button>
+            </div>
+            <div id="startupDesc" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Launch silently minimized to tray at startup</div>
+          </div>
+          <label class="switch" title="Start 180hz nc automatically with Windows">
+            <input type="checkbox" id="startWithWindowsToggle">
+            <span class="slider-round"></span>
+          </label>
+        </div>
+      </section>
     </main>
 
     <!-- Footer Status Line -->
@@ -350,6 +389,18 @@
         <button type="button" id="dismissPipelineModalBtn" class="key-bind-btn modal-btn">Close</button>
       </div>
     </div>
+  </div>
+
+  <!-- First-time Tray Notification Toast -->
+  <div id="trayToast" class="tray-toast" style="display: none;">
+    <div class="toast-content">
+      <span class="toast-icon">💡</span>
+      <div class="toast-text">
+        <strong>180hz nc is running in the system tray</strong>
+        <span>Click the tray icon anytime to restore the window.</span>
+      </div>
+    </div>
+    <button type="button" id="dismissTrayToastBtn" class="toast-close-btn">&times;</button>
   </div>
 
   <script src="app.js"></script>

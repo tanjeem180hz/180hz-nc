@@ -12,8 +12,8 @@ use windows::Win32::System::Com::{
     IPersistFile,
 };
 use windows::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegOpenKeyExW, RegSetValueExW, HKEY,
-    HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_READ, REG_DWORD, REG_SZ,
+    RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegDeleteValueW, RegOpenKeyExW, RegSetValueExW, HKEY,
+    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_READ, KEY_SET_VALUE, REG_DWORD, REG_SZ,
 };
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use windows::Win32::UI::Shell::{IShellLinkW, ShellExecuteW, ShellLink};
@@ -226,7 +226,34 @@ fn register_uninstall_entry(install_dir: &Path, exe_path: &Path, uninstaller_pat
     }
 }
 
-fn run_install(silent: bool) -> Result<(), String> {
+fn set_run_key(exe_path: &Path, enable: bool) {
+    unsafe {
+        let subkey = HSTRING::from("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+        let mut hkey = HKEY::default();
+        if RegOpenKeyExW(HKEY_CURRENT_USER, &subkey, 0, KEY_SET_VALUE, &mut hkey).is_ok() {
+            let app_name = HSTRING::from("180hz nc");
+            let legacy_1 = HSTRING::from("180Hz-NC");
+            let legacy_2 = HSTRING::from("QuietMic");
+
+            if enable {
+                let cmd = format!("\"{}\" --minimized", exe_path.display());
+                let h_val = HSTRING::from(cmd);
+                let bytes: &[u8] =
+                    std::slice::from_raw_parts(h_val.as_ptr() as *const u8, (h_val.len() + 1) * 2);
+                let _ = RegSetValueExW(hkey, &app_name, 0, REG_SZ, Some(bytes));
+                let _ = RegDeleteValueW(hkey, &legacy_1);
+                let _ = RegDeleteValueW(hkey, &legacy_2);
+            } else {
+                let _ = RegDeleteValueW(hkey, &app_name);
+                let _ = RegDeleteValueW(hkey, &legacy_1);
+                let _ = RegDeleteValueW(hkey, &legacy_2);
+            }
+            let _ = RegCloseKey(hkey);
+        }
+    }
+}
+
+fn run_install(silent: bool, autostart: Option<bool>) -> Result<(), String> {
     if !silent {
         let welcome = "Welcome to 180hz nc Setup!\n\n\
                        180hz nc is a real-time AI noise cancellation desktop app targeting quality equal to or better than Krisp with minimal CPU usage.\n\n\
@@ -325,6 +352,24 @@ fn run_install(silent: bool) -> Result<(), String> {
     // Register Add/Remove Programs entry
     register_uninstall_entry(&install_dir, &exe_path, &uninst_path);
 
+    // Handle "Start 180hz nc with Windows"
+    let autostart_enabled = match autostart {
+        Some(val) => val,
+        None => {
+            if !silent {
+                let ask = "Would you like 180hz nc to start automatically with Windows (minimized to system tray)?\n\n(Recommended for continuous background noise cancellation)";
+                let res = show_msg_box("Start 180hz nc with Windows", ask, MB_YESNO | MB_ICONQUESTION);
+                res == IDYES
+            } else {
+                false
+            }
+        }
+    };
+
+    if autostart_enabled {
+        set_run_key(&exe_path, true);
+    }
+
     if !silent {
         let finished = "180hz nc has been successfully installed!\n\n\
                         • Application installed to: C:\\Program Files\\180hz nc\\\n\
@@ -387,6 +432,9 @@ fn run_uninstall(silent: bool) -> Result<(), String> {
         let _ = RegDeleteKeyW(HKEY_LOCAL_MACHINE, &subkey_legacy2);
     }
 
+    // Remove Autostart Run key
+    set_run_key(&PathBuf::new(), false);
+
     let prog_files = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
     let install_dir = PathBuf::from(&prog_files).join("180hz nc");
     let legacy_dir = PathBuf::from(&prog_files).join("180Hz-NC");
@@ -422,6 +470,13 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let is_uninstall = args.iter().any(|a| a == "--uninstall" || a == "-u" || a == "/uninstall");
     let is_silent = args.iter().any(|a| a == "--silent" || a == "-s" || a == "/S" || a == "/silent");
+    let autostart = if args.iter().any(|a| a == "--autostart" || a == "-a") {
+        Some(true)
+    } else if args.iter().any(|a| a == "--no-autostart") {
+        Some(false)
+    } else {
+        None
+    };
 
     if !is_elevated() {
         if let Err(err) = elevate_self() {
@@ -435,7 +490,7 @@ fn main() {
             show_msg_box("Uninstall Error", &err, MB_OK);
         }
     } else {
-        if let Err(err) = run_install(is_silent) {
+        if let Err(err) = run_install(is_silent, autostart) {
             show_msg_box("Installation Error", &err, MB_OK);
         }
     }

@@ -75,7 +75,12 @@ function mockInvoke(cmd, args) {
     case 'set_push_to_talk':
     case 'set_ptt_key':
     case 'set_theme':
+    case 'set_close_to_tray':
+    case 'set_start_with_windows':
+    case 'open_windows_startup_settings':
       return Promise.resolve();
+    case 'get_autostart_status':
+      return Promise.resolve({ enabled: false, disabled_by_os: false });
     case 'start_record_and_replay':
       return Promise.resolve();
     case 'start_replay_playback':
@@ -175,6 +180,16 @@ const footerStatusText = document.getElementById('footerStatusText');
 const footerCpuText = document.getElementById('footerCpuText');
 const footerBufferText = document.getElementById('footerBufferText');
 
+// Preferences
+const closeToTrayToggle = document.getElementById('closeToTrayToggle');
+const startWithWindowsToggle = document.getElementById('startWithWindowsToggle');
+const startupWarning = document.getElementById('startupWarning');
+const openStartupSettingsBtn = document.getElementById('openStartupSettingsBtn');
+
+// First-time Tray Toast
+const trayToast = document.getElementById('trayToast');
+const dismissTrayToastBtn = document.getElementById('dismissTrayToastBtn');
+
 // Modals
 const echoDoctorModal = document.getElementById('echoDoctorModal');
 const closeEchoDoctorBtn = document.getElementById('closeEchoDoctorBtn');
@@ -246,6 +261,26 @@ async function init() {
           abOriginalBtn.classList.remove('active');
         }
       }
+    }
+
+    try {
+      const autostart = await invoke('get_autostart_status');
+      if (autostart) {
+        if (startWithWindowsToggle) {
+          startWithWindowsToggle.checked = !!autostart.enabled;
+        }
+        if (startupWarning) {
+          startupWarning.style.display = autostart.disabled_by_os ? 'inline-block' : 'none';
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to query autostart status:', e);
+    }
+
+    if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.listen === 'function') {
+      window.__TAURI__.event.listen('show-tray-toast', () => {
+        showTrayToastNotification();
+      });
     }
   } catch (err) {
     console.error('Initialization error:', err);
@@ -360,6 +395,14 @@ function applyConfig(cfg) {
   currentPttKey = cfg.ptt_key || 'Space';
   pttKeyBtn.textContent = currentPttKey;
   updatePttStatus(false);
+
+  // Preferences
+  if (closeToTrayToggle) {
+    closeToTrayToggle.checked = cfg.close_to_tray !== false;
+  }
+  if (startWithWindowsToggle) {
+    startWithWindowsToggle.checked = !!cfg.start_with_windows;
+  }
 }
 
 // -------------------------------------------------------------
@@ -844,6 +887,63 @@ function setupEventListeners() {
       invoke('set_ptt_state', { transmitting: false }).catch(() => {});
     }
   });
+
+  // Preferences Listeners
+  if (closeToTrayToggle) {
+    closeToTrayToggle.addEventListener('change', () => {
+      const en = closeToTrayToggle.checked;
+      invoke('set_close_to_tray', { enabled: en }).catch((e) => console.error('Failed to set close_to_tray:', e));
+    });
+  }
+
+  if (startWithWindowsToggle) {
+    startWithWindowsToggle.addEventListener('change', async () => {
+      const en = startWithWindowsToggle.checked;
+      try {
+        await invoke('set_start_with_windows', { enabled: en });
+        const autostart = await invoke('get_autostart_status');
+        if (autostart && startupWarning) {
+          startupWarning.style.display = autostart.disabled_by_os ? 'inline-block' : 'none';
+        }
+      } catch (e) {
+        console.error('Failed to set start_with_windows:', e);
+      }
+    });
+  }
+
+  if (openStartupSettingsBtn) {
+    openStartupSettingsBtn.addEventListener('click', () => {
+      invoke('open_windows_startup_settings').catch((e) => console.error('Failed to open startup settings:', e));
+    });
+  }
+
+  if (dismissTrayToastBtn) {
+    dismissTrayToastBtn.addEventListener('click', () => {
+      hideTrayToastNotification();
+    });
+  }
+}
+
+// -------------------------------------------------------------
+// Tray Toast Notification
+// -------------------------------------------------------------
+function showTrayToastNotification() {
+  if (!trayToast) return;
+  trayToast.style.display = 'flex';
+  setTimeout(() => {
+    trayToast.classList.add('visible');
+  }, 10);
+  setTimeout(() => {
+    hideTrayToastNotification();
+  }, 6000);
+}
+
+function hideTrayToastNotification() {
+  if (!trayToast) return;
+  trayToast.classList.remove('visible');
+  setTimeout(() => {
+    trayToast.style.display = 'none';
+  }, 300);
 }
 
 // Start on DOM ready
