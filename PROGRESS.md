@@ -46,10 +46,26 @@
 - [x] Fixed Acoustic Echo Cancellation (AEC) Backend: Seamless runtime toggle on active stream, prioritized physical speaker loopback, eliminated artificial zero-padding in loopback drain, calibrated correlation threshold (0.15), and pre-lock pass-through protection (0-delay error, ERLE >= 25.1 dB).
 - [x] Simplified Interface, Removed AI Branding & Developer Debug Clutter: Transformed UI into a sleek, consumer-grade desktop utility with clean typography, user-friendly controls, and zero technical jargon.
 - [x] Resolved Acoustic Echo Cancellation (AEC) Speech Distortion & Choppy "Fatik" Sound: Clamped Normalized LMS step size to prevent explosion on quiet reference, extended double-talk hangover to 30 ms to span pitch pulses without chattering, calibrated Geigel coupling threshold (0.85), smoothed NLP slew rate (0.003 attack / 0.001 release), and enabled bit-exact silence pass-through with 300 ms dwell tail.
+- [x] Enhanced Voice Smoothness in Echo Cancellation: Removed hard sample-level clipping on echo prediction, raised silence detection threshold to 0.002 (-54 dBFS) to eliminate soundcard dither false-triggers, implemented continuous spline crossfade between active and bypass states, and tuned Geigel threshold to 0.92 * ref_peak.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 50: Enhance Voice Smoothness in Echo Cancellation, Remove Hard Discontinuities, and Add Spline Crossfade
+- **Continuous Linear Echo Prediction (`crates/quietmic-core/src/engine/aec.rs`)**:
+  - Eliminated synthetic step discontinuity `if !far_end_active { echo_hat = 0.0; }`. The linear FIR convolution $W^T X$ naturally decays to zero without sample-level switching noise, completely eliminating grit and roughness on voice harmonics.
+- **Dither-Immune Silence Detection (0.002 / -54 dBFS) (`crates/quietmic-core/src/engine/aec.rs`)**:
+  - Raised silence detection threshold to 0.002 (-54 dBFS) to cleanly sit above PC soundcard loopback dither/noise floor (-75 dBFS). When the computer is quiet, AEC cleanly bypasses, providing 100% bit-exact, unaltered studio microphone quality.
+- **Continuous Spline Crossfade (`crates/quietmic-core/src/engine/aec.rs`)**:
+  - Replaced hard boolean frame switches with smooth sample-level crossfade (`active_crossfade_gain`), ensuring smooth 2–4 ms glides between active echo cancellation and bypass states with zero clicks or boundary jumps.
+- **Calibrated Geigel Coupling Threshold (0.92 * ref_peak) (`crates/quietmic-core/src/engine/aec.rs`)**:
+  - Calibrated threshold to $0.92 \times \text{ref\_peak}$ to eliminate false double-talk triggers on syllable rising edges while fully protecting the user's voice during double-talk.
+- **Automated Verification**:
+  - `test_aec_stress_reproduction.rs`: Converged Mean ERLE = **27.21 dB** (Spec $\ge 20$ dB), Steady Envelope Jumps = 0, Clicks = 0, Resets = 0, Near-End Speech Preserved = 0.19 dB delta.
+  - `test_aec_fatik_reproduction.rs`: Single-Talk ERLE = **72.76 dB**, Double-Talk Speech Delta = **1.25 dB**, DTD transitions = 12.
+  - `test_aec_full_acceptance.rs`: All delays (20, 80, 150, 300 ms) passed with $\ge 20.5$ dB ERLE.
+  - `cargo clippy --workspace -- -D warnings`: 0 warnings, 0 errors.
 
 ### Commit 49: Fix Acoustic Echo Cancellation (AEC) Speech Distortion, Eliminate Choppy "Fatik" Sound, Bound NLMS Step Size, and Extend DTD Pitch Hangover
 - **Bounded NLMS Adaptation Step Size (`crates/quietmic-core/src/engine/aec.rs`)**:

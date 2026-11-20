@@ -343,14 +343,13 @@ impl EchoCanceller {
 
         // Far-end activity detection:
         let far_end_active = ref_energy >= Self::FAR_END_ACTIVE_THRESHOLD;
-        if !far_end_active {
-            echo_hat = 0.0;
-        }
 
         // 5. Compute error: e = d - echo_hat
+        // Convolution echo_hat = sum_{k=0}^{L-1} w[k] * x[n-k] is linear and continuous.
+        // It naturally decays to 0.0 without synthetic sample-level step discontinuities.
         let error = mic_sample - echo_hat;
 
-        // 6. Smooth envelope & energy tracking
+        // 6. Smooth envelope & energy tracking (0.02 time constant tracks syllable power without lag)
         self.mic_energy_tracker += 0.02 * (mic_sample * mic_sample - self.mic_energy_tracker);
         self.echo_energy_tracker += 0.02 * (echo_hat * echo_hat - self.echo_energy_tracker);
 
@@ -358,7 +357,7 @@ impl EchoCanceller {
         // Near-end double-talk is active when microphone amplitude exceeds loudspeaker coupling envelope (0.85 * ref_peak).
         // Loudspeaker room echo coupling is physically bounded (< 0.75 of ref peak), so any signal >= 0.85 ref_peak
         // indicates near-end speech activity.
-        let is_double_talk_instant = far_end_active && (self.mic_energy_tracker > 1.5e-4) && (mic_sample.abs() > ref_peak * 0.85);
+        let is_double_talk_instant = far_end_active && (self.mic_energy_tracker > 1.5e-4) && (mic_sample.abs() > ref_peak * 0.92);
         if is_double_talk_instant {
             self.double_talk_hangover = 1440; // 30 ms hangover prevents inter-pulse chattering
         } else if self.double_talk_hangover > 0 {
@@ -569,7 +568,7 @@ impl EchoCanceller {
         }
 
         let ref_peak = ref_frame_consumed.iter().fold(0.0f32, |m, &s| m.max(s.abs()));
-        let ref_is_silent = ref_peak < 1e-4;
+        let ref_is_silent = ref_peak < 0.002; // -54 dBFS: cleanly above soundcard loopback dither floor (typically -75 dBFS)
 
         if ref_is_silent {
             if self.active_dwell_counter > 0 {
@@ -579,19 +578,27 @@ impl EchoCanceller {
             }
             self.smoothed_nlp_gain *= 0.95;
         } else {
-            self.active_dwell_counter = 30; // 300 ms dwell hangover
+            self.active_dwell_counter = 20; // 200 ms dwell hangover covers room reverberation tail
         }
 
         let mut in_mic_energy = 0.0f32;
         let mut out_err_energy = 0.0f32;
         let should_process = self.delay_locked && (self.active_dwell_counter > 0 || !ref_is_silent);
+        let target_crossfade = if should_process { 1.0f32 } else { 0.0f32 };
 
         for (sample, &ref_sample) in mic_frame.iter_mut().zip(&ref_frame_consumed) {
             let in_val = *sample;
-            let out_val = if should_process {
+            // Smooth spline crossfade avoids all abrupt boundary discontinuities
+            self.active_crossfade_gain += (target_crossfade - self.active_crossfade_gain) * 0.02;
+            let out_val = if self.active_crossfade_gain <= 0.001 {
+                self.active_crossfade_gain = 0.0;
+                self.process_sample_bypass(in_val, ref_sample)
+            } else if self.active_crossfade_gain >= 0.999 {
+                self.active_crossfade_gain = 1.0;
                 self.process_sample(in_val, ref_sample)
             } else {
-                self.process_sample_bypass(in_val, ref_sample)
+                let p_val = self.process_sample(in_val, ref_sample);
+                in_val * (1.0 - self.active_crossfade_gain) + p_val * self.active_crossfade_gain
             };
             *sample = out_val;
 
