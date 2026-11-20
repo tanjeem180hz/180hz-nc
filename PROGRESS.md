@@ -48,10 +48,29 @@
 - [x] Resolved Acoustic Echo Cancellation (AEC) Speech Distortion & Choppy "Fatik" Sound: Clamped Normalized LMS step size to prevent explosion on quiet reference, extended double-talk hangover to 30 ms to span pitch pulses without chattering, calibrated Geigel coupling threshold (0.85), smoothed NLP slew rate (0.003 attack / 0.001 release), and enabled bit-exact silence pass-through with 300 ms dwell tail.
 - [x] Enhanced Voice Smoothness in Echo Cancellation: Removed hard sample-level clipping on echo prediction, raised silence detection threshold to 0.002 (-54 dBFS) to eliminate soundcard dither false-triggers, implemented continuous spline crossfade between active and bypass states, and tuned Geigel threshold to 0.92 * ref_peak.
 - [x] Fixed Screen Share Double Voice & Voice Echo: Widened vocal pitch exclusion window in delay estimator to isolate speech harmonics, enabled multi-window candidate persistence locking, auto-stopped Live Voice Monitor on minimize/hide-to-tray to protect desktop audio stream, verified 28.72 dB ERLE with 0.07 dB speech delta, and generated A/B proof WAVs in `ab_samples/`.
+- [x] Backend Safety Contract & Automated IPC Verification: Generated `ipc-contract.json`, created automated contract test verifying all commands, arguments, types, ranges, and frontend invoke calls, aligned `set_ptt_state` parameter, and added full E2E backend controls test suite.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 52: Establish Backend Safety Contract, Automated IPC Verification, and E2E Controls Test
+- **IPC Safety Contract (`ipc-contract.json`)**:
+  - Authored comprehensive contract specification containing all 40 Tauri commands, frontend event signatures, payload types, config fields, allowed value sets, and numeric ranges.
+- **Frontend IPC Parameter Alignment (`crates/quietmic-app/ui/app.js`)**:
+  - Aligned `set_ptt_state` invocation payload to use `{ active: bool }` matching the Tauri backend command signature and contract schema.
+- **Automated Contract Test Suite (`crates/quietmic-core/tests/test_ipc_contract_verification.rs`)**:
+  - Validates `ipc-contract.json` validity and structure.
+  - Automatically parses frontend `app.js` and verifies that every `invoke('...')` call corresponds to a declared command and adheres to required argument schemas.
+  - Mock IPC harness verifies range boundaries (e.g. strength `[0.0, 1.0]`, mic gain `[0.0, 2.0]`, sensitivity threshold `[-80.0, 0.0]`) and rejects unknown commands or illegal arguments.
+  - Verifies contract synchronization with `AppConfig` defaults.
+- **End-to-End Backend Controls Test Suite (`crates/quietmic-core/tests/test_backend_controls_e2e.rs`)**:
+  - Drives all 13 primary controls across the Rust backend: Master Power (bypass), 4 Modes (None, Light, Standard, MaxQuality), Strength Slider (0%, 50%, 100%), Auto-Sensitivity, AEC, Live Test (Cleaned/Original A/B switch), Self-Test, AEC Speaker Test, Echo Doctor, Close-to-Tray, and Start with Windows.
+  - Injects synthetic audio frames into `AudioPipeline` and asserts 0 pass-through frames during normal operation.
+- **Verification Results**:
+  - `cargo test -p quietmic-core --test test_ipc_contract_verification`: 5/5 tests passed in 0.01s.
+  - `cargo test -p quietmic-core --test test_backend_controls_e2e`: 1/1 test passed (Self-Test: 108.45 dB reduction, 100/100 frames processed, 0 pass-through).
+  - `cargo clippy --workspace -- -D warnings`: 0 warnings, 0 errors.
 
 ### Commit 51: Fix Screen Share Double Voice and Voice Echo in Echo Cancellation
 - **Speech-Aware Sidelobe Exclusion & Harmonic-Resistant Delay Locking (`crates/quietmic-core/src/engine/aec.rs`)**:

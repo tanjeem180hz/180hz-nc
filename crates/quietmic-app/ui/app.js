@@ -74,6 +74,7 @@ function mockInvoke(cmd, args) {
     case 'set_aec':
     case 'set_push_to_talk':
     case 'set_ptt_key':
+    case 'set_ptt_state':
     case 'set_theme':
     case 'set_close_to_tray':
     case 'set_start_with_windows':
@@ -970,7 +971,7 @@ function setupEventListeners() {
     if (isRecordingKey || !pttToggle.checked) return;
     if (isKeyMatchingPtt(e) && !isPttTransmitting) {
       updatePttStatus(true);
-      invoke('set_ptt_state', { transmitting: true }).catch(() => {});
+      invoke('set_ptt_state', { active: true }).catch(() => {});
     }
   });
 
@@ -978,7 +979,7 @@ function setupEventListeners() {
     if (isRecordingKey || !pttToggle.checked) return;
     if (isKeyMatchingPtt(e) && isPttTransmitting) {
       updatePttStatus(false);
-      invoke('set_ptt_state', { transmitting: false }).catch(() => {});
+      invoke('set_ptt_state', { active: false }).catch(() => {});
     }
   });
 

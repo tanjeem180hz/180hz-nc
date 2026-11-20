@@ -1,0 +1,331 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "180hz nc - IPC & Configuration Contract",
+  "version": "1.0.0",
+  "commands": {
+    "get_input_devices": {
+      "args": {},
+      "returns": "Result<Vec<AudioDeviceInfo>, String>"
+    },
+    "get_output_devices": {
+      "args": {},
+      "returns": "Result<Vec<AudioDeviceInfo>, String>"
+    },
+    "start_live_test": {
+      "args": {
+        "deviceName": "Option<String>"
+      },
+      "returns": "Result<(), String>"
+    },
+    "stop_live_test": {
+      "args": {},
+      "returns": "Result<(), String>"
+    },
+    "toggle_live_test": {
+      "args": {
+        "deviceName": "Option<String>"
+      },
+      "returns": "Result<bool, String>"
+    },
+    "set_output_device": {
+      "args": {
+        "name": "Option<String>"
+      },
+      "returns": "Result<(), String>"
+    },
+    "set_input_device": {
+      "args": {
+        "name": "Option<String>"
+      },
+      "returns": "Result<(), String>"
+    },
+    "set_mic_volume": {
+      "args": {
+        "volume": "f32"
+      },
+      "range": [0.0, 2.0],
+      "returns": "Result<(), String>"
+    },
+    "set_speaker_volume": {
+      "args": {
+        "volume": "f32"
+      },
+      "range": [0.0, 1.0],
+      "returns": "Result<(), String>"
+    },
+    "set_auto_sensitivity": {
+      "args": {
+        "enabled": "bool"
+      },
+      "returns": "Result<(), String>"
+    },
+    "set_sensitivity_threshold": {
+      "args": {
+        "threshold": "f32"
+      },
+      "range": [-80.0, 0.0],
+      "returns": "Result<(), String>"
+    },
+    "set_noise_mode": {
+      "args": {
+        "mode": "String"
+      },
+      "allowed": ["None", "Light", "Standard", "MaxQuality", "Krisp", "VoiceIsolation"],
+      "returns": "Result<(), String>"
+    },
+    "set_mode": {
+      "args": {
+        "mode": "String"
+      },
+      "allowed": ["None", "Light", "Standard", "MaxQuality", "Krisp", "VoiceIsolation"],
+      "returns": "Result<(), String>"
+    },
+    "set_push_to_talk": {
+      "args": {
+        "enabled": "bool"
+      },
+      "returns": "Result<(), String>"
+    },
+    "set_ptt_key": {
+      "args": {
+        "key": "String"
+      },
+      "returns": "Result<(), String>"
+    },
+    "set_ptt_state": {
+      "args": {
+        "active": "bool"
+      },
+      "returns": "Result<(), String>"
+    },
+    "set_live_test_ab": {
+      "args": {
+        "mode": "String"
+      },
+      "allowed": ["Original", "Cleaned"],
+      "returns": "Result<(), String>"
+    },
+    "set_live_test_volume": {
+      "args": {
+        "volume": "f32"
+      },
+      "range": [0.0, 1.0],
+      "returns": "Result<(), String>"
+    },
+    "get_live_test_status": {
+      "args": {},
+      "returns": "LiveMonitorStatus"
+    },
+    "run_pipeline_diagnostics": {
+      "args": {
+        "outputDir": "Option<String>"
+      },
+      "returns": "Result<String, String>"
+    },
+    "get_system_audio_diagnostics": {
+      "args": {},
+      "returns": "SystemAudioDiagnostic"
+    },
+    "run_pipeline_self_test_command": {
+      "args": {},
+      "returns": "SelfTestReport"
+    },
+    "run_aec_speaker_test_command": {
+      "args": {},
+      "returns": "AecSpeakerTestReport"
+    },
+    "run_echo_doctor_command": {
+      "args": {},
+      "returns": "EchoDoctorReport"
+    },
+    "get_virtual_status": {
+      "args": {},
+      "returns": "VirtualDeviceStatus"
+    },
+    "get_config": {
+      "args": {},
+      "returns": "AppConfig"
+    },
+    "get_engine_runtime_parameters": {
+      "args": {},
+      "returns": "EngineRuntimeParameters"
+    },
+    "set_strength": {
+      "args": {
+        "strength": "f32"
+      },
+      "range": [0.0, 1.0],
+      "returns": "Result<(), String>"
+    },
+    "set_bypass": {
+      "args": {
+        "bypass": "bool"
+      },
+      "returns": "Result<(), String>"
+    },
+    "set_aec": {
+      "args": {
+        "enabled": "bool"
+      },
+      "returns": "Result<(), String>"
+    },
+    "set_comfort_noise": {
+      "args": {
+        "enabled": "bool"
+      },
+      "returns": "Result<(), String>"
+    },
+    "set_speaker_denoise": {
+      "args": {
+        "enabled": "bool"
+      },
+      "returns": "Result<(), String>"
+    },
+    "set_muted": {
+      "args": {
+        "muted": "bool"
+      },
+      "returns": "Result<(), String>"
+    },
+    "set_autostart": {
+      "args": {
+        "enabled": "bool"
+      },
+      "returns": "Result<(), String>"
+    },
+    "get_metrics": {
+      "args": {},
+      "returns": "MetricsDto"
+    },
+    "set_theme": {
+      "args": {
+        "theme": "String"
+      },
+      "allowed": ["night-lab", "daylight", "amber-console", "dark", "light"],
+      "returns": "Result<(), String>"
+    },
+    "open_url": {
+      "args": {
+        "url": "String"
+      },
+      "returns": "()"
+    },
+    "set_close_to_tray": {
+      "args": {
+        "enabled": "bool"
+      },
+      "returns": "Result<(), String>"
+    },
+    "set_start_with_windows": {
+      "args": {
+        "enabled": "bool"
+      },
+      "returns": "Result<(), String>"
+    },
+    "get_autostart_status": {
+      "args": {},
+      "returns": "AutostartStatus"
+    },
+    "open_windows_startup_settings": {
+      "args": {},
+      "returns": "Result<(), String>"
+    },
+    "open_windows_taskbar_settings": {
+      "args": {},
+      "returns": "Result<(), String>"
+    }
+  },
+  "events": {
+    "show-tray-toast": {
+      "payload": "null"
+    }
+  },
+  "config": {
+    "mode": {
+      "type": "String",
+      "default": "Krisp",
+      "allowed": ["None", "Light", "Standard", "MaxQuality", "Krisp", "VoiceIsolation"]
+    },
+    "strength": {
+      "type": "f32",
+      "default": 1.0,
+      "range": [0.0, 1.0]
+    },
+    "bypass": {
+      "type": "bool",
+      "default": false
+    },
+    "aec_enabled": {
+      "type": "bool",
+      "default": false
+    },
+    "speaker_denoise": {
+      "type": "bool",
+      "default": false
+    },
+    "comfort_noise": {
+      "type": "bool",
+      "default": false
+    },
+    "selected_mic": {
+      "type": "Option<String>",
+      "default": null
+    },
+    "selected_speaker": {
+      "type": "Option<String>",
+      "default": null
+    },
+    "start_with_windows": {
+      "type": "bool",
+      "default": false
+    },
+    "global_hotkey": {
+      "type": "String",
+      "default": "Ctrl+Alt+N"
+    },
+    "muted": {
+      "type": "bool",
+      "default": false
+    },
+    "mic_volume": {
+      "type": "f32",
+      "default": 1.0,
+      "range": [0.0, 2.0]
+    },
+    "speaker_volume": {
+      "type": "f32",
+      "default": 1.0,
+      "range": [0.0, 1.0]
+    },
+    "auto_sensitivity": {
+      "type": "bool",
+      "default": true
+    },
+    "sensitivity_threshold": {
+      "type": "f32",
+      "default": -50.0,
+      "range": [-80.0, 0.0]
+    },
+    "push_to_talk": {
+      "type": "bool",
+      "default": false
+    },
+    "ptt_key": {
+      "type": "String",
+      "default": "Space"
+    },
+    "theme": {
+      "type": "String",
+      "default": "night-lab",
+      "allowed": ["night-lab", "daylight", "amber-console", "dark", "light"]
+    },
+    "close_to_tray": {
+      "type": "bool",
+      "default": true
+    },
+    "shown_tray_toast": {
+      "type": "bool",
+      "default": false
+    }
+  }
+}
