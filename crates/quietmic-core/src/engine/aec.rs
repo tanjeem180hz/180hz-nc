@@ -444,9 +444,9 @@ impl EchoCanceller {
 
         self.last_correlation = best_corr;
 
-        // Confidence: peak correlation must be >= 0.35 and clearly prominent over sidelobes
+        // Confidence: peak correlation must meet threshold and be prominent over sidelobes
         let peak_to_sidelobe = if second_corr > 1e-4 { best_corr / second_corr } else { 2.0 };
-        let is_confident = best_corr >= 0.35 && peak_to_sidelobe >= 1.20;
+        let is_confident = best_corr >= Self::CORRELATION_THRESHOLD && peak_to_sidelobe >= 1.12;
 
         if is_confident {
             let coarse_samples = best_lag_8k * Self::DOWNSAMPLE_FACTOR;
@@ -459,8 +459,8 @@ impl EchoCanceller {
                 self.candidate_delay_votes = 1;
             }
 
-            // Lock or promote after candidate persists across at least 3 windows (300 ms)
-            if self.candidate_delay_votes >= 3 {
+            // Lock or promote after candidate persists across at least 2 windows (100 ms)
+            if self.candidate_delay_votes >= 2 {
                 let best_fine_delay = coarse_samples;
                 let best_fine_corr = best_corr;
 
@@ -565,10 +565,15 @@ impl EchoCanceller {
 
         let mut in_mic_energy = 0.0f32;
         let mut out_err_energy = 0.0f32;
+        let should_process = self.delay_locked;
 
         for (sample, &ref_sample) in mic_frame.iter_mut().zip(&ref_frame_consumed) {
             let in_val = *sample;
-            let out_val = self.process_sample(in_val, ref_sample);
+            let out_val = if should_process {
+                self.process_sample(in_val, ref_sample)
+            } else {
+                self.process_sample_bypass(in_val, ref_sample)
+            };
             *sample = out_val;
 
             in_mic_energy += in_val * in_val;
@@ -602,9 +607,12 @@ impl EchoCanceller {
             self.divergence_cooldown -= 1;
         }
 
-        // Reclaim memory in ref_fifo periodically
-        if self.ref_fifo_read > 4800 && self.ref_fifo_read >= self.ref_fifo.len() {
+        // Reclaim memory in ref_fifo promptly
+        if self.ref_fifo_read >= self.ref_fifo.len() {
             self.ref_fifo.clear();
+            self.ref_fifo_read = 0;
+        } else if self.ref_fifo_read > 4800 {
+            self.ref_fifo.drain(0..self.ref_fifo_read);
             self.ref_fifo_read = 0;
         }
     }

@@ -257,6 +257,7 @@ impl AudioStreamController {
     pub fn start(
         device_manager: &DeviceManager,
         selected_mic_name: Option<&str>,
+        selected_speaker_name: Option<&str>,
         pipeline: AudioPipeline,
         speaker_pipeline: Option<AudioPipeline>,
         mut live_monitor_tap: Option<LiveMonitorTapProducers>,
@@ -428,21 +429,25 @@ impl AudioStreamController {
 
         // 3. AEC Reference Loopback Stream (captures real physical render device audio for echo cancellation)
         // Guard against selecting a virtual cable as reference, which would cause an echo loop!
-        let physical_speaker_dev = match device_manager.get_default_output_device() {
-            Ok(dev) => {
-                let name = dev.name().unwrap_or_else(|_| "Default Output".to_string());
-                let lower = name.to_lowercase();
-                if lower.contains("cable input") || (lower.contains("cable") && lower.contains("vb-audio")) || lower.contains("quietmic") {
-                    tracing::warn!("Default output device is virtual cable ('{}'). AEC loopback must not capture virtual cable!", name);
-                    metrics.loop_warning_active.store(true, Ordering::Relaxed);
-                    // Search for a real physical device (e.g. Speakers, Headphones)
-                    device_manager.get_monitoring_output_device(None).ok()
-                } else {
-                    metrics.loop_warning_active.store(false, Ordering::Relaxed);
-                    Some(dev)
+        let physical_speaker_dev = if let Some(spk_target) = selected_speaker_name {
+            device_manager.get_monitoring_output_device(Some(spk_target)).ok()
+        } else {
+            match device_manager.get_default_output_device() {
+                Ok(dev) => {
+                    let name = dev.name().unwrap_or_else(|_| "Default Output".to_string());
+                    let lower = name.to_lowercase();
+                    if lower.contains("cable input") || (lower.contains("cable") && lower.contains("vb-audio")) || lower.contains("quietmic") {
+                        tracing::warn!("Default output device is virtual cable ('{}'). AEC loopback must not capture virtual cable!", name);
+                        metrics.loop_warning_active.store(true, Ordering::Relaxed);
+                        // Search for a real physical device (e.g. Speakers, Headphones)
+                        device_manager.get_monitoring_output_device(None).ok()
+                    } else {
+                        metrics.loop_warning_active.store(false, Ordering::Relaxed);
+                        Some(dev)
+                    }
                 }
+                Err(_) => device_manager.get_monitoring_output_device(None).ok(),
             }
-            Err(_) => None,
         };
 
         let (ref_stream, mut ref_cons) = if let Some(speaker_dev) = physical_speaker_dev {
@@ -583,8 +588,8 @@ impl AudioStreamController {
                 let in_chunk_samples = ((mic_sample_rate as usize) / 100).max(1);
                 let mut in_chunk = vec![0.0f32; in_chunk_samples];
                 let mut out_chunk = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES + 10);
-                let mut ref_scratch = [0.0f32; AudioPipeline::FRAME_SAMPLES];
-                let mut ref_resampled = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES * 2);
+                let mut ref_drain_buf = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES * 4);
+                let mut ref_resampled = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES * 4);
                 let ref_sr = worker_metrics.aec_ref_sample_rate.load(Ordering::Relaxed).max(8000);
                 let mut ref_resampler = AudioResampler::new(ref_sr, AudioPipeline::INTERNAL_RATE, AudioPipeline::FRAME_SAMPLES).ok();
                 let mut starvation_counter = 0usize;
@@ -610,43 +615,33 @@ impl AudioStreamController {
 
                     // Drain AEC reference samples with continuous sample clock:
                     if let Some(ref mut r_cons) = ref_cons {
-                        let mut count = 0;
+                        ref_drain_buf.clear();
                         let mut ref_peak = 0.0f32;
-                        while count < AudioPipeline::FRAME_SAMPLES {
-                            if let Some(s) = r_cons.try_pop() {
-                                ref_scratch[count] = s;
-                                let abs_s = s.abs();
-                                if abs_s > ref_peak {
-                                    ref_peak = abs_s;
-                                }
-                                count += 1;
-                            } else {
+                        while let Some(s) = r_cons.try_pop() {
+                            ref_drain_buf.push(s);
+                            let abs_s = s.abs();
+                            if abs_s > ref_peak {
+                                ref_peak = abs_s;
+                            }
+                            if ref_drain_buf.len() >= 3840 {
                                 break;
                             }
                         }
 
-                        // Exact silence padding if WASAPI loopback callback paused during render silence
-                        ref_scratch[count..AudioPipeline::FRAME_SAMPLES].fill(0.0);
-
-                        // Adaptive Clock Drift Compensation & Backlog Management:
-                        // Normal backlog is 0 to 480 samples (0 to 10 ms jitter buffer).
-                        // If backlog exceeds 4800 samples (100 ms), gently pop 1 extra sample.
-                        let backlog = r_cons.occupied_len();
-                        if backlog > 4800 {
-                            let _ = r_cons.try_pop();
-                        }
-
                         if aec_en {
-                            let feed_slice = if let Some(ref mut rs) = ref_resampler {
-                                if rs.process(&ref_scratch, &mut ref_resampled).is_ok() && !ref_resampled.is_empty() {
-                                    &ref_resampled[..]
+                            if !ref_drain_buf.is_empty() {
+                                let feed_slice = if let Some(ref mut rs) = ref_resampler {
+                                    if rs.process(&ref_drain_buf, &mut ref_resampled).is_ok() && !ref_resampled.is_empty() {
+                                        &ref_resampled[..]
+                                    } else {
+                                        &ref_drain_buf[..]
+                                    }
                                 } else {
-                                    &ref_scratch[..]
-                                }
-                            } else {
-                                &ref_scratch[..]
-                            };
-                            worker_pipeline.feed_aec_reference(feed_slice);
+                                    &ref_drain_buf[..]
+                                };
+                                worker_pipeline.feed_aec_reference(feed_slice);
+                            }
+
                             let ref_db = if ref_peak > 1e-5 { 20.0 * ref_peak.log10() } else { -100.0 };
                             worker_metrics.aec_ref_peak_db.store(ref_db.to_bits(), Ordering::Relaxed);
                             worker_metrics.aec_frames_processed.fetch_add(1, Ordering::Relaxed);
@@ -659,10 +654,12 @@ impl AudioStreamController {
                             worker_metrics.aec_divergence_resets.store(worker_pipeline.aec().filter_divergence_resets(), Ordering::Relaxed);
                         } else {
                             worker_metrics.aec_ref_peak_db.store((-100.0f32).to_bits(), Ordering::Relaxed);
-                            worker_metrics.aec_bypassed_frames.store(worker_pipeline.aec().bypassed_frames(), Ordering::Relaxed);
-                            worker_metrics.aec_bypass_reason.store(worker_pipeline.aec().bypass_reason_code(), Ordering::Relaxed);
-                            worker_metrics.aec_divergence_resets.store(worker_pipeline.aec().filter_divergence_resets(), Ordering::Relaxed);
+                            worker_metrics.aec_bypass_reason.store(5, Ordering::Relaxed); // Disabled
                         }
+                    } else if aec_en {
+                        worker_metrics.aec_bypass_reason.store(4, Ordering::Relaxed); // Stream Error (No reference device)
+                    } else {
+                        worker_metrics.aec_bypass_reason.store(5, Ordering::Relaxed); // Disabled
                     }
 
                     if in_cons.occupied_len() >= in_chunk_samples {

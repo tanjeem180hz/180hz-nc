@@ -127,9 +127,12 @@ fn toggle_live_test(device_name: Option<String>, state: State<AppState>) -> Resu
 
 #[tauri::command]
 fn set_output_device(name: Option<String>, state: State<AppState>) -> Result<(), String> {
-    let mut cfg = state.config.lock();
-    cfg.selected_speaker = name.clone();
-    let _ = cfg.save();
+    let cfg = {
+        let mut c = state.config.lock();
+        c.selected_speaker = name.clone();
+        let _ = c.save();
+        c.clone()
+    };
 
     let mut monitor = state.live_monitor.lock();
     if monitor.get_status().is_active {
@@ -137,7 +140,10 @@ fn set_output_device(name: Option<String>, state: State<AppState>) -> Result<(),
         monitor.set_volume(vol);
         let _ = monitor.start(&state.device_manager, name.as_deref());
     }
-    Ok(())
+    drop(monitor);
+
+    // Reconfigure audio stream so AEC reference loopback binds to newly selected output device
+    restart_audio_stream(&state, &cfg)
 }
 
 #[tauri::command]
@@ -406,11 +412,20 @@ fn set_input_device(name: Option<String>, state: State<AppState>) -> Result<(), 
 
 #[tauri::command]
 fn set_aec(enabled: bool, state: State<AppState>) -> Result<(), String> {
-    let mut cfg = state.config.lock();
-    cfg.aec_enabled = enabled;
-    let _ = cfg.save();
+    {
+        let mut cfg = state.config.lock();
+        cfg.aec_enabled = enabled;
+        let _ = cfg.save();
+    }
+    tracing::info!("Settings -> Engine: aec_enabled={}", enabled);
 
-    restart_audio_stream(&state, &cfg)
+    if let Some(ref ctrl) = *state.stream_controller.lock() {
+        ctrl.set_aec_enabled(enabled);
+        Ok(())
+    } else {
+        let cfg = state.config.lock().clone();
+        restart_audio_stream(&state, &cfg)
+    }
 }
 
 #[tauri::command]
@@ -615,7 +630,14 @@ fn restart_audio_stream(state: &AppState, cfg: &AppConfig) -> Result<(), String>
 
     let live_tap = state.live_monitor.lock().create_new_tap();
 
-    match AudioStreamController::start(&state.device_manager, cfg.selected_mic.as_deref(), pipeline, speaker_pipe, Some(live_tap)) {
+    match AudioStreamController::start(
+        &state.device_manager,
+        cfg.selected_mic.as_deref(),
+        cfg.selected_speaker.as_deref(),
+        pipeline,
+        speaker_pipe,
+        Some(live_tap),
+    ) {
         Ok(ctrl) => {
             *stream_lock = Some(ctrl);
             Ok(())
@@ -778,7 +800,14 @@ fn main() {
     let (live_monitor, live_tap) = LiveMonitorController::new();
     live_monitor.set_volume(config.speaker_volume);
 
-    let initial_controller = match AudioStreamController::start(&device_manager, config.selected_mic.as_deref(), pipeline, speaker_pipe, Some(live_tap)) {
+    let initial_controller = match AudioStreamController::start(
+        &device_manager,
+        config.selected_mic.as_deref(),
+        config.selected_speaker.as_deref(),
+        pipeline,
+        speaker_pipe,
+        Some(live_tap),
+    ) {
         Ok(ctrl) => Some(ctrl),
         Err(err) => {
             tracing::warn!("Standby mode: Audio device not ready on launch: {}", err);

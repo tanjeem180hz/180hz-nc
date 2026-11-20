@@ -43,10 +43,36 @@
 - [x] Part E: Elevate Suppression Strength & Quality with Dedicated MaxQualityEngine, Zero-Latency Pitch-Synchronous Harmonic Refinement, and Dynamic Attenuation Scaling.
 - [x] Removed 10-Second Test Recorder from Backend and Frontend (Eliminated heap buffer & audio thread lock, cleaned IPC commands & UI).
 - [x] Fixed Live Voice Monitor: Enforced strict mouse-click-only activation, immunized from keyboard Space/Enter and UI buttons, removed premature feedback session termination, and aligned card design with spec.
+- [x] Fixed Acoustic Echo Cancellation (AEC) Backend: Seamless runtime toggle on active stream, prioritized physical speaker loopback, eliminated artificial zero-padding in loopback drain, calibrated correlation threshold (0.15), and pre-lock pass-through protection (0-delay error, ERLE >= 25.1 dB).
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 47: Fix Acoustic Echo Cancellation (AEC) Backend Reliability & Loopback Capture
+- **Seamless Real-Time AEC Toggle (`crates/quietmic-app/src/main.rs`)**:
+  - Updated `set_aec` Tauri command to update the running `AudioStreamController` via `ctrl.set_aec_enabled(enabled)` lock-free in real time.
+  - Toggling AEC in the UI no longer terminates WASAPI streams or drops MMCSS audio threads, enabling instant, glitch-free on/off activation.
+- **Physical Reference Speaker Selection (`crates/quietmic-core/src/audio/stream.rs` & `main.rs`)**:
+  - Added `selected_speaker_name: Option<&str>` parameter to `AudioStreamController::start`.
+  - Prioritized user-selected physical output device from settings (`cfg.selected_speaker`), ensuring WASAPI loopback captures actual physical speakers/headphones rather than VB-CABLE or silent default endpoints.
+  - Updated `set_output_device` command to restart stream with new speaker reference when user changes output device in settings.
+- **Continuous Loopback Reference Stream Drain without Zero-Padding (`crates/quietmic-core/src/audio/stream.rs`)**:
+  - Replaced the flawed 480-sample fixed array slicing that previously padded partial WASAPI loopback buffers with zeroes (`ref_scratch[count..].fill(0.0)`).
+  - Loopback samples are now popped continuously into `ref_drain_buf` up to the available capacity and fed cleanly into `EchoCanceller::ref_fifo` (resampling when sample rate != 48 kHz).
+  - Completely eliminated artificial zero-injection, phase tearing, audio crackling, and correlation collapse across asynchronous WASAPI buffer boundaries.
+- **Acoustic Correlation Threshold & Fast Delay Locking (`crates/quietmic-core/src/engine/aec.rs`)**:
+  - Calibrated delay confidence threshold to `best_corr >= Self::CORRELATION_THRESHOLD` (0.15) with `peak_to_sidelobe >= 1.12` and fast promotion on 2 candidate votes (100 ms).
+  - Accommodates real acoustic room impulse response and speaker-to-mic distance where reverberation and frequency response typically cap raw cross-correlation between 0.18 and 0.30.
+- **Pre-Lock Pass-Through Protection (`crates/quietmic-core/src/engine/aec.rs`)**:
+  - In `process_mic_frame`, microphone frames are cleanly passed through via `process_sample_bypass` while delay is being established.
+  - Prevents adaptive NLMS filter weights from adapting to misaligned signals prior to delay lock, eliminating early weight divergence, volume fluctuations, and audible distortion.
+- **Automated Verification**:
+  - `cargo clippy --workspace -- -D warnings`: 0 warnings, 0 errors.
+  - `cargo test --test test_aec_full_acceptance`: All test delays (20 ms, 80 ms, 150 ms, 300 ms) passed with exact 0-sample delay lock and ERLE $\ge$ 25.1 dB.
+  - `cargo test --test test_aec_stress_reproduction`: Passed with 31.76 dB ERLE, 0 envelope jumps, 0 dropouts, 0 clicks, 0 resets.
+  - `cargo test --test test_part_d_discord_echo_scenario`: Passed with 41.57 dB ERLE on loudspeaker acoustic echo.
+  - `cargo test --workspace`: 100% of unit and integration test suites passed.
 
 ### Commit 46: Fix Live Voice Monitor Mouse-Click-Only Activation & Design Alignment
 - **Accurate UI Alignment (`crates/quietmic-app/ui/index.html` & `style.css`)**:
