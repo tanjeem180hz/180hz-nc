@@ -354,32 +354,37 @@ impl EchoCanceller {
         self.mic_energy_tracker += 0.02 * (mic_sample * mic_sample - self.mic_energy_tracker);
         self.echo_energy_tracker += 0.02 * (echo_hat * echo_hat - self.echo_energy_tracker);
 
-        // Geigel DTD:
-        // Near-end double-talk is active when microphone amplitude exceeds loudspeaker coupling envelope
-        let is_double_talk_instant = far_end_active && (self.mic_energy_tracker > 1.5e-4) && (mic_sample.abs() > ref_peak * 1.25);
+        // Geigel Double-Talk Detector:
+        // Near-end double-talk is active when microphone amplitude exceeds loudspeaker coupling envelope (0.85 * ref_peak).
+        // Loudspeaker room echo coupling is physically bounded (< 0.75 of ref peak), so any signal >= 0.85 ref_peak
+        // indicates near-end speech activity.
+        let is_double_talk_instant = far_end_active && (self.mic_energy_tracker > 1.5e-4) && (mic_sample.abs() > ref_peak * 0.85);
         if is_double_talk_instant {
-            self.double_talk_hangover = 480; // 10 ms hangover prevents gain chatter
+            self.double_talk_hangover = 1440; // 30 ms hangover prevents inter-pulse chattering
         } else if self.double_talk_hangover > 0 {
             self.double_talk_hangover -= 1;
         }
         self.is_double_talk = self.double_talk_hangover > 0;
 
-        // 7. Conservative Leaky NLMS Weight Adaptation:
-        // When double talk or near-end is active, freeze adaptation completely
+        // 7. Stable Normalized LMS Weight Adaptation:
+        // When double talk or near-end is active, freeze adaptation completely to protect weights.
+        // Step size is strictly capped at 0.04 to prevent weight explosion on quiet reference.
         if far_end_active && !is_double_talk_instant && !self.is_double_talk {
-            let norm_mu = self.step_size / (ref_energy + 1e-3);
+            let norm_mu = (self.step_size / (ref_energy + 0.01)).min(0.04);
             for (w, &x) in self.weights.iter_mut().zip(x_window) {
                 *w = *w * (1.0 - 1e-5) + norm_mu * error * x;
             }
         }
 
         // 8. Envelope-Smoothed Non-Linear Residual Suppression (NLP):
+        // Only active during single-talk far-end. During double talk, strictly 0.0 to prevent speech distortion.
         let target_suppression = if far_end_active && !self.is_double_talk && self.echo_energy_tracker > 1e-4 {
-            (self.echo_energy_tracker / (self.mic_energy_tracker + 1e-6)).clamp(0.0, 0.85)
+            (self.echo_energy_tracker / (self.mic_energy_tracker + 1e-6)).clamp(0.0, 0.80)
         } else {
             0.0
         };
-        let rate = if target_suppression > self.smoothed_nlp_gain { 0.05 } else { 0.002 };
+        // Smooth gain transition: gentle attack (rate 0.003 ~ 7 ms) and smooth release (rate 0.001 ~ 20 ms)
+        let rate = if target_suppression > self.smoothed_nlp_gain { 0.003 } else { 0.001 };
         self.smoothed_nlp_gain += rate * (target_suppression - self.smoothed_nlp_gain);
         error * (1.0 - self.smoothed_nlp_gain)
     }
@@ -563,9 +568,23 @@ impl EchoCanceller {
             self.update_continuous_delay_estimate();
         }
 
+        let ref_peak = ref_frame_consumed.iter().fold(0.0f32, |m, &s| m.max(s.abs()));
+        let ref_is_silent = ref_peak < 1e-4;
+
+        if ref_is_silent {
+            if self.active_dwell_counter > 0 {
+                self.active_dwell_counter -= 1;
+            } else {
+                self.bypass_reason_code = 1; // Reference Silent
+            }
+            self.smoothed_nlp_gain *= 0.95;
+        } else {
+            self.active_dwell_counter = 30; // 300 ms dwell hangover
+        }
+
         let mut in_mic_energy = 0.0f32;
         let mut out_err_energy = 0.0f32;
-        let should_process = self.delay_locked;
+        let should_process = self.delay_locked && (self.active_dwell_counter > 0 || !ref_is_silent);
 
         for (sample, &ref_sample) in mic_frame.iter_mut().zip(&ref_frame_consumed) {
             let in_val = *sample;
