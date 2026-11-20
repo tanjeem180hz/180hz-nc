@@ -4,6 +4,7 @@
 *.pdb
 *.obj
 *.exe
+!release/*.exe
 
 # Audio test outputs & models
 *.wav

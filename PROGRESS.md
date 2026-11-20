@@ -50,10 +50,24 @@
 - [x] Fixed Screen Share Double Voice & Voice Echo: Widened vocal pitch exclusion window in delay estimator to isolate speech harmonics, enabled multi-window candidate persistence locking, auto-stopped Live Voice Monitor on minimize/hide-to-tray to protect desktop audio stream, verified 28.72 dB ERLE with 0.07 dB speech delta, and generated A/B proof WAVs in `ab_samples/`.
 - [x] Backend Safety Contract & Automated IPC Verification: Generated `ipc-contract.json`, created automated contract test verifying all commands, arguments, types, ranges, and frontend invoke calls, aligned `set_ptt_state` parameter, and added full E2E backend controls test suite.
 - [x] Soft Glass Theme Implementation & Multi-DPI Verification: Restyled frontend with design tokens in `theme-soft-glass.css`, bundled local Inter woff2 typography (OFL-1.1), implemented 4-tab calm navigation, "Reduce effects" mode with automatic fallback, 15 fps meter throttling, 0% CPU idle throttling, verified zero console errors across CDP smoke tests, and captured 25 screenshots at 100%, 150%, and 200% DPI.
+- [x] Official Release Packaging: Rebuilt release binaries with the embedded Soft Glass theme and local fonts (`180hz-nc.exe` standalone and `180hz-nc-setup.exe` all-in-one installer), created `release/` distribution directory with `SHA256SUMS.txt`, configured `.gitignore` to track release binaries, and added direct repository download links in `README.md`.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 54: Package Latest Release Binaries and Checksums in release/
+- **Production Build & Asset Embedding**:
+  - Rebuilt `quietmic-app` in release mode (`cargo build --release -p quietmic-app`) embedding `theme-soft-glass.css`, 4 local Inter WOFF2 fonts, and updated tab structure.
+  - Rebuilt `quietmic-installer` in release mode (`cargo build --release -p quietmic-installer`), packaging the updated application executable and VB-CABLE driver into `180hz-nc-setup.exe`.
+- **Release Distribution Directory (`release/`)**:
+  - `release/180hz-nc.exe` (8,295,936 bytes) — Portable standalone executable.
+  - `release/180hz-nc-setup.exe` (10,424,320 bytes) — Turnkey installer with bundled virtual audio driver.
+  - `release/SHA256SUMS.txt` — Cryptographic SHA-256 verification hashes for both executables.
+  - `release/README.md` — Release documentation with package descriptions and PowerShell hash verification instructions.
+- **Git Ignore & Repository Integration**:
+  - Added `!release/*.exe` to `.gitignore` to track official release binaries in version control.
+  - Updated `README.md` download links with direct repository links (`raw/main/release/...`) and updated file sizes.
 
 ### Commit 53: Implement "Soft Glass" Design System, Local Typography, and Performance Fallbacks
 - **Soft Glass Design Tokens (`crates/quietmic-app/ui/theme-soft-glass.css`)**:

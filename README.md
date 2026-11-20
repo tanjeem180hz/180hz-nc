@@ -13,9 +13,9 @@
 ### 📥 Available Packages:
 | Package | File | Description | Download |
 | :--- | :--- | :--- | :---: |
-| **All-in-One Installer (Recommended)** | `180hz-nc-setup.exe` (8.7 MB) | **Turnkey setup:** Installs 180hz nc + bundled Virtual Audio Cable Driver (VB-CABLE) + Start Menu & Desktop shortcuts. Everything needed to run out-of-the-box is included. | [**Direct Download**](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/180hz-nc-setup.exe) |
-| **Portable Executable** | `180hz-nc.exe` (7.3 MB) | **Zero install:** Standalone executable with embedded UI, DSP, and AI models. Run directly from any folder or USB drive. | [**Direct Download**](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/180hz-nc.exe) |
-| **Release Page** | `v1.0.0 Release` | Full release notes, checksums, benchmark reports, and source archives. | [**View Releases**](https://github.com/tanjeem180hz/180hz-nc/releases) |
+| **All-in-One Installer (Recommended)** | `180hz-nc-setup.exe` (9.9 MB) | **Turnkey setup:** Installs 180hz nc + bundled Virtual Audio Cable Driver (VB-CABLE) + Start Menu & Desktop shortcuts. Everything needed to run out-of-the-box is included. | [**Direct Download (Repo)**](https://github.com/tanjeem180hz/180hz-nc/raw/main/release/180hz-nc-setup.exe) · [GitHub Release](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/180hz-nc-setup.exe) |
+| **Portable Executable** | `180hz-nc.exe` (7.9 MB) | **Zero install:** Standalone executable with embedded UI, DSP, and AI models. Run directly from any folder or USB drive. | [**Direct Download (Repo)**](https://github.com/tanjeem180hz/180hz-nc/raw/main/release/180hz-nc.exe) · [GitHub Release](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/180hz-nc.exe) |
+| **Release Folder** | `release/` | Official binaries, SHA256 checksums, and verification instructions. | [**Browse Release Folder**](release/) |
 
 ---
 
