@@ -24,7 +24,7 @@ function mockInvoke(cmd, args) {
   switch (cmd) {
     case 'get_config':
       return Promise.resolve({
-        mode: 'Krisp',
+        mode: 'MaxQuality',
         strength: 1.0,
         bypass: false,
         aec_enabled: false,
@@ -34,7 +34,7 @@ function mockInvoke(cmd, args) {
         sensitivity_threshold: -50.0,
         push_to_talk: false,
         ptt_key: 'Space',
-        theme: 'night-lab',
+        theme: 'dark',
       });
     case 'get_input_devices':
       return Promise.resolve([
@@ -242,9 +242,9 @@ async function init() {
     populateDevices(inputDevs || [], outputDevs || [], cfg);
     applyConfig(cfg);
 
-    if (urlParams.get('modal') === 'echo-doctor') {
+    if (urlParams.get('modal') === 'echo-doctor' && echoDoctorBtn) {
       echoDoctorBtn.click();
-    } else if (urlParams.get('modal') === 'pipeline') {
+    } else if (urlParams.get('modal') === 'pipeline' && pipelineSelfTestBtn) {
       pipelineSelfTestBtn.click();
     }
 
@@ -376,23 +376,29 @@ function applyConfig(cfg) {
 
   // Auto-Sensitivity
   const isAutoSens = cfg.auto_sensitivity !== false;
-  autoSensitivityToggle.checked = isAutoSens;
-  manualSensitivitySection.classList.toggle('disabled', isAutoSens);
-  sensitivitySlider.disabled = isAutoSens;
+  if (autoSensitivityToggle) autoSensitivityToggle.checked = isAutoSens;
+  if (manualSensitivitySection) {
+    manualSensitivitySection.classList.toggle('disabled', isAutoSens);
+    manualSensitivitySection.style.display = isAutoSens ? 'none' : 'block';
+  }
+  if (sensitivitySlider) sensitivitySlider.disabled = isAutoSens;
   const thresh = Math.round(cfg.sensitivity_threshold !== undefined ? cfg.sensitivity_threshold : -50);
-  sensitivitySlider.value = thresh;
-  sensitivityText.textContent = `${thresh} dB`;
+  if (sensitivitySlider) sensitivitySlider.value = thresh;
+  if (sensitivityText) sensitivityText.textContent = `${thresh} dB`;
 
   // AEC
-  aecToggle.checked = !!cfg.aec_enabled;
-  aecDetails.style.display = cfg.aec_enabled ? 'flex' : 'none';
+  if (aecToggle) aecToggle.checked = !!cfg.aec_enabled;
+  if (aecDetails) aecDetails.style.display = cfg.aec_enabled ? 'flex' : 'none';
 
   // Push to Talk
   const isPtt = !!cfg.push_to_talk;
-  pttToggle.checked = isPtt;
-  pttControls.classList.toggle('disabled', !isPtt);
+  if (pttToggle) pttToggle.checked = isPtt;
+  if (pttControls) {
+    pttControls.classList.toggle('disabled', !isPtt);
+    pttControls.style.display = isPtt ? 'block' : 'none';
+  }
   currentPttKey = cfg.ptt_key || 'Space';
-  pttKeyBtn.textContent = currentPttKey;
+  if (pttKeyBtn) pttKeyBtn.textContent = currentPttKey;
   updatePttStatus(false);
 
   // Preferences
@@ -415,18 +421,22 @@ function updateMasterPowerUI(bypassed) {
     masterPowerText.textContent = 'Bypassed';
 
     engineStatusPill.className = 'status-pill bypassed';
-    engineStatusText.textContent = 'Pass-Through (Bypass)';
-    noiseReductionBadge.className = 'auto-badge';
-    noiseReductionBadge.textContent = 'Bypassed';
+    engineStatusText.textContent = 'Bypassed';
+    if (noiseReductionBadge) {
+      noiseReductionBadge.className = 'auto-badge';
+      noiseReductionBadge.textContent = 'Bypassed';
+    }
   } else {
     masterPowerBtn.classList.remove('bypassed');
     masterPowerBtn.classList.add('active');
     masterPowerText.textContent = 'Active';
 
     engineStatusPill.className = 'status-pill active';
-    engineStatusText.textContent = `${currentMode === 'MaxQuality' ? 'Max Quality' : currentMode} Active`;
-    noiseReductionBadge.className = 'auto-badge badge-active';
-    noiseReductionBadge.textContent = 'Active (0 dB)';
+    engineStatusText.textContent = 'Active';
+    if (noiseReductionBadge) {
+      noiseReductionBadge.className = 'auto-badge badge-active';
+      noiseReductionBadge.textContent = 'Active';
+    }
   }
 }
 
@@ -453,7 +463,9 @@ function updateNoiseModeUI(mode) {
     updateMasterPowerUI(true);
   } else {
     updateMasterPowerUI(false);
-    engineStatusText.textContent = `${mode === 'MaxQuality' ? 'Max Quality' : mode} Active`;
+    if (engineStatusText) {
+      engineStatusText.textContent = 'Active';
+    }
   }
 }
 
@@ -530,15 +542,20 @@ async function pollMetrics() {
     lastClippingCount = metrics.clipping_count || 0;
 
     // Noise Reduction Badge
-    if (!isBypassed) {
-      const nrDb = Math.round(metrics.noise_reduction_db || 0);
-      noiseReductionBadge.textContent = `Active (${nrDb > 0 ? `-${nrDb}` : '0'} dB)`;
+    if (!isBypassed && noiseReductionBadge) {
+      noiseReductionBadge.textContent = 'Active';
     }
 
-    // DSP Telemetry
-    framesProcessedText.textContent = (metrics.frames_processed || 0).toLocaleString();
-    framesPassthroughText.textContent = (metrics.frames_passthrough || 0).toLocaleString();
-    dspLatencyText.textContent = `${metrics.dsp_latency_us || 0} µs`;
+    // DSP Telemetry (Safe if hidden)
+    if (framesProcessedText) {
+      framesProcessedText.textContent = (metrics.frames_processed || 0).toLocaleString();
+    }
+    if (framesPassthroughText) {
+      framesPassthroughText.textContent = (metrics.frames_passthrough || 0).toLocaleString();
+    }
+    if (dspLatencyText) {
+      dspLatencyText.textContent = `${metrics.dsp_latency_us || 0} µs`;
+    }
 
     // Footer
     if (metrics.cpu_usage_pct !== undefined) {
@@ -747,27 +764,38 @@ function setupEventListeners() {
   }
 
   // Auto-Sensitivity
-  autoSensitivityToggle.addEventListener('change', () => {
-    const isAuto = autoSensitivityToggle.checked;
-    manualSensitivitySection.classList.toggle('disabled', isAuto);
-    sensitivitySlider.disabled = isAuto;
-    invoke('set_auto_sensitivity', { enabled: isAuto }).catch((e) => console.error('Failed to set auto-sens:', e));
-  });
+  if (autoSensitivityToggle) {
+    autoSensitivityToggle.addEventListener('change', () => {
+      const isAuto = autoSensitivityToggle.checked;
+      if (manualSensitivitySection) {
+        manualSensitivitySection.classList.toggle('disabled', isAuto);
+        manualSensitivitySection.style.display = isAuto ? 'none' : 'block';
+      }
+      if (sensitivitySlider) {
+        sensitivitySlider.disabled = isAuto;
+      }
+      invoke('set_auto_sensitivity', { enabled: isAuto }).catch((e) => console.error('Failed to set auto-sens:', e));
+    });
+  }
 
-  sensitivitySlider.addEventListener('input', () => {
-    sensitivityText.textContent = `${sensitivitySlider.value} dB`;
-  });
-  sensitivitySlider.addEventListener('change', () => {
-    const threshold = parseFloat(sensitivitySlider.value);
-    invoke('set_sensitivity_threshold', { threshold }).catch((e) => console.error('Failed to set threshold:', e));
-  });
+  if (sensitivitySlider) {
+    sensitivitySlider.addEventListener('input', () => {
+      if (sensitivityText) sensitivityText.textContent = `${sensitivitySlider.value} dB`;
+    });
+    sensitivitySlider.addEventListener('change', () => {
+      const threshold = parseFloat(sensitivitySlider.value);
+      invoke('set_sensitivity_threshold', { threshold }).catch((e) => console.error('Failed to set threshold:', e));
+    });
+  }
 
   // Echo Cancellation (AEC)
-  aecToggle.addEventListener('change', () => {
-    const en = aecToggle.checked;
-    aecDetails.style.display = en ? 'flex' : 'none';
-    invoke('set_aec', { enabled: en }).catch((e) => console.error('Failed to set aec:', e));
-  });
+  if (aecToggle) {
+    aecToggle.addEventListener('change', () => {
+      const en = aecToggle.checked;
+      if (aecDetails) aecDetails.style.display = en ? 'flex' : 'none';
+      invoke('set_aec', { enabled: en }).catch((e) => console.error('Failed to set aec:', e));
+    });
+  }
 
   if (aecTestBtn) {
     aecTestBtn.addEventListener('click', async () => {
@@ -787,126 +815,143 @@ function setupEventListeners() {
   }
 
   // Echo Doctor Modal
-  echoDoctorBtn.addEventListener('click', async () => {
-    echoDoctorModal.style.display = 'flex';
-    doctorSeverityBanner.className = 'doctor-banner banner-clean';
-    doctorSeverityIcon.textContent = '⏳';
-    doctorSeverityText.textContent = 'Auditing audio routing...';
-    doctorExplanation.textContent = 'Inspecting Windows audio endpoints, virtual cable loops, and communication routes...';
-    doctorFixSection.style.display = 'none';
+  if (echoDoctorBtn) {
+    echoDoctorBtn.addEventListener('click', async () => {
+      if (echoDoctorModal) echoDoctorModal.style.display = 'flex';
+      if (doctorSeverityBanner) doctorSeverityBanner.className = 'doctor-banner banner-clean';
+      if (doctorSeverityIcon) doctorSeverityIcon.textContent = '⏳';
+      if (doctorSeverityText) doctorSeverityText.textContent = 'Auditing audio routing...';
+      if (doctorExplanation) doctorExplanation.textContent = 'Inspecting Windows audio endpoints, virtual cable loops, and communication routes...';
+      if (doctorFixSection) doctorFixSection.style.display = 'none';
 
-    try {
-      const report = await invoke('run_echo_doctor_command');
-      const sev = report.loop_severity || 'CLEAN';
+      try {
+        const report = await invoke('run_echo_doctor_command');
+        const sev = report.loop_severity || 'CLEAN';
 
-      if (sev === 'FEEDBACK_LOOP' || sev === 'Loop') {
-        doctorSeverityBanner.className = 'doctor-banner banner-loop';
-        doctorSeverityIcon.textContent = '🚨';
-        doctorSeverityText.textContent = 'Feedback Loop Detected!';
-      } else if (sev === 'WARNING' || sev === 'Warning') {
-        doctorSeverityBanner.className = 'doctor-banner banner-warning';
-        doctorSeverityIcon.textContent = '⚠️';
-        doctorSeverityText.textContent = 'Routing Loop Warning';
-      } else {
-        doctorSeverityBanner.className = 'doctor-banner banner-clean';
-        doctorSeverityIcon.textContent = '✅';
-        doctorSeverityText.textContent = 'Clean Audio Routing';
+        if (doctorSeverityBanner && doctorSeverityIcon && doctorSeverityText) {
+          if (sev === 'FEEDBACK_LOOP' || sev === 'Loop') {
+            doctorSeverityBanner.className = 'doctor-banner banner-loop';
+            doctorSeverityIcon.textContent = '🚨';
+            doctorSeverityText.textContent = 'Feedback Loop Detected!';
+          } else if (sev === 'WARNING' || sev === 'Warning') {
+            doctorSeverityBanner.className = 'doctor-banner banner-warning';
+            doctorSeverityIcon.textContent = '⚠️';
+            doctorSeverityText.textContent = 'Routing Loop Warning';
+          } else {
+            doctorSeverityBanner.className = 'doctor-banner banner-clean';
+            doctorSeverityIcon.textContent = '✅';
+            doctorSeverityText.textContent = 'Clean Audio Routing';
+          }
+        }
+
+        if (doctorExplanation) doctorExplanation.textContent = report.plain_explanation || 'Audio routing is optimal.';
+
+        if (doctorFixSection && doctorFixList && report.recommended_actions && report.recommended_actions.length > 0) {
+          doctorFixSection.style.display = 'block';
+          doctorFixList.innerHTML = '';
+          report.recommended_actions.forEach((fix) => {
+            const li = document.createElement('li');
+            li.textContent = fix;
+            doctorFixList.appendChild(li);
+          });
+        }
+
+        if (doctorDiscordTips && report.discord_tips && report.discord_tips.length > 0) {
+          doctorDiscordTips.innerHTML = '';
+          report.discord_tips.forEach((tip) => {
+            const li = document.createElement('li');
+            li.textContent = tip;
+            doctorDiscordTips.appendChild(li);
+          });
+        }
+      } catch (e) {
+        if (doctorExplanation) doctorExplanation.textContent = `Diagnostic audit error: ${e}`;
       }
-
-      doctorExplanation.textContent = report.plain_explanation || 'Audio routing is optimal.';
-
-      if (report.recommended_actions && report.recommended_actions.length > 0) {
-        doctorFixSection.style.display = 'block';
-        doctorFixList.innerHTML = '';
-        report.recommended_actions.forEach((fix) => {
-          const li = document.createElement('li');
-          li.textContent = fix;
-          doctorFixList.appendChild(li);
-        });
-      }
-
-      if (report.discord_tips && report.discord_tips.length > 0) {
-        doctorDiscordTips.innerHTML = '';
-        report.discord_tips.forEach((tip) => {
-          const li = document.createElement('li');
-          li.textContent = tip;
-          doctorDiscordTips.appendChild(li);
-        });
-      }
-    } catch (e) {
-      doctorExplanation.textContent = `Diagnostic audit error: ${e}`;
-    }
-  });
+    });
+  }
 
   const closeEchoDoctor = () => {
-    echoDoctorModal.style.display = 'none';
+    if (echoDoctorModal) echoDoctorModal.style.display = 'none';
   };
-  closeEchoDoctorBtn.addEventListener('click', closeEchoDoctor);
-  dismissEchoDoctorBtn.addEventListener('click', closeEchoDoctor);
+  if (closeEchoDoctorBtn) closeEchoDoctorBtn.addEventListener('click', closeEchoDoctor);
+  if (dismissEchoDoctorBtn) dismissEchoDoctorBtn.addEventListener('click', closeEchoDoctor);
 
   // Pipeline Self-Test Modal
-  pipelineSelfTestBtn.addEventListener('click', async () => {
-    pipelineModal.style.display = 'flex';
-    pipelineResultBanner.className = 'doctor-banner banner-clean';
-    pipelineResultIcon.textContent = '⏳';
-    pipelineResultText.textContent = 'Running Pipeline Self-Test...';
-    pipelineDetails.textContent = 'Testing DSP signal flow with synthetic audio...';
+  if (pipelineSelfTestBtn) {
+    pipelineSelfTestBtn.addEventListener('click', async () => {
+      if (pipelineModal) pipelineModal.style.display = 'flex';
+      if (pipelineResultBanner) pipelineResultBanner.className = 'doctor-banner banner-clean';
+      if (pipelineResultIcon) pipelineResultIcon.textContent = '⏳';
+      if (pipelineResultText) pipelineResultText.textContent = 'Running Pipeline Self-Test...';
+      if (pipelineDetails) pipelineDetails.textContent = 'Testing DSP signal flow with synthetic audio...';
 
-    try {
-      const res = await invoke('run_pipeline_self_test_command');
-      if (res && res.success) {
-        pipelineResultBanner.className = 'doctor-banner banner-clean';
-        pipelineResultIcon.textContent = '✅';
-        pipelineResultText.textContent = 'Pipeline Verified & Healthy';
-      } else {
-        pipelineResultBanner.className = 'doctor-banner banner-loop';
-        pipelineResultIcon.textContent = '❌';
-        pipelineResultText.textContent = 'Pipeline Diagnostic Warning';
+      try {
+        const res = await invoke('run_pipeline_self_test_command');
+        if (pipelineResultBanner && pipelineResultIcon && pipelineResultText) {
+          if (res && res.success) {
+            pipelineResultBanner.className = 'doctor-banner banner-clean';
+            pipelineResultIcon.textContent = '✅';
+            pipelineResultText.textContent = 'Pipeline Verified & Healthy';
+          } else {
+            pipelineResultBanner.className = 'doctor-banner banner-loop';
+            pipelineResultIcon.textContent = '❌';
+            pipelineResultText.textContent = 'Pipeline Diagnostic Warning';
+          }
+        }
+        if (pipelineDetails) pipelineDetails.textContent = JSON.stringify(res, null, 2);
+      } catch (e) {
+        if (pipelineResultBanner && pipelineResultIcon && pipelineResultText) {
+          pipelineResultBanner.className = 'doctor-banner banner-loop';
+          pipelineResultIcon.textContent = '❌';
+          pipelineResultText.textContent = 'Self-Test Failed';
+        }
+        if (pipelineDetails) pipelineDetails.textContent = `Error: ${e}`;
       }
-      pipelineDetails.textContent = JSON.stringify(res, null, 2);
-    } catch (e) {
-      pipelineResultBanner.className = 'doctor-banner banner-loop';
-      pipelineResultIcon.textContent = '❌';
-      pipelineResultText.textContent = 'Self-Test Failed';
-      pipelineDetails.textContent = `Error: ${e}`;
-    }
-  });
+    });
+  }
 
   const closePipelineModal = () => {
-    pipelineModal.style.display = 'none';
+    if (pipelineModal) pipelineModal.style.display = 'none';
   };
-  closePipelineModalBtn.addEventListener('click', closePipelineModal);
-  dismissPipelineModalBtn.addEventListener('click', closePipelineModal);
+  if (closePipelineModalBtn) closePipelineModalBtn.addEventListener('click', closePipelineModal);
+  if (dismissPipelineModalBtn) dismissPipelineModalBtn.addEventListener('click', closePipelineModal);
 
   // Push to Talk
-  pttToggle.addEventListener('change', () => {
-    const en = pttToggle.checked;
-    pttControls.classList.toggle('disabled', !en);
-    invoke('set_push_to_talk', { enabled: en }).catch((e) => console.error('Failed to set PTT:', e));
-    updatePttStatus(false);
-  });
+  if (pttToggle) {
+    pttToggle.addEventListener('change', () => {
+      const en = pttToggle.checked;
+      if (pttControls) {
+        pttControls.classList.toggle('disabled', !en);
+        pttControls.style.display = en ? 'block' : 'none';
+      }
+      invoke('set_push_to_talk', { enabled: en }).catch((e) => console.error('Failed to set PTT:', e));
+      updatePttStatus(false);
+    });
+  }
 
-  pttKeyBtn.addEventListener('click', () => {
-    if (isRecordingKey) return;
-    isRecordingKey = true;
-    pttKeyBtn.textContent = 'Press any key...';
-    pttKeyBtn.classList.add('recording');
+  if (pttKeyBtn) {
+    pttKeyBtn.addEventListener('click', () => {
+      if (isRecordingKey) return;
+      isRecordingKey = true;
+      pttKeyBtn.textContent = 'Press any key...';
+      pttKeyBtn.classList.add('recording');
 
-    const captureKey = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      let key = e.code === 'Space' ? 'Space' : e.key;
-      if (key.length === 1) key = key.toUpperCase();
-      currentPttKey = key;
-      pttKeyBtn.textContent = key;
-      pttKeyBtn.classList.remove('recording');
-      isRecordingKey = false;
-      window.removeEventListener('keydown', captureKey, true);
-      invoke('set_ptt_key', { key }).catch((err) => console.error('Failed to set ptt key:', err));
-    };
+      const captureKey = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        let key = e.code === 'Space' ? 'Space' : e.key;
+        if (key.length === 1) key = key.toUpperCase();
+        currentPttKey = key;
+        pttKeyBtn.textContent = key;
+        pttKeyBtn.classList.remove('recording');
+        isRecordingKey = false;
+        window.removeEventListener('keydown', captureKey, true);
+        invoke('set_ptt_key', { key }).catch((err) => console.error('Failed to set ptt key:', err));
+      };
 
-    window.addEventListener('keydown', captureKey, true);
-  });
+      window.addEventListener('keydown', captureKey, true);
+    });
+  }
 
   // Guard against any keyboard key (Space, Enter, etc.) triggering liveVoiceBtn
   window.addEventListener('keydown', (e) => {

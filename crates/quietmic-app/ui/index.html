@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>180hz nc - AI Noise Suppression</title>
+  <title>180hz nc - Voice Clarity & Noise Removal</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -18,7 +18,7 @@
         </div>
         <div class="brand-info">
           <h1 class="brand-title">180hz nc</h1>
-          <span class="brand-subtitle">AI Noise Suppression</span>
+          <span class="brand-subtitle">Voice Clarity & Noise Removal</span>
         </div>
       </div>
 
@@ -38,9 +38,9 @@
         </button>
 
         <!-- Engine Status Pill -->
-        <div class="status-pill active" id="engineStatusPill" title="Audio Engine Operational Status">
+        <div class="status-pill active" id="engineStatusPill" title="Audio Status">
           <span class="status-dot"></span>
-          <span id="engineStatusText">Krisp AI Active</span>
+          <span id="engineStatusText">Active</span>
         </div>
       </div>
     </header>
@@ -119,7 +119,7 @@
           <span class="card-label" style="text-transform: uppercase; font-weight: 700; font-size: 11px; letter-spacing: 0.6px;">Live Voice Monitor</span>
           <div class="ab-buttons" id="abModeToggle">
             <button type="button" id="abOriginalBtn" class="ab-btn" title="Listen to raw unprocessed microphone audio">Raw</button>
-            <button type="button" id="abCleanedBtn" class="ab-btn active" title="Listen to AI Cleaned audio">Cleaned</button>
+            <button type="button" id="abCleanedBtn" class="ab-btn active" title="Listen to cleaned audio">Cleaned</button>
           </div>
         </div>
 
@@ -158,7 +158,7 @@
             </svg>
             <span id="nsCardTitle" class="card-label">Noise Suppression</span>
           </div>
-          <span id="noiseReductionBadge" class="auto-badge badge-active">Active (0 dB)</span>
+          <span id="noiseReductionBadge" class="auto-badge badge-active">Active</span>
         </div>
 
         <div class="segmented-control" role="group" aria-label="Noise Suppression Mode">
@@ -173,14 +173,6 @@
           <span id="strengthValText" class="slider-val">100%</span>
         </div>
         <input type="range" id="strengthSlider" min="0" max="100" value="100" class="slider" aria-label="Suppression Strength Slider">
-
-        <!-- DSP Performance & Telemetry Row -->
-        <div class="stat-row">
-          <span>Frames: <strong id="framesProcessedText">0</strong></span>
-          <span>Pass-thru: <strong id="framesPassthroughText">0</strong></span>
-          <span>DSP: <strong id="dspLatencyText">0 µs</strong></span>
-          <button type="button" id="pipelineSelfTestBtn" class="key-bind-btn" title="Run diagnostic pipeline integrity self-test">Self-Test</button>
-        </div>
       </section>
 
       <!-- Automatic Adjust Input Sensitivity Card -->
@@ -191,16 +183,19 @@
               <circle cx="12" cy="12" r="3"></circle>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
-            <span id="sensCardTitle" class="card-label">Auto-Adjust Sensitivity</span>
+            <div>
+              <span id="sensCardTitle" class="card-label">Auto Sensitivity</span>
+              <div class="card-subdesc">Automatically adjusts to your voice level</div>
+            </div>
           </div>
           <label class="switch" title="Toggle Automatic Input Sensitivity Adaptation">
             <input type="checkbox" id="autoSensitivityToggle" checked>
             <span class="slider-round"></span>
           </label>
         </div>
-        <div id="manualSensitivitySection" class="slider-section disabled">
+        <div id="manualSensitivitySection" class="slider-section disabled" style="display: none;">
           <div class="slider-row">
-            <span class="slider-label">Noise Floor Threshold</span>
+            <span class="slider-label">Sensitivity Threshold</span>
             <span id="sensitivityText" class="slider-val">-50 dB</span>
           </div>
           <input type="range" id="sensitivitySlider" min="-80" max="-10" value="-50" class="slider" disabled aria-label="Manual Sensitivity Threshold Slider">
@@ -215,32 +210,17 @@
               <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
               <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
             </svg>
-            <div style="display: flex; align-items: center; gap: 8px;">
+            <div>
               <span id="aecCardTitle" class="card-label">Echo Cancellation</span>
-              <span id="aecEndpointBadge" class="auto-badge badge-blue" style="display: none;">Speakers</span>
-              <span id="loopWarningPill" class="auto-badge badge-alert" style="display: none;">⚠️ Loop Detected</span>
+              <div class="card-subdesc">Removes speaker echo from your microphone</div>
             </div>
           </div>
-          <label class="switch" title="Toggle Acoustic Echo Cancellation">
-            <input type="checkbox" id="aecToggle">
-            <span class="slider-round"></span>
-          </label>
-        </div>
-
-        <div id="aecDetails" class="stat-col" style="display: none;">
-          <div class="stat-subrow">
-            <span>Speaker Ref: <strong id="aecRefDeviceText">Default Output</strong></span>
-            <span>Ref Level: <strong id="aecRefLevelText">-100 dB</strong></span>
-            <span>Status: <strong id="aecStatusText" style="color: var(--accent-emerald);">Active</strong></span>
-          </div>
-          <div class="stat-subrow" style="align-items: center; margin-top: 4px;">
-            <span>ERLE: <strong id="aecErleText" style="color: var(--accent-emerald);">0 dB</strong></span>
-            <span>Delay: <strong id="aecDelayText">0 ms</strong></span>
-            <span>Frames: <strong id="aecFramesText">0</strong></span>
-            <div class="btn-group">
-              <button type="button" id="aecTestBtn" class="key-bind-btn" title="Play test chirp to calibrate AEC delay">Speaker Test</button>
-              <button type="button" id="echoDoctorBtn" class="key-bind-btn btn-highlight" title="Run Echo Doctor diagnostic routing check">🩺 Echo Doctor</button>
-            </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="loopWarningPill" class="auto-badge badge-alert" style="display: none;">⚠️ Loop Detected</span>
+            <label class="switch" title="Toggle Acoustic Echo Cancellation">
+              <input type="checkbox" id="aecToggle">
+              <span class="slider-round"></span>
+            </label>
           </div>
         </div>
       </section>
@@ -253,14 +233,17 @@
               <rect x="2" y="4" width="20" height="16" rx="2"></rect>
               <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"></path>
             </svg>
-            <span id="pttCardTitle" class="card-label">Push to Talk</span>
+            <div>
+              <span id="pttCardTitle" class="card-label">Push to Talk</span>
+              <div class="card-subdesc">Hold shortcut key to unmute mic</div>
+            </div>
           </div>
           <label class="switch" title="Toggle Push to Talk">
             <input type="checkbox" id="pttToggle">
             <span class="slider-round"></span>
           </label>
         </div>
-        <div id="pttControls" class="ptt-controls disabled">
+        <div id="pttControls" class="ptt-controls disabled" style="display: none;">
           <div class="ptt-row">
             <span class="slider-label">Shortcut:</span>
             <button type="button" id="pttKeyBtn" class="key-bind-btn">Space</button>
@@ -283,8 +266,8 @@
 
         <div class="toggle-row" style="margin-top: 10px;">
           <div>
-            <span class="sub-label">Close button minimizes to tray</span>
-            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Keep app running in system tray when closed</div>
+            <span class="sub-label">Minimize to tray on close</span>
+            <div class="card-subdesc">Keep running in system tray when window is closed</div>
           </div>
           <label class="switch" title="Minimize to system tray on close">
             <input type="checkbox" id="closeToTrayToggle" checked>
@@ -299,7 +282,7 @@
               Disabled in Windows Startup settings
               <button type="button" id="openStartupSettingsBtn" class="key-bind-btn" style="padding: 2px 6px; font-size: 10px; margin-left: 6px;">Open Settings</button>
             </div>
-            <div id="startupDesc" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Launch silently minimized to tray at startup</div>
+            <div id="startupDesc" class="card-subdesc">Launch minimized in tray at system startup</div>
           </div>
           <label class="switch" title="Start 180hz nc automatically with Windows">
             <input type="checkbox" id="startWithWindowsToggle">
@@ -307,15 +290,15 @@
           </label>
         </div>
 
-        <div class="toggle-row" style="margin-top: 10px; border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.08)); padding-top: 10px;">
+        <div class="toggle-row" style="margin-top: 10px; border-top: 1px solid var(--border-subtle); padding-top: 10px;">
           <div>
             <span class="sub-label">Taskbar & Tray Visibility</span>
-            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Ensure 180hz nc is always visible in the system tray</div>
+            <div class="card-subdesc">Keep 180hz nc icon visible in system tray</div>
           </div>
           <button type="button" id="togglePinGuideBtn" class="key-bind-btn" style="padding: 4px 10px; font-size: 11px;">Pinning Guide</button>
         </div>
 
-        <div id="pinGuideDetails" class="stat-col" style="display: none; margin-top: 8px; font-size: 11px; color: var(--text-secondary); background: var(--bg-surface-soft, rgba(255,255,255,0.03)); border-radius: 6px; padding: 10px; border: 1px solid var(--border-color, rgba(255,255,255,0.06));">
+        <div id="pinGuideDetails" class="stat-col" style="display: none; margin-top: 8px; font-size: 11px; color: var(--text-secondary); background: var(--bg-surface-soft, rgba(255,255,255,0.03)); border-radius: 6px; padding: 10px; border: 1px solid var(--border-subtle);">
           <div style="font-weight: 600; margin-bottom: 6px; color: var(--accent-emerald);">How to keep 180hz nc always visible:</div>
           <div style="margin-bottom: 6px; line-height: 1.5;">
             <strong style="color: var(--text-primary);">Windows 11:</strong> Right-click Taskbar &rarr; <em>Taskbar settings</em> &rarr; <em>Other system tray icons</em> &rarr; Switch <strong>180hz nc</strong> to <strong>On</strong>.
@@ -332,12 +315,12 @@
     <footer class="app-footer">
       <div class="footer-left">
         <span class="footer-dot active"></span>
-        <span id="footerStatusText">180hz nc Engine 1.0.0</span>
+        <span id="footerStatusText">180hz nc</span>
       </div>
       <div class="footer-right">
-        <span id="footerCpuText">CPU 0.2%</span>
+        <span id="footerCpuText">CPU &lt; 1%</span>
         <span class="footer-sep">•</span>
-        <span id="footerBufferText">Buffer: 10ms</span>
+        <span id="footerBufferText">Low Latency (10ms)</span>
       </div>
     </footer>
   </div>

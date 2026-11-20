@@ -44,10 +44,30 @@
 - [x] Removed 10-Second Test Recorder from Backend and Frontend (Eliminated heap buffer & audio thread lock, cleaned IPC commands & UI).
 - [x] Fixed Live Voice Monitor: Enforced strict mouse-click-only activation, immunized from keyboard Space/Enter and UI buttons, removed premature feedback session termination, and aligned card design with spec.
 - [x] Fixed Acoustic Echo Cancellation (AEC) Backend: Seamless runtime toggle on active stream, prioritized physical speaker loopback, eliminated artificial zero-padding in loopback drain, calibrated correlation threshold (0.15), and pre-lock pass-through protection (0-delay error, ERLE >= 25.1 dB).
+- [x] Simplified Interface, Removed AI Branding & Developer Debug Clutter: Transformed UI into a sleek, consumer-grade desktop utility with clean typography, user-friendly controls, and zero technical jargon.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 48: Simplify Interface, Remove AI Branding, and Eliminate Developer Debug Clutter for Consumer Polish
+- **Clean Consumer Branding (`crates/quietmic-app/ui/index.html` & `app.js`)**:
+  - Removed all "AI" buzzwords: changed `<title>` and subtitle from `"AI Noise Suppression"` to `"Voice Clarity & Noise Removal"`.
+  - Replaced `"Krisp AI Active"` status pill with clean `"Active"` / `"Bypassed"` operational indicator.
+  - Replaced `"Listen to AI Cleaned audio"` with `"Listen to cleaned audio"`.
+- **Eliminated Developer Debug Rows & Academic DSP Telemetry**:
+  - Removed raw developer telemetry row from the Noise Suppression card (`Frames: 120,432`, `Pass-thru: 0`, `DSP: 185 µs`, and the `Self-Test` button).
+  - Streamlined Echo Cancellation card into a sleek, clean toggle switch with clear consumer description (`"Removes speaker echo from your microphone"` and `loopWarningPill` feedback alert), removing the raw developer diagnostic telemetry box (`Speaker Ref`, `Ref Level: -100 dB`, `ERLE: 0 dB`, `Delay: 0 ms`, `Frames: 0`, `Speaker Test` button, `🩺 Echo Doctor` button).
+  - Simplified Auto-Sensitivity card: clean toggle switch with `"Automatically adjusts to your voice level"`, cleanly concealing the manual threshold slider unless manually toggled off.
+  - Simplified Push to Talk card: clean toggle switch with `"Hold shortcut key to unmute mic"`, revealing shortcut key assignment only when enabled.
+  - Streamlined footer: `"180hz nc"` • `"CPU < 1%"` • `"Low Latency (10ms)"`.
+- **Complete Null-Safe DOM Architecture (`crates/quietmic-app/ui/app.js`)**:
+  - Updated telemetry polling, config initialization, and modal listeners to strictly guard all DOM references (`if (el) ...`), ensuring zero runtime JavaScript errors or null pointer exceptions.
+  - Maintained all backend IPC diagnostic commands and core functions (`run_pipeline_self_test`, `run_echo_doctor_command`, `run_aec_speaker_test_command`) intact for automated testing and deep diagnostics.
+- **Verification**:
+  - `cargo check --workspace`: clean dev compilation (1.29s).
+  - `cargo clippy --workspace -- -D warnings`: 0 errors, 0 warnings.
+  - `cargo test --workspace`: all 65 unit tests + 20 integration test suites passed (0 failures).
 
 ### Commit 47: Fix Acoustic Echo Cancellation (AEC) Backend Reliability & Loopback Capture
 - **Seamless Real-Time AEC Toggle (`crates/quietmic-app/src/main.rs`)**:
