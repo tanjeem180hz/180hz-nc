@@ -82,12 +82,6 @@ function mockInvoke(cmd, args) {
       return Promise.resolve();
     case 'get_autostart_status':
       return Promise.resolve({ enabled: false, disabled_by_os: false });
-    case 'start_record_and_replay':
-      return Promise.resolve();
-    case 'start_replay_playback':
-      return Promise.resolve();
-    case 'export_recorded_wav':
-      return Promise.resolve(['ab_samples/raw_input.wav', 'ab_samples/cleaned_output.wav']);
     case 'run_pipeline_self_test_command':
       return Promise.resolve({
         success: true,

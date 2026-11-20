@@ -270,30 +270,6 @@ fn set_live_test_volume(volume: f32, state: State<AppState>) -> Result<(), Strin
 }
 
 #[tauri::command]
-fn start_record_and_replay(state: State<AppState>) -> Result<(), String> {
-    let monitor = state.live_monitor.lock();
-    monitor.start_recording()
-}
-
-#[tauri::command]
-fn start_replay_playback(state: State<AppState>) -> Result<(), String> {
-    let mut monitor = state.live_monitor.lock();
-    monitor.start_replay()
-}
-
-#[tauri::command]
-fn export_recorded_wav(dir: Option<String>, state: State<AppState>) -> Result<(String, String), String> {
-    let monitor = state.live_monitor.lock();
-    let target_dir = if let Some(d) = dir {
-        std::path::PathBuf::from(d)
-    } else {
-        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")).join("recordings")
-    };
-    let (raw, clean) = monitor.export_recorded_wavs(&target_dir)?;
-    Ok((raw.to_string_lossy().to_string(), clean.to_string_lossy().to_string()))
-}
-
-#[tauri::command]
 fn get_live_test_status(state: State<AppState>) -> LiveMonitorStatus {
     let mut monitor = state.live_monitor.lock();
     monitor.get_status()
@@ -1266,9 +1242,6 @@ fn main() {
             toggle_live_test,
             set_live_test_ab,
             set_live_test_volume,
-            start_record_and_replay,
-            start_replay_playback,
-            export_recorded_wav,
             get_live_test_status,
             run_pipeline_diagnostics,
             get_system_audio_diagnostics,

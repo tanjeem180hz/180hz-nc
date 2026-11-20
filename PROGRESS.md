@@ -41,10 +41,31 @@
 - [x] Part C: "Start with Windows" Auto-Start Toggle, Registry Run Key Integration, Task Manager Disabled State Detection, and Installer Auto-Start Option.
 - [x] Part D: Cross-Version Windows Reliability (Per-User Mutex, TaskbarCreated Recovery, Audio Stream Watchdog, Quoted Run Path, Pinning Guide, COMPAT_REPORT.md).
 - [x] Part E: Elevate Suppression Strength & Quality with Dedicated MaxQualityEngine, Zero-Latency Pitch-Synchronous Harmonic Refinement, and Dynamic Attenuation Scaling.
+- [x] Removed 10-Second Test Recorder from Backend and Frontend (Eliminated heap buffer & audio thread lock, cleaned IPC commands & UI).
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 45: Completely Remove 10-Second Test Recorder from Backend and Frontend
+- **Backend Clean-up (`crates/quietmic-core/src/audio/live_monitor.rs`)**:
+  - Removed `RecordReplayState` struct and 480,000-sample buffer allocation (~4 MB heap freed).
+  - Eliminated `record_state_cb.try_lock()` and replay mode branch from the real-time audio output callback loop, ensuring strict zero-lock / zero-allocation real-time audio playback.
+  - Removed recording atomic handles (`is_recording`, `is_replaying`, `replay_is_cleaned`, `replay_cursor`, `recording_count`, `record_state`).
+  - Removed controller methods `start_recording()`, `start_replay()`, and `export_recorded_wavs()`.
+  - Streamlined `LiveMonitorStatus` and `get_status()` to focus purely on live monitoring status (`is_active`, `ab_mode`, `volume`, `feedback_detected`, `selected_device`, `error_message`).
+  - Removed unused imports `std::path::{Path, PathBuf}` and `AtomicUsize`.
+- **IPC & Tauri Command Clean-up (`crates/quietmic-app/src/main.rs`)**:
+  - Removed Tauri command functions `start_record_and_replay`, `start_replay_playback`, and `export_recorded_wav`.
+  - Removed registration of these commands from `tauri::generate_handler![...]`.
+- **Frontend Clean-up (`crates/quietmic-app/ui/`)**:
+  - In `crates/quietmic-app/ui/app.js`: Removed mock handlers for `start_record_and_replay`, `start_replay_playback`, and `export_recorded_wav`.
+  - In `crates/quietmic-app/ui/index.html`: Cleaned header comment to `<!-- Live Voice Tester (Hero Centerpiece with A/B Monitor) -->`.
+- **Test Suite Verification**:
+  - Removed obsolete test `test_live_monitor_record_state_bounds` in `live_monitor.rs`.
+  - Removed obsolete test `test_live_monitor_record_and_wav_export` in `mock.rs`.
+  - All 65 workspace unit tests + all integration test suites passed with 0 failures.
+  - Clippy verification (`cargo clippy --workspace -- -D warnings`) passed with 0 warnings.
 
 ### Commit 44: Elevate Suppression Strength & Quality with Zero-Latency Pitch-Synchronous MaxQualityEngine and Dynamic Attenuation Scaling
 - **Dedicated MaxQualityEngine (`crates/quietmic-core/src/engine/max_quality.rs`)**:

@@ -7,8 +7,7 @@ use cpal::traits::{DeviceTrait, StreamTrait};
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use ringbuf::HeapRb;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -19,11 +18,6 @@ pub struct LiveMonitorStatus {
     pub ab_mode: String, // "Cleaned" or "Original"
     pub volume: f32,     // 0.0 to 1.0
     pub feedback_detected: bool,
-    pub is_recording: bool,
-    pub recording_seconds: f32,
-    pub is_replaying: bool,
-    pub replay_is_cleaned: bool,
-    pub has_recorded_audio: bool,
     pub selected_device: Option<String>,
     pub error_message: Option<String>,
 }
@@ -53,44 +47,15 @@ impl LiveMonitorTapProducers {
     }
 }
 
-/// State of the 10-second Record & Replay tool.
-pub struct RecordReplayState {
-    pub raw_samples: Vec<f32>,
-    pub clean_samples: Vec<f32>,
-    pub max_samples: usize,
-}
-
-impl RecordReplayState {
-    pub fn new(max_samples: usize) -> Self {
-        Self {
-            raw_samples: Vec::with_capacity(max_samples),
-            clean_samples: Vec::with_capacity(max_samples),
-            max_samples,
-        }
-    }
-
-    pub fn clear(&mut self) {
-        self.raw_samples.clear();
-        self.clean_samples.clear();
-    }
-}
-
 /// Real-time Live Test Monitor Controller.
 /// Manages the monitor output stream to headphones, A/B crossfading,
-/// volume scaling, ear-protection soft limiting, feedback howling detection,
-/// and 10-second record-and-replay playback.
+/// volume scaling, ear-protection soft limiting, and feedback howling detection.
 pub struct LiveMonitorController {
     is_active: Arc<AtomicBool>,
     ab_mode: Arc<AtomicU8>,       // 0 = Cleaned, 1 = Original
     volume_bits: Arc<AtomicU32>,   // f32::to_bits
     feedback_detected: Arc<AtomicBool>,
-    is_recording: Arc<AtomicBool>,
-    is_replaying: Arc<AtomicBool>,
-    replay_is_cleaned: Arc<AtomicBool>,
-    replay_cursor: Arc<AtomicUsize>,
-    recording_count: Arc<AtomicUsize>,
     last_activity: Arc<parking_lot::Mutex<Instant>>,
-    record_state: Arc<parking_lot::Mutex<RecordReplayState>>,
     selected_device_name: Arc<parking_lot::Mutex<Option<String>>>,
     last_error: Arc<parking_lot::Mutex<Option<String>>>,
     stream: Option<cpal::Stream>,
@@ -104,22 +69,14 @@ unsafe impl Sync for LiveMonitorController {}
 
 impl LiveMonitorController {
     pub const BUFFER_CAPACITY: usize = 9600; // ~200 ms headroom at 48 kHz
-    pub const MAX_RECORD_SECONDS: usize = 10;
     pub const SAMPLE_RATE_48K: u32 = 48000;
-    pub const MAX_RECORD_SAMPLES: usize = Self::SAMPLE_RATE_48K as usize * Self::MAX_RECORD_SECONDS; // 480,000 samples
 
     pub fn new() -> (Self, LiveMonitorTapProducers) {
         let is_active = Arc::new(AtomicBool::new(false));
         let ab_mode = Arc::new(AtomicU8::new(0)); // Cleaned by default
         let volume_bits = Arc::new(AtomicU32::new(0.50f32.to_bits())); // 50% volume default
         let feedback_detected = Arc::new(AtomicBool::new(false));
-        let is_recording = Arc::new(AtomicBool::new(false));
-        let is_replaying = Arc::new(AtomicBool::new(false));
-        let replay_is_cleaned = Arc::new(AtomicBool::new(false));
-        let replay_cursor = Arc::new(AtomicUsize::new(0));
-        let recording_count = Arc::new(AtomicUsize::new(0));
         let last_activity = Arc::new(parking_lot::Mutex::new(Instant::now()));
-        let record_state = Arc::new(parking_lot::Mutex::new(RecordReplayState::new(Self::MAX_RECORD_SAMPLES)));
         let selected_device_name = Arc::new(parking_lot::Mutex::new(None));
         let last_error = Arc::new(parking_lot::Mutex::new(None));
 
@@ -139,13 +96,7 @@ impl LiveMonitorController {
             ab_mode,
             volume_bits,
             feedback_detected,
-            is_recording,
-            is_replaying,
-            replay_is_cleaned,
-            replay_cursor,
-            recording_count,
             last_activity,
-            record_state,
             selected_device_name,
             last_error,
             stream: None,
@@ -231,12 +182,6 @@ impl LiveMonitorController {
         let ab_mode_cb = Arc::clone(&self.ab_mode);
         let volume_bits_cb = Arc::clone(&self.volume_bits);
         let feedback_cb = Arc::clone(&self.feedback_detected);
-        let is_recording_cb = Arc::clone(&self.is_recording);
-        let is_replaying_cb = Arc::clone(&self.is_replaying);
-        let replay_is_cleaned_cb = Arc::clone(&self.replay_is_cleaned);
-        let replay_cursor_cb = Arc::clone(&self.replay_cursor);
-        let record_state_cb = Arc::clone(&self.record_state);
-        let recording_count_cb = Arc::clone(&self.recording_count);
         let last_error_cb = Arc::clone(&self.last_error);
         let raw_cons_cb = Arc::clone(&self.raw_cons);
         let clean_cons_cb = Arc::clone(&self.clean_cons);
@@ -362,53 +307,6 @@ impl LiveMonitorController {
 
                         let volume = f32::from_bits(volume_bits_cb.load(Ordering::Relaxed));
 
-                        // Replay Mode Audio
-                        if is_replaying_cb.load(Ordering::Relaxed) {
-                            if let Some(rec) = record_state_cb.try_lock() {
-                                let raw_len = rec.raw_samples.len();
-                                let clean_len = rec.clean_samples.len();
-                                let total_len = raw_len + clean_len;
-                                let mut cursor = replay_cursor_cb.load(Ordering::Relaxed);
-
-                                if total_len == 0 || cursor >= total_len {
-                                    is_replaying_cb.store(false, Ordering::Relaxed);
-                                    replay_cursor_cb.store(0, Ordering::Relaxed);
-                                    data.fill(0.0);
-                                    return;
-                                }
-
-                                for frame in data.chunks_exact_mut(channels) {
-                                    if cursor < raw_len {
-                                        replay_is_cleaned_cb.store(false, Ordering::Relaxed);
-                                        let s = rec.raw_samples[cursor] * volume;
-                                        for ch in frame.iter_mut() {
-                                            *ch = s;
-                                        }
-                                        cursor += 1;
-                                    } else if cursor < total_len {
-                                        replay_is_cleaned_cb.store(true, Ordering::Relaxed);
-                                        let s = rec.clean_samples[cursor - raw_len] * volume;
-                                        for ch in frame.iter_mut() {
-                                            *ch = s;
-                                        }
-                                        cursor += 1;
-                                    } else {
-                                        for ch in frame.iter_mut() {
-                                            *ch = 0.0;
-                                        }
-                                    }
-                                }
-                                replay_cursor_cb.store(cursor, Ordering::Relaxed);
-                                if cursor >= total_len {
-                                    is_replaying_cb.store(false, Ordering::Relaxed);
-                                    replay_cursor_cb.store(0, Ordering::Relaxed);
-                                }
-                            } else {
-                                data.fill(0.0);
-                            }
-                            return;
-                        }
-
                         // Live Capture Monitor Audio (continuous streaming)
                         let num_frames_needed = (data.len() / channels).min(MAX_SCRATCH);
 
@@ -439,24 +337,6 @@ impl LiveMonitorController {
                         if samples_read < input_needed {
                             scratch_raw[samples_read..input_needed].fill(0.0);
                             scratch_clean[samples_read..input_needed].fill(0.0);
-                        }
-
-                        // Record frames if recording is active
-                        if is_recording_cb.load(Ordering::Relaxed) {
-                            let current_count = recording_count_cb.load(Ordering::Relaxed);
-                            if current_count < Self::MAX_RECORD_SAMPLES {
-                                if let Some(mut rec) = record_state_cb.try_lock() {
-                                    rec.raw_samples.extend_from_slice(&scratch_raw[..input_needed]);
-                                    rec.clean_samples.extend_from_slice(&scratch_clean[..input_needed]);
-                                    let new_total = rec.raw_samples.len();
-                                    recording_count_cb.store(new_total, Ordering::Relaxed);
-                                    if new_total >= Self::MAX_RECORD_SAMPLES {
-                                        is_recording_cb.store(false, Ordering::Relaxed);
-                                    }
-                                }
-                            } else {
-                                is_recording_cb.store(false, Ordering::Relaxed);
-                            }
                         }
 
                         // Perform smooth click-free A/B crossfade
@@ -527,8 +407,6 @@ impl LiveMonitorController {
     /// Stops live monitoring and drops the audio stream immediately.
     pub fn stop(&mut self) {
         self.is_active.store(false, Ordering::Relaxed);
-        self.is_recording.store(false, Ordering::Relaxed);
-        self.is_replaying.store(false, Ordering::Relaxed);
         if let Some(st) = self.stream.take() {
             let _ = st.pause();
             drop(st);
@@ -553,96 +431,12 @@ impl LiveMonitorController {
         *self.last_activity.lock() = Instant::now();
     }
 
-    /// Starts recording 10 seconds of raw and cleaned audio for delayed comparison.
-    pub fn start_recording(&self) -> Result<(), String> {
-        if !self.is_active.load(Ordering::Relaxed) {
-            return Err("Live Test must be active to record test audio.".to_string());
-        }
-        self.record_state.lock().clear();
-        self.recording_count.store(0, Ordering::Relaxed);
-        self.is_recording.store(true, Ordering::Relaxed);
-        *self.last_activity.lock() = Instant::now();
-        Ok(())
-    }
-
-    /// Starts playback of the recorded 10 seconds (Original followed by Cleaned).
-    pub fn start_replay(&mut self) -> Result<(), String> {
-        if !self.is_active.load(Ordering::Relaxed) {
-            return Err("Live Test must be running to play back recording.".to_string());
-        }
-
-        let (raw_len, clean_len) = {
-            let rec = self.record_state.lock();
-            (rec.raw_samples.len(), rec.clean_samples.len())
-        };
-
-        if raw_len == 0 || clean_len == 0 {
-            return Err("No recorded audio available. Please record audio first.".to_string());
-        }
-
-        self.replay_cursor.store(0, Ordering::Relaxed);
-        self.replay_is_cleaned.store(false, Ordering::Relaxed);
-        self.is_replaying.store(true, Ordering::Relaxed);
-        *self.last_activity.lock() = Instant::now();
-
-        Ok(())
-    }
-
-    /// Exports the recorded raw and cleaned audio into WAV files.
-    pub fn export_recorded_wavs(&self, output_dir: &Path) -> Result<(PathBuf, PathBuf), String> {
-        let (raw, clean) = {
-            let rec = self.record_state.lock();
-            (rec.raw_samples.clone(), rec.clean_samples.clone())
-        };
-
-        if raw.is_empty() || clean.is_empty() {
-            return Err("No recorded audio available to export.".to_string());
-        }
-
-        std::fs::create_dir_all(output_dir).map_err(|e| e.to_string())?;
-        let raw_path = output_dir.join("live_test_original_raw.wav");
-        let clean_path = output_dir.join("live_test_noise_cancelled.wav");
-
-        let spec = hound::WavSpec {
-            channels: 1,
-            sample_rate: Self::SAMPLE_RATE_48K,
-            bits_per_sample: 16,
-            sample_format: hound::SampleFormat::Int,
-        };
-
-        // Write raw wav
-        {
-            let mut writer = hound::WavWriter::create(&raw_path, spec).map_err(|e| e.to_string())?;
-            for &s in &raw {
-                let sample_i16 = (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
-                writer.write_sample(sample_i16).map_err(|e| e.to_string())?;
-            }
-            writer.finalize().map_err(|e| e.to_string())?;
-        }
-
-        // Write clean wav
-        {
-            let mut writer = hound::WavWriter::create(&clean_path, spec).map_err(|e| e.to_string())?;
-            for &s in &clean {
-                let sample_i16 = (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
-                writer.write_sample(sample_i16).map_err(|e| e.to_string())?;
-            }
-            writer.finalize().map_err(|e| e.to_string())?;
-        }
-
-        Ok((raw_path, clean_path))
-    }
-
     /// Returns current status for UI updates and checks for 10-minute inactivity auto-stop.
     pub fn get_status(&mut self) -> LiveMonitorStatus {
         let is_active = self.is_active.load(Ordering::Relaxed);
         let ab_val = self.ab_mode.load(Ordering::Relaxed);
         let volume = f32::from_bits(self.volume_bits.load(Ordering::Relaxed));
         let feedback_detected = self.feedback_detected.load(Ordering::Relaxed);
-        let is_recording = self.is_recording.load(Ordering::Relaxed);
-        let rec_count = self.recording_count.load(Ordering::Relaxed);
-        let is_replaying = self.is_replaying.load(Ordering::Relaxed);
-        let replay_is_cleaned = self.replay_is_cleaned.load(Ordering::Relaxed);
 
         // Auto-stop after 10 minutes (600 seconds) of inactivity
         if is_active && self.last_activity.lock().elapsed().as_secs() > 600 {
@@ -650,21 +444,11 @@ impl LiveMonitorController {
             self.stop();
         }
 
-        let has_recorded_audio = {
-            let rec = self.record_state.lock();
-            !rec.raw_samples.is_empty()
-        };
-
         LiveMonitorStatus {
             is_active: self.is_active.load(Ordering::Relaxed),
             ab_mode: if ab_val == 1 { "Original".to_string() } else { "Cleaned".to_string() },
             volume,
             feedback_detected,
-            is_recording,
-            recording_seconds: rec_count as f32 / Self::SAMPLE_RATE_48K as f32,
-            is_replaying,
-            replay_is_cleaned,
-            has_recorded_audio,
             selected_device: self.selected_device_name.lock().clone(),
             error_message: self.last_error.lock().clone(),
         }
@@ -689,8 +473,6 @@ mod tests {
         assert_eq!(status.ab_mode, "Cleaned");
         assert_eq!(status.volume, 0.50);
         assert!(!status.feedback_detected);
-        assert!(!status.is_recording);
-        assert!(!status.is_replaying);
     }
 
     #[test]
@@ -719,21 +501,5 @@ mod tests {
 
         controller.set_volume(-0.5);
         assert_eq!(controller.get_status().volume, 0.0);
-    }
-
-    #[test]
-    fn test_live_monitor_record_state_bounds() {
-        let mut rec = RecordReplayState::new(48000);
-        assert_eq!(rec.raw_samples.len(), 0);
-
-        let chunk = vec![0.1f32; 480];
-        rec.raw_samples.extend_from_slice(&chunk);
-        rec.clean_samples.extend_from_slice(&chunk);
-
-        assert_eq!(rec.raw_samples.len(), 480);
-        assert_eq!(rec.clean_samples.len(), 480);
-
-        rec.clear();
-        assert_eq!(rec.raw_samples.len(), 0);
     }
 }
