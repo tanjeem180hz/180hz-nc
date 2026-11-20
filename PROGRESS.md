@@ -51,10 +51,32 @@
 - [x] Backend Safety Contract & Automated IPC Verification: Generated `ipc-contract.json`, created automated contract test verifying all commands, arguments, types, ranges, and frontend invoke calls, aligned `set_ptt_state` parameter, and added full E2E backend controls test suite.
 - [x] Soft Glass Theme Implementation & Multi-DPI Verification: Restyled frontend with design tokens in `theme-soft-glass.css`, bundled local Inter woff2 typography (OFL-1.1), implemented 4-tab calm navigation, "Reduce effects" mode with automatic fallback, 15 fps meter throttling, 0% CPU idle throttling, verified zero console errors across CDP smoke tests, and captured 25 screenshots at 100%, 150%, and 200% DPI.
 - [x] Official Release Packaging: Rebuilt release binaries with the embedded Soft Glass theme and local fonts (`180hz-nc.exe` standalone and `180hz-nc-setup.exe` all-in-one installer), created `release/` distribution directory with `SHA256SUMS.txt`, configured `.gitignore` to track release binaries, and added direct repository download links in `README.md`.
+- [x] Dual Theme Switcher (Classic Dark & Soft Glass): Restored the original Classic 180Hz UI alongside the new Soft Glass theme, added seamless theme selector in header and preferences, updated release executables with dual theme support and SHA-256 checksums.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 55: Add Dual Theme Switcher (Classic Dark & Soft Glass) and Update Release Binaries
+- **Dual Theme Support**:
+  - Maintained both `style.css` (Classic Dark & Light) and `theme-soft-glass.css` (Soft Glass Dark & Light).
+  - Default theme restored to **Classic Dark (Original)** — deep rich `#14161F` backdrop, high-contrast cyan/emerald accents, all-in-one cards layout with instant access to microphone, speaker, live voice monitor, suppression mode, and echo cancellation.
+  - Added theme selector dropdown (`#themeSelector`) in the header and in Preferences (`#prefsThemeSelector`) allowing 1-click toggling between:
+    1. *Classic Dark (Original)*
+    2. *Soft Glass Dark*
+    3. *Soft Glass Light*
+    4. *Classic Light*
+  - Synchronized with `themeToggleBtn` for quick toggling.
+  - Mapped theme states to backend allowed config values (`dark`, `light`, `amber-console`, `daylight`) preserving zero backend schema breakage.
+- **Production Binaries Updated in `release/`**:
+  - `release/180hz-nc.exe` (8,296,960 bytes, SHA-256: `7176620fd066ba3a5305fbc2932782a27bd4a3839c6a82e17e653aed3459b276`).
+  - `release/180hz-nc-setup.exe` (10,425,344 bytes, SHA-256: `3dc6d0c5e3f5961fa4c93cc7027e13b81705ab0a213018d611e4708a855ee212`).
+  - Checksums updated in `release/SHA256SUMS.txt` and `release/README.md`.
+- **Verification**:
+  - Automated contract tests: 5/5 passed.
+  - Backend controls E2E tests: 1/1 passed.
+  - Headless Chrome DevTools Protocol smoke test: passed with 0 console errors.
+  - Clippy: 0 warnings, 0 errors.
 
 ### Commit 54: Package Latest Release Binaries and Checksums in release/
 - **Production Build & Asset Embedding**:

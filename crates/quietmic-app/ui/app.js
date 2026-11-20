@@ -116,6 +116,8 @@ const masterPowerBtn = document.getElementById('masterPowerBtn');
 const masterPowerText = document.getElementById('masterPowerText');
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const themeToggleIcon = document.getElementById('themeToggleIcon');
+const themeSelector = document.getElementById('themeSelector');
+const prefsThemeSelector = document.getElementById('prefsThemeSelector');
 const engineStatusPill = document.getElementById('engineStatusPill');
 const engineStatusText = document.getElementById('engineStatusText');
 
@@ -243,8 +245,11 @@ async function init() {
     const urlParams = new URLSearchParams(window.location.search);
     const queryTheme = urlParams.get('theme');
     const hashTheme = window.location.hash.includes('light') || window.location.hash.includes('daylight') ? 'light' : (window.location.hash.includes('dark') ? 'dark' : null);
-    const systemPrefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
-    applyTheme(queryTheme || hashTheme || cfg.theme || (systemPrefersLight ? 'light' : 'dark'));
+    let savedChoice = null;
+    try {
+      savedChoice = localStorage.getItem('quietmic_theme_choice');
+    } catch (e) {}
+    applyTheme(queryTheme || hashTheme || savedChoice || cfg.theme || 'classic-dark');
     initReduceEffects();
     if (urlParams.get('reduce_effects') === 'true' || window.location.hash.includes('reduce-effects')) {
       setReduceEffects(true);
@@ -400,20 +405,103 @@ function initReduceEffects() {
 }
 
 // -------------------------------------------------------------
-// Theme Management (Dark / Light)
+// Theme Management (Dual Theme Switcher: Classic Dark & Soft Glass)
 // -------------------------------------------------------------
+let currentThemeMode = 'classic-dark';
+
 function applyTheme(theme) {
-  const isLight = theme === 'light' || theme === 'daylight';
-  currentTheme = isLight ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', currentTheme);
-  themeToggleIcon.textContent = isLight ? '☀️' : '🌙';
-  themeToggleBtn.title = isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode';
+  let normalized = theme;
+  if (!theme || theme === 'night-lab' || theme === 'dark' || theme === 'classic') {
+    normalized = 'classic-dark';
+  } else if (theme === 'light') {
+    normalized = 'classic-light';
+  } else if (theme === 'amber-console') {
+    normalized = 'soft-glass-dark';
+  } else if (theme === 'daylight') {
+    normalized = 'soft-glass-light';
+  }
+
+  currentThemeMode = normalized;
+  const isSoftGlass = normalized.startsWith('soft-glass');
+  const isLight = normalized.endsWith('light');
+
+  // 1. Swap stylesheet href cleanly
+  const themeStylesheet = document.getElementById('themeStylesheet');
+  if (themeStylesheet) {
+    const targetHref = isSoftGlass ? 'theme-soft-glass.css' : 'style.css';
+    const currentHref = themeStylesheet.getAttribute('href') || '';
+    if (!currentHref.endsWith(targetHref)) {
+      themeStylesheet.setAttribute('href', targetHref);
+    }
+  }
+
+  // 2. Set DOM attributes on html element
+  const colorMode = isLight ? 'light' : 'dark';
+  const uiMode = isSoftGlass ? 'soft-glass' : 'classic';
+  document.documentElement.setAttribute('data-theme', colorMode);
+  document.documentElement.setAttribute('data-ui-mode', uiMode);
+
+  // 3. Update header branding subtitle
+  const brandSubtitle = document.getElementById('brandSubtitle');
+  if (brandSubtitle) {
+    brandSubtitle.textContent = isSoftGlass ? 'Soft Glass Workspace' : 'Voice Clarity & Noise Removal';
+  }
+
+  // 4. Update dropdowns
+  if (themeSelector) themeSelector.value = normalized;
+  if (prefsThemeSelector) prefsThemeSelector.value = normalized;
+
+  // 5. Update toggle button icon and title
+  if (themeToggleIcon) {
+    themeToggleIcon.textContent = isLight ? '☀️' : '🌙';
+  }
+  if (themeToggleBtn) {
+    themeToggleBtn.title = isSoftGlass
+      ? (isLight ? 'Switch to Soft Glass Dark' : 'Switch to Soft Glass Light')
+      : (isLight ? 'Switch to Classic Dark' : 'Switch to Classic Light');
+  }
+
+  // 6. Manage tab states when in Soft Glass
+  if (isSoftGlass) {
+    const activeTab = document.querySelector('.tab-btn.active');
+    const targetPaneId = activeTab ? activeTab.getAttribute('data-tab') : 'paneAudio';
+    document.querySelectorAll('.tab-pane').forEach((p) => {
+      if (p.id === targetPaneId) {
+        p.classList.remove('hidden');
+      } else {
+        p.classList.add('hidden');
+      }
+    });
+  }
+
+  try {
+    localStorage.setItem('quietmic_theme_choice', normalized);
+  } catch (e) {}
+}
+
+function setThemeAndSave(themeName) {
+  applyTheme(themeName);
+  let backendTheme = 'dark';
+  if (themeName === 'classic-dark') backendTheme = 'dark';
+  else if (themeName === 'classic-light') backendTheme = 'light';
+  else if (themeName === 'soft-glass-dark') backendTheme = 'amber-console';
+  else if (themeName === 'soft-glass-light') backendTheme = 'daylight';
+
+  invoke('set_theme', { theme: backendTheme }).catch((e) => console.error('Failed to save theme:', e));
 }
 
 function toggleTheme() {
-  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  applyTheme(newTheme);
-  invoke('set_theme', { theme: newTheme }).catch((e) => console.error('Failed to save theme:', e));
+  let nextTheme;
+  if (currentThemeMode === 'classic-dark') {
+    nextTheme = 'soft-glass-dark';
+  } else if (currentThemeMode === 'soft-glass-dark') {
+    nextTheme = 'classic-dark';
+  } else if (currentThemeMode === 'soft-glass-light') {
+    nextTheme = 'soft-glass-dark';
+  } else {
+    nextTheme = 'classic-dark';
+  }
+  setThemeAndSave(nextTheme);
 }
 
 // -------------------------------------------------------------
@@ -807,8 +895,14 @@ function setupEventListeners() {
   // Master Power
   masterPowerBtn.addEventListener('click', toggleMasterPower);
 
-  // Theme Toggle
+  // Theme Toggle & Switcher
   themeToggleBtn.addEventListener('click', toggleTheme);
+  if (themeSelector) {
+    themeSelector.addEventListener('change', (e) => setThemeAndSave(e.target.value));
+  }
+  if (prefsThemeSelector) {
+    prefsThemeSelector.addEventListener('change', (e) => setThemeAndSave(e.target.value));
+  }
 
   // Mode Segmented Control
   segButtons.forEach((btn) => {

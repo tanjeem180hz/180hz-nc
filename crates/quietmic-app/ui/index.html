@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>180hz nc - Voice Clarity & Noise Removal</title>
-  <link rel="stylesheet" href="theme-soft-glass.css">
+  <link id="themeStylesheet" rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="app-container">
@@ -18,7 +18,7 @@
         </div>
         <div class="brand-info">
           <h1 class="brand-title">180hz nc</h1>
-          <span class="brand-subtitle">Soft Glass Workspace</span>
+          <span class="brand-subtitle" id="brandSubtitle">Voice Clarity & Noise Removal</span>
         </div>
       </div>
 
@@ -32,8 +32,16 @@
           <span id="masterPowerText">Active</span>
         </button>
 
-        <!-- Theme Switcher (Soft Glass Light / Dark) -->
-        <button type="button" id="themeToggleBtn" class="icon-toggle-btn" title="Toggle Soft Glass Light / Dark Mode" aria-label="Toggle Theme">
+        <!-- Theme Switcher Dropdown (Classic Dark vs Soft Glass) -->
+        <select id="themeSelector" class="theme-selector-dropdown" title="Select UI Theme & Style">
+          <option value="classic-dark">Classic Dark (Original)</option>
+          <option value="soft-glass-dark">Soft Glass Dark</option>
+          <option value="soft-glass-light">Soft Glass Light</option>
+          <option value="classic-light">Classic Light</option>
+        </select>
+
+        <!-- Theme Toggle Button -->
+        <button type="button" id="themeToggleBtn" class="icon-toggle-btn" title="Toggle Theme" aria-label="Toggle Theme">
           <span id="themeToggleIcon">🌙</span>
         </button>
 
@@ -406,6 +414,20 @@
               <input type="checkbox" id="startWithWindowsToggle">
               <span class="slider-round"></span>
             </label>
+          </div>
+
+          <!-- Setting: Theme Preference -->
+          <div class="toggle-row" style="margin-top: 12px; border-top: 1px solid var(--glass-border-subtle, var(--border-subtle)); padding-top: 12px;">
+            <div>
+              <span class="sub-label">UI Theme & Layout</span>
+              <div class="card-subdesc">Switch between Classic 180Hz cards and Soft Glass tabs</div>
+            </div>
+            <select id="prefsThemeSelector" class="theme-selector-dropdown" title="Select UI Theme & Style">
+              <option value="classic-dark">Classic Dark (Original)</option>
+              <option value="soft-glass-dark">Soft Glass Dark</option>
+              <option value="soft-glass-light">Soft Glass Light</option>
+              <option value="classic-light">Classic Light</option>
+            </select>
           </div>
 
           <!-- Setting: Reduce Effects -->

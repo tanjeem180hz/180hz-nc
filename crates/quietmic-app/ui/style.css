@@ -1,8 +1,40 @@
 /* -------------------------------------------------------------
-   180hz nc - "Calm Frosted Workspace" Theme
+   180hz nc - "Calm Frosted Workspace" Theme (Classic Mode)
    Visual Restyle: Quiet, Frosted, Low-Glare & Accessible
    Centralized CSS Tokens, WCAG AA Contrast, 0% Idle Audio Overhead
    ------------------------------------------------------------- */
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/inter-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('fonts/inter-500.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('fonts/inter-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('fonts/inter-700.woff2') format('woff2');
+}
 
 :root {
   /* ============================================================
@@ -1470,3 +1502,49 @@ input:checked + .slider-round:before {
     scroll-behavior: auto !important;
   }
 }
+
+/* ============================================================
+   Dual Theme Switcher & Classic Layout Support
+   ============================================================ */
+.theme-selector-dropdown {
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-card);
+  color: var(--text-primary);
+  border-radius: var(--radius-control);
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: all 180ms ease-out;
+}
+
+.theme-selector-dropdown:hover {
+  border-color: var(--border-focus);
+}
+
+.theme-selector-dropdown option {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+}
+
+/* In Classic Mode: hide tab navigation and present unified all-in-one cards layout */
+.nav-tabs {
+  display: none !important;
+}
+
+.tab-pane {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+}
+
+.tab-pane.hidden {
+  display: flex !important;
+}
+
+/* In Classic Mode: hide About card to match original classic layout */
+#paneAbout {
+  display: none !important;
+}
+
