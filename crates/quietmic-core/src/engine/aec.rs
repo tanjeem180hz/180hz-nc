@@ -435,12 +435,12 @@ impl EchoCanceller {
             if denom > 1e-6 {
                 let r = dot / denom;
                 if r > best_corr {
-                    if (lag as i64 - best_lag_8k as i64).abs() > 4 {
+                    if (lag as i64 - best_lag_8k as i64).abs() > 80 {
                         second_corr = best_corr;
                     }
                     best_corr = r;
                     best_lag_8k = lag;
-                } else if r > second_corr && (lag as i64 - best_lag_8k as i64).abs() > 4 {
+                } else if r > second_corr && (lag as i64 - best_lag_8k as i64).abs() > 80 {
                     second_corr = r;
                 }
             }
@@ -448,9 +448,9 @@ impl EchoCanceller {
 
         self.last_correlation = best_corr;
 
-        // Confidence: peak correlation must meet threshold and be prominent over sidelobes
+        // Confidence: peak correlation must meet threshold and be distinct outside the vocal pitch window
         let peak_to_sidelobe = if second_corr > 1e-4 { best_corr / second_corr } else { 2.0 };
-        let is_confident = best_corr >= Self::CORRELATION_THRESHOLD && peak_to_sidelobe >= 1.12;
+        let is_confident = best_corr >= Self::CORRELATION_THRESHOLD && (peak_to_sidelobe >= 1.05 || best_corr >= 0.25);
 
         if is_confident {
             let coarse_samples = best_lag_8k * Self::DOWNSAMPLE_FACTOR;

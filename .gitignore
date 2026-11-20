@@ -30,3 +30,7 @@ dist/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Local build tools and cargo config
+tools/
+.cargo/

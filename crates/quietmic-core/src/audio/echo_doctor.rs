@@ -167,6 +167,7 @@ impl EchoDoctor {
             "Fix 2: In Discord User Settings -> Voice & Video -> Audio Subsystem, ensure 'Standard' is selected.".to_string(),
             "Fix 3: Turn OFF 'Share audio' in Discord if sound from the shared window is not necessary.".to_string(),
             "Fix 4: In Discord Voice & Video settings, set Input Device to 'CABLE Output' and Output Device to your real Headphones.".to_string(),
+            "Fix 5: Keep Echo Cancellation (AEC) enabled in 180hz nc when using speakers so speaker sound is eliminated from your microphone and never echoes in screen shares or recordings.".to_string(),
         ];
 
         EchoDoctorReport {

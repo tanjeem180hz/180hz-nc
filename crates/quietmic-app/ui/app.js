@@ -238,14 +238,17 @@ async function init() {
     currentConfig = cfg;
     const urlParams = new URLSearchParams(window.location.search);
     const queryTheme = urlParams.get('theme');
-    applyTheme(queryTheme || cfg.theme || 'dark');
+    const hashTheme = window.location.hash.includes('light') || window.location.hash.includes('daylight') ? 'light' : (window.location.hash.includes('dark') ? 'dark' : null);
+    applyTheme(queryTheme || hashTheme || cfg.theme || 'dark');
     populateDevices(inputDevs || [], outputDevs || [], cfg);
     applyConfig(cfg);
 
-    if (urlParams.get('modal') === 'echo-doctor' && echoDoctorBtn) {
-      echoDoctorBtn.click();
-    } else if (urlParams.get('modal') === 'pipeline' && pipelineSelfTestBtn) {
-      pipelineSelfTestBtn.click();
+    if (urlParams.get('modal') === 'echo-doctor' || window.location.hash.includes('echo-doctor')) {
+      if (echoDoctorBtn) echoDoctorBtn.click();
+      else if (echoDoctorModal) echoDoctorModal.style.display = 'flex';
+    } else if (urlParams.get('modal') === 'pipeline' || window.location.hash.includes('pipeline')) {
+      if (pipelineSelfTestBtn) pipelineSelfTestBtn.click();
+      else if (pipelineModal) pipelineModal.style.display = 'flex';
     }
 
     const liveStatus = await invoke('get_live_test_status').catch(() => null);

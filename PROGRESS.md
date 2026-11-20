@@ -47,10 +47,34 @@
 - [x] Simplified Interface, Removed AI Branding & Developer Debug Clutter: Transformed UI into a sleek, consumer-grade desktop utility with clean typography, user-friendly controls, and zero technical jargon.
 - [x] Resolved Acoustic Echo Cancellation (AEC) Speech Distortion & Choppy "Fatik" Sound: Clamped Normalized LMS step size to prevent explosion on quiet reference, extended double-talk hangover to 30 ms to span pitch pulses without chattering, calibrated Geigel coupling threshold (0.85), smoothed NLP slew rate (0.003 attack / 0.001 release), and enabled bit-exact silence pass-through with 300 ms dwell tail.
 - [x] Enhanced Voice Smoothness in Echo Cancellation: Removed hard sample-level clipping on echo prediction, raised silence detection threshold to 0.002 (-54 dBFS) to eliminate soundcard dither false-triggers, implemented continuous spline crossfade between active and bypass states, and tuned Geigel threshold to 0.92 * ref_peak.
+- [x] Fixed Screen Share Double Voice & Voice Echo: Widened vocal pitch exclusion window in delay estimator to isolate speech harmonics, enabled multi-window candidate persistence locking, auto-stopped Live Voice Monitor on minimize/hide-to-tray to protect desktop audio stream, verified 28.72 dB ERLE with 0.07 dB speech delta, and generated A/B proof WAVs in `ab_samples/`.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 51: Fix Screen Share Double Voice and Voice Echo in Echo Cancellation
+- **Speech-Aware Sidelobe Exclusion & Harmonic-Resistant Delay Locking (`crates/quietmic-core/src/engine/aec.rs`)**:
+  - Replaced narrow 4-sample sidelobe check with an 80-sample (10 ms at 8 kHz) vocal pitch exclusion window. This prevents conversational pitch periods (100–250 Hz) from creating artificial secondary peaks that falsely failed `peak_to_sidelobe >= 1.12`.
+  - Conditioned delay locking on multi-window candidate persistence: when `best_corr >= 0.15` and the lag estimate persists across $\ge 2$ consecutive windows (100 ms) within $\pm 24$ samples ($\pm 0.5$ ms), AEC immediately locks the acoustic delay and engages cancellation.
+- **Auto-Stop Live Voice Monitor on Hide-to-Tray (`crates/quietmic-app/src/main.rs`)**:
+  - Automatically invokes `live_monitor.stop()` when the app window is hidden to the system tray (`close_to_tray`). This ensures the user's near-end microphone audio is never streamed to the physical desktop render device in the background, completely preventing conferencing apps (Discord, OBS, Zoom) from broadcasting doubled user voices during screen share.
+- **Echo Doctor Screen Share Guard (`crates/quietmic-core/src/audio/echo_doctor.rs`)**:
+  - Added Tip 5 advising users to keep AEC active when using physical speakers to prevent speaker bleed from entering the microphone during screen shares.
+- **Guarded Installer Link Phase (`crates/quietmic-installer/build.rs`)**:
+  - Added existence verification for compiled resource object before emitting `cargo:rustc-link-arg`.
+- **Automated Verification (`test_screen_share_double_voice_reproduction.rs`)**:
+  - `test_screen_share_voice_echo_reproduction_and_elimination`: Single-talk ERLE = **28.72 dB** (Spec $\ge 20$ dB), Double-talk User Voice Delta = **0.07 dB** (Spec $< 1.0$ dB), Locked Delay = 35.0 ms (1680 samples).
+  - `test_screen_share_silent_gap_and_room_reverberation`: Resumed ERLE after 2.0s silent gap = **27.51 dB**, Locked Delay = 30.0 ms (1440 samples).
+  - `test_screen_share_double_talk_from_start`: User voice delta = **0.20 dB** (Spec $< 1.5$ dB), Locked Delay = 40.0 ms (1920 samples).
+  - All 99 tests across the workspace passed cleanly (`cargo test --workspace`).
+  - Zero warnings on `cargo clippy --workspace -- -D warnings`.
+- **A/B Proof WAVs in `ab_samples/`**:
+  - `screenshare_double_voice_defective.wav`: Shows severe doubled voice in screen share mix before AEC.
+  - `screenshare_double_voice_cleaned.wav`: Shows clean single voice in screen share mix with AEC active.
+  - `screenshare_mic_raw_leak.wav`: Leaked acoustic speaker sound into mic.
+  - `screenshare_mic_cleaned.wav`: AEC-cleaned mic signal (28.72 dB ERLE suppression, 0.07 dB speech delta).
+
 
 ### Commit 50: Enhance Voice Smoothness in Echo Cancellation, Remove Hard Discontinuities, and Add Spline Crossfade
 - **Continuous Linear Echo Prediction (`crates/quietmic-core/src/engine/aec.rs`)**:

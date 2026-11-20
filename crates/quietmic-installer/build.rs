@@ -104,7 +104,7 @@ fn main() {
             .args(["-i", "installer.rc", "-o", &res_obj.to_string_lossy()])
             .status();
         if let Ok(st) = windres_status {
-            if st.success() {
+            if st.success() && res_obj.exists() {
                 println!("cargo:rustc-link-arg={}", res_obj.display());
             }
         }

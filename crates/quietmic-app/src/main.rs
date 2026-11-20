@@ -833,6 +833,8 @@ fn main() {
                 if close_to_tray {
                     api.prevent_close();
                     let _ = window.hide();
+                    // Auto-stop Live Voice Monitor on minimize/hide to tray so user voice never leaks into screen shares
+                    state.live_monitor.lock().stop();
                     let mut cfg = state.config.lock();
                     if !cfg.shown_tray_toast {
                         cfg.shown_tray_toast = true;
