@@ -179,6 +179,9 @@ const footerBufferText = document.getElementById('footerBufferText');
 // Preferences
 const closeToTrayToggle = document.getElementById('closeToTrayToggle');
 const startWithWindowsToggle = document.getElementById('startWithWindowsToggle');
+const reduceEffectsToggle = document.getElementById('reduceEffectsToggle');
+let isReduceEffectsActive = false;
+let userManuallySetReduceEffects = false;
 const startupWarning = document.getElementById('startupWarning');
 const openStartupSettingsBtn = document.getElementById('openStartupSettingsBtn');
 const togglePinGuideBtn = document.getElementById('togglePinGuideBtn');
@@ -240,9 +243,21 @@ async function init() {
     const urlParams = new URLSearchParams(window.location.search);
     const queryTheme = urlParams.get('theme');
     const hashTheme = window.location.hash.includes('light') || window.location.hash.includes('daylight') ? 'light' : (window.location.hash.includes('dark') ? 'dark' : null);
-    applyTheme(queryTheme || hashTheme || cfg.theme || 'dark');
+    const systemPrefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    applyTheme(queryTheme || hashTheme || cfg.theme || (systemPrefersLight ? 'light' : 'dark'));
+    initReduceEffects();
+    if (urlParams.get('reduce_effects') === 'true' || window.location.hash.includes('reduce-effects')) {
+      setReduceEffects(true);
+    }
     populateDevices(inputDevs || [], outputDevs || [], cfg);
     applyConfig(cfg);
+
+    const queryTab = urlParams.get('tab') || (window.location.hash.includes('tab-') ? window.location.hash.split('tab-')[1] : null);
+    if (queryTab) {
+      const paneName = 'pane' + queryTab.charAt(0).toUpperCase() + queryTab.slice(1);
+      const targetBtn = document.querySelector(`[data-tab="${paneName}"]`);
+      if (targetBtn) targetBtn.click();
+    }
 
     if (urlParams.get('modal') === 'echo-doctor' || window.location.hash.includes('echo-doctor')) {
       if (echoDoctorBtn) echoDoctorBtn.click();
@@ -250,6 +265,8 @@ async function init() {
     } else if (urlParams.get('modal') === 'pipeline' || window.location.hash.includes('pipeline')) {
       if (pipelineSelfTestBtn) pipelineSelfTestBtn.click();
       else if (pipelineModal) pipelineModal.style.display = 'flex';
+    } else if (urlParams.get('toast') === 'tray' || window.location.hash.includes('toast')) {
+      showTrayToastNotification();
     }
 
     const liveStatus = await invoke('get_live_test_status').catch(() => null);
@@ -292,6 +309,94 @@ async function init() {
   setupEventListeners();
   startMetricsPolling();
   setupCpuThrottling();
+}
+
+// -------------------------------------------------------------
+// Reduce Effects Setting & Fallback Logic
+// -------------------------------------------------------------
+function setReduceEffects(enabled, reason) {
+  isReduceEffectsActive = enabled;
+  if (reduceEffectsToggle) reduceEffectsToggle.checked = enabled;
+  if (enabled) {
+    document.documentElement.setAttribute('data-reduce-effects', 'true');
+    document.body.classList.add('reduce-effects');
+  } else {
+    document.documentElement.removeAttribute('data-reduce-effects');
+    document.body.classList.remove('reduce-effects');
+  }
+  try {
+    localStorage.setItem('reduce_effects', enabled ? 'true' : 'false');
+  } catch (e) {}
+
+  if (reason) {
+    console.info(`[180hz nc] Reduce effects auto-engaged: ${reason}`);
+    showStatusNotice(`Reduce effects active (${reason})`);
+  }
+}
+
+function showStatusNotice(message) {
+  if (footerStatusText) {
+    const prev = footerStatusText.textContent;
+    footerStatusText.textContent = message;
+    setTimeout(() => {
+      footerStatusText.textContent = prev;
+    }, 4000);
+  }
+}
+
+function initReduceEffects() {
+  let saved = null;
+  try {
+    saved = localStorage.getItem('reduce_effects');
+  } catch (e) {}
+
+  if (saved !== null) {
+    userManuallySetReduceEffects = true;
+    setReduceEffects(saved === 'true');
+  } else {
+    // Check backdrop-filter support
+    const supported = window.CSS && (CSS.supports('backdrop-filter', 'blur(12px)') || CSS.supports('-webkit-backdrop-filter', 'blur(12px)'));
+    if (!supported) {
+      setReduceEffects(true, 'Backdrop filter unsupported');
+      return;
+    }
+    // Check software GPU
+    try {
+      const c = document.createElement('canvas');
+      const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+      if (gl) {
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        if (dbg) {
+          const rend = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '';
+          if (/swiftshader|llvmpipe|software|basic render/i.test(rend)) {
+            setReduceEffects(true, 'Software rendering detected');
+            return;
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Monitor frame budget: if frame time > 24ms for ~2s continuously, auto-enable
+  let slowFrames = 0;
+  let lastT = performance.now();
+  function checkPerf(now) {
+    if (!document.hidden && !isReduceEffectsActive && !userManuallySetReduceEffects) {
+      const dt = now - lastT;
+      if (dt > 24.0) {
+        slowFrames++;
+        if (slowFrames > 60) {
+          setReduceEffects(true, 'Frame rate budget exceeded (>24ms)');
+          return;
+        }
+      } else {
+        slowFrames = Math.max(0, slowFrames - 1);
+      }
+    }
+    lastT = now;
+    requestAnimationFrame(checkPerf);
+  }
+  requestAnimationFrame(checkPerf);
 }
 
 // -------------------------------------------------------------
@@ -613,7 +718,7 @@ async function pollMetrics() {
   }
 }
 
-function startMetricsPolling(intervalMs = 60) {
+function startMetricsPolling(intervalMs = 66) {
   if (pollIntervalId) clearInterval(pollIntervalId);
   pollIntervalId = setInterval(pollMetrics, intervalMs);
 }
@@ -624,11 +729,14 @@ function startMetricsPolling(intervalMs = 60) {
 function setupCpuThrottling() {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-      // Window is minimized or in background: drop poll rate to 2500ms to consume 0% CPU
-      startMetricsPolling(2500);
+      // Window is minimized or hidden in tray: completely halt polling for strictly 0% CPU
+      if (pollIntervalId) {
+        clearInterval(pollIntervalId);
+        pollIntervalId = null;
+      }
     } else {
-      // Window is visible: restore 60ms high-fidelity polling immediately
-      startMetricsPolling(60);
+      // Window is visible: restore 15 fps polling immediately
+      startMetricsPolling(66);
       pollMetrics();
     }
   });
@@ -665,6 +773,37 @@ function isKeyMatchingPtt(e) {
 // Event Listeners Setup
 // -------------------------------------------------------------
 function setupEventListeners() {
+  // Tab Navigation
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  const tabPanes = document.querySelectorAll('.tab-pane');
+  tabButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const targetPaneId = btn.getAttribute('data-tab');
+      if (!targetPaneId) return;
+
+      tabButtons.forEach((b) => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+      });
+      tabPanes.forEach((p) => p.classList.add('hidden'));
+
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      const targetPane = document.getElementById(targetPaneId);
+      if (targetPane) {
+        targetPane.classList.remove('hidden');
+      }
+    });
+  });
+
+  // Reduce Effects Toggle
+  if (reduceEffectsToggle) {
+    reduceEffectsToggle.addEventListener('change', () => {
+      userManuallySetReduceEffects = true;
+      setReduceEffects(reduceEffectsToggle.checked);
+    });
+  }
+
   // Master Power
   masterPowerBtn.addEventListener('click', toggleMasterPower);
 

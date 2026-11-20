@@ -1,80 +1,130 @@
-# 180hz nc UI Design System & Architecture
+# 180hz nc UI Design System: Soft Glass Architecture
 
-## 1. Concept & Identity
-**180hz nc** features a clean, professional, commercial-grade audio control center built on a unified card-based architecture.
+## 1. Concept & Philosophy
+**180hz nc** features the **"Soft Glass"** desktop workspace theme — a modern, tactile interface with subtle translucent panels, soft frosted-glass surfaces, gentle blur effects, and disciplined rounded corners (12px for cards, 8px for controls and inputs).
 
-The name refers to **180 Hz**, the acoustic sweet spot of human speech fundamentals and the anchor frequency for speech-noise separation.
-
-> [!NOTE]
-> The experimental "180 Hz Signal Lab" canvas oscilloscope design remains fully preserved in the remote git branch `origin/theme-signal-lab`. On `main`, the streamlined, high-efficiency classic card layout is the primary design, enhanced with modern design tokens, Dark & Light mode toggling, and comprehensive diagnostics.
+The design uses a calm pastel-tinted gradient backdrop, low-glare neutral text, and soft accent highlights so dense, professional audio tools feel calm, focused, and uncluttered.
 
 ---
 
-## 2. Design Tokens & Visual Hierarchy
+## 2. Design Tokens & Visual Hierarchy (`theme-soft-glass.css`)
 
-### 2.1 Color Palette & Design Tokens
-The application implements CSS Custom Properties for immediate theme switching and optimal contrast:
+All design variables and theme tokens are centralized in [`theme-soft-glass.css`](file:///e:/GitHubProject/NoiseCancelator/crates/quietmic-app/ui/theme-soft-glass.css).
 
-| Token | Dark Theme (Default) | Light Theme (`daylight`) | Purpose |
+### 2.1 Spacing & Radius Scale
+Consistent 4/8 px scale ensures predictable rhythm and generous padding across all DPIs:
+- **Spacing Grid**:
+  - `--space-1`: `4px`
+  - `--space-2`: `8px`
+  - `--space-3`: `12px`
+  - `--space-4`: `16px`
+  - `--space-5`: `20px`
+  - `--space-6`: `24px`
+  - `--space-8`: `32px`
+- **Shape Scale**:
+  - `--radius-card`: `12px` (Cards, panels, modal containers)
+  - `--radius-control`: `8px` (Buttons, inputs, selects, sliders, segmented switches)
+  - `--radius-sm`: `6px` (Inner buttons, badges)
+  - `--radius-pill`: `9999px` (Status indicators, toggle track, VU meters)
+
+### 2.2 Color Tokens & Contrast Matrix
+
+| Category | Soft Glass Dark (Default) | Soft Glass Light (`daylight`) | Reduce Effects Mode |
 | :--- | :--- | :--- | :--- |
-| `--bg-app` | `#0f172a` (Slate 900) | `#f1f5f9` (Slate 100) | App window canvas |
-| `--bg-card` | `#1e293b` (Slate 800) | `#ffffff` (Pure White) | Card surfaces |
-| `--bg-input` | `#0b1120` (Slate 950) | `#f8fafc` (Slate 50) | Recessed inputs, dropdowns, meters |
-| `--border-card` | `#334155` (Slate 700) | `#e2e8f0` (Slate 200) | Subtle card borders |
-| `--accent-emerald` | `#10b981` (Emerald 500) | `#059669` (Emerald 600) | Active status, clean voice, healthy |
-| `--accent-blue` | `#3b82f6` (Blue 500) | `#2563eb` (Blue 600) | Primary actions, sliders, active segment |
-| `--accent-amber` | `#f59e0b` (Amber 500) | `#d97706` (Amber 600) | Bypassed state, loop warnings |
-| `--accent-red` | `#ef4444` (Red 500) | `#dc2626` (Red 600) | Overload clipping alert, error states |
-| `--text-primary` | `#f8fafc` (Slate 50) | `#0f172a` (Slate 900) | High-contrast readable typography |
-| `--text-secondary` | `#94a3b8` (Slate 400) | `#475569` (Slate 600) | Labels, descriptors, micro-copy |
+| **Backdrop Gradient** | `linear-gradient(145deg, #0e121a 0%, #151a28 50%, #111e22 100%)` | `linear-gradient(135deg, #e9ecf8 0%, #dfe9f4 50%, #e0f2ec 100%)` | Fixed solid tint |
+| **Panel Surface** | `rgba(22, 28, 42, 0.65)` | `rgba(255, 255, 255, 0.62)` | `#19202f` (Dark) / `#eaf0f7` (Light) |
+| **Hairline Border** | `1px solid rgba(255, 255, 255, 0.12)` | `1px solid rgba(255, 255, 255, 0.70)` | `rgba(255, 255, 255, 0.10)` / `#ccd6e4` |
+| **Backdrop Filter** | `blur(12px) saturate(120%)` | `blur(12px) saturate(120%)` | `none` (0 ms GPU shader cost) |
+| **Text Primary** | `#f0f3f8` (Soft off-white) | `#212636` (Soft charcoal) | Identical |
+| **Text Secondary** | `#9da6b9` (Calm slate) | `#535d74` (Mid-tone charcoal) | Identical |
+| **Accent Primary** | `#7c8cf8` (Soft Indigo) | `#5f70e5` (Deepened Indigo) | Identical |
+| **Accent Secondary** | `#5ecbb0` (Soft Mint) | `#0d9674` (Emerald Green) | Identical |
+| **Warning / Bypass** | `#f4be62` (Warm Amber) | `#b37302` (Deep Amber) | Identical |
+| **Error / Alert** | `#f28585` (Soft Coral) | `#d74343` (Deep Coral) | Identical |
+| **Clipping LED** | `#ef5350` (Vivid Red) | `#cc2b2b` (Vivid Red) | Identical |
 
-### 2.2 Typography & Spacing
-- **Font Stack**: Clean system font stack (`-apple-system`, `BlinkMacSystemFont`, `Segoe UI`, `Roboto`, `sans-serif`) for crisp rendering at any DPI.
-- **Monospace Stack**: High-legibility mono numbers for dB scales, latency readouts, and frame counters.
-- **Grid & Spacing**: Strict 4/8 px grid scale (4px, 8px, 12px, 16px, 20px) with 12px card border radii and smooth elevation shadows.
-
----
-
-## 3. Core Screen Elements & Features
-
-### 3.1 Header & Master Power Switch
-- **Brand**: Custom audio wave SVG glyph with bold `180hz nc` title and `AI Noise Suppression` subtitle.
-- **Master Power Button**: Instant one-click toggle between `Active` (emerald glow) and `Bypassed` (amber glow).
-- **Theme Switcher**: One-click toggle (`🌙` / `☀️`) switching between Dark and Light themes with dynamic persistence to `%APPDATA%/180hz nc/config.json`.
-- **Engine Status Pill**: Glowing live indicator showing current mode status (`Krisp AI Active` / `Bypassed` / `Fallback`).
-
-### 3.2 Microphone & Speaker Controls
-- **Microphone**: Auto-detection badge, device dropdown, 0% to 200% input volume slider, and dual-purpose VU meter with calibrated dB ticks (`-60`, `-30`, `-12`, `-3`, `0 dB`).
-- **`CLIP` Indicator**: Flashing red LED warning triggered immediately when input audio reaches $\ge -0.5$ dBFS.
-- **Speaker / Headphones**: Auto-detection badge, device dropdown, and 0% to 100% monitor volume slider.
-
-### 3.3 Live Voice Tester (Hero Centerpiece)
-- **Central Circular Button**: Large 72px interactive microphone button with glowing emerald pulse animation when testing.
-- **A/B Monitor Stream Switch**: Click to instantly toggle between `✨ Cleaned` (AI noise suppression) and `🎙️ Original` (Dry unprocessed mic audio) directly in headphones.
-
-### 3.4 Noise Suppression & DSP Telemetry
-- **4-Mode Segmented Switch**: `None`, `Light`, `Standard`, and `Max Quality`.
-- **Suppression Strength Slider**: Continuous 0% to 100% fader with zero dry-signal leakage at 100%.
-- **Live DSP Stats**: Real-time counter of processed frames, pass-through frames (guaranteed 0), and DSP latency in microseconds (`~180 µs`).
-- **`Self-Test`**: Runs synthetic audio through all 8 pipeline stages and displays a comprehensive diagnostic report modal.
-
-### 3.5 Advanced Features
-- **Auto-Adjust Input Sensitivity**: Adapts dynamically to room noise floor and vocal intensity. Includes manual threshold slider when disabled.
-- **Echo Cancellation (AEC)**: Filters acoustic speaker bleed with ERLE and delay tracking. Features `🔊 Speaker Test` and `🩺 Echo Doctor` modal for diagnosing loopbacks and Discord screen share echo.
-- **Push to Talk**: Customizable keyboard shortcut binding (e.g., `Space`, mouse keys) with live transmission badge.
+#### Contrast Ratio Audit (WCAG AA Compliance $\ge 4.5:1$):
+- **Light Theme**:
+  - Primary body text `#212636` on rendered card `#f5f6fb`: **13.38 : 1** (Exceeds WCAG AAA).
+  - Secondary label text `#535d74` on rendered card `#f5f6fb`: **5.93 : 1** (Exceeds WCAG AA).
+- **Dark Theme**:
+  - Primary body text `#f0f3f8` on rendered card `#141926`: **15.65 : 1** (Exceeds WCAG AAA).
+  - Secondary label text `#9da6b9` on rendered card `#141926`: **7.14 : 1** (Exceeds WCAG AAA).
 
 ---
 
-## 4. Zero CPU Idle Optimization
-- When minimized to tray or hidden (`document.hidden === true`):
-  - Metric polling drops from 60 ms to 2500 ms.
-  - CSS animations and canvas loops are paused.
-  - App UI consumes **0% CPU** in the background.
+## 3. Typography: Bundled Local Fonts & Tabular Numerals
+- **Font Stack**: Bundled local **Inter** font family (weights 400, 500, 600, 700) located in [`ui/fonts/`](file:///e:/GitHubProject/NoiseCancelator/crates/quietmic-app/ui/fonts).
+- **License**: SIL Open Font License, Version 1.1 (OFL-1.1) documented in [`THIRD_PARTY_NOTICES.md`](file:///e:/GitHubProject/NoiseCancelator/THIRD_PARTY_NOTICES.md).
+- **Zero External Calls**: Zero Google Fonts / CDN dependencies, zero network requests, zero telemetry.
+- **Tabular Numerals**: Enforced via `font-variant-numeric: tabular-nums;` on all dB scales, microsecond latency readouts, and VU meters to eliminate layout jitter.
 
 ---
 
-## 5. Screenshots
+## 4. Performance Rules for Glass Effects (Strict Hardware Budgets)
 
-- **Dark Theme (Default)**: `docs/screenshots/theme_classic_dark.png`
-- **Light Theme**: `docs/screenshots/theme_classic_light.png`
-- **Echo Doctor Diagnostic**: `docs/screenshots/echo_doctor_modal.png`
+1. **Max 4 Blurred Surfaces**: Blur is applied strictly to large structural cards and active modals. It is never applied to nested elements, list items, chips, or inputs.
+2. **Zero Animated Blur / Gradients**: All backdrops and glass filters remain static. No expensive GPU layout redraw loops.
+3. **0% CPU Idle Throttling**:
+   - Monitored via `document.addEventListener('visibilitychange', ...)`.
+   - When the window is hidden or minimized to tray, metric polling is completely halted (`clearInterval(pollIntervalId)`).
+   - Audio DSP thread continues at real-time priority in background with **0% UI CPU overhead**.
+4. **Meter Polling Rate**: Calibrated to **15 fps (66 ms)**, completely eliminating CPU thrashing.
+5. **Setting "Reduce effects"**:
+   - Replaces all translucency and `backdrop-filter: blur(12px)` with solid tinted surfaces.
+   - User controllable via toggle in the *Preferences* tab.
+   - **Automatic Fallback Triggers**:
+     - Automatically enables if `backdrop-filter` is unsupported.
+     - Automatically enables if software GPU rendering (e.g., SwiftShader, LLVMpipe, Microsoft Basic Render) is detected via WebGL unmasked renderer.
+     - Automatically enables if measured UI frame time exceeds 24 ms for $>2$ seconds continuously while visible.
+     - Informs the user once via status toast upon auto-activation.
+
+---
+
+## 5. Navigation & Component Architecture
+
+### 5.1 Tab Navigation
+- **Audio Tab**: Primary workspace holding Microphone selector, Speaker selector, Live Voice Monitor, Noise Suppression (4-mode switch + slider), Auto-Sensitivity, Echo Cancellation, and Push-to-Talk.
+- **Diagnostics Tab**: System health center holding Echo Doctor, DSP Pipeline Self-Test, AEC Speaker Calibration, and VB-CABLE routing guidance.
+- **Preferences Tab**: Desktop integration controls including *Minimize to tray on close*, *Start with Windows*, *Reduce effects* toggle, and *Taskbar Visibility Pinning Guide*.
+- **About Tab**: Version telemetry, DSP technical specifications, zero-latency guarantees, and OFL license notices.
+
+### 5.2 Accessible Interactive States
+- **Hover**: 150 ms ease transition with subtle surface brighten.
+- **Active / Pressed**: 0.96 scale down on tactile switches.
+- **Focus-Visible**: 2px high-visibility accent focus ring with 2px offset.
+- **Reduced Motion**: Respects `prefers-reduced-motion: reduce` by setting transition times to 0.01 ms.
+
+---
+
+## 6. How to Add a New Theme
+
+To add a new theme:
+1. Define a CSS selector `[data-theme="my-theme"]` in `theme-soft-glass.css`.
+2. Override the following core tokens:
+   - `--bg-gradient`: Linear or radial backdrop.
+   - `--glass-bg`: Card surface translucent color (`rgba(..., 0.55-0.70)`).
+   - `--glass-border`: Hairline border with white/neutral tint.
+   - `--text-primary` and `--text-secondary`: Ensure contrast ratio $\ge 4.5:1$.
+   - `--accent-primary` and `--accent-secondary`: Key interaction colors.
+3. Register the theme name in `ipc-contract.json` under `commands.set_theme.allowed`.
+4. Run `cargo test -p quietmic-core --test test_ipc_contract_verification` to confirm contract integrity.
+
+---
+
+## 7. Screenshots & DPI Verification
+
+| Screen State | Preview Link |
+| :--- | :--- |
+| **Soft Glass Dark (100% DPI)** | [theme_soft_glass_dark_100.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_soft_glass_dark_100.png) |
+| **Soft Glass Light (100% DPI)** | [theme_soft_glass_light_100.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_soft_glass_light_100.png) |
+| **Soft Glass Dark (150% DPI)** | [theme_soft_glass_dark_150.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_soft_glass_dark_150.png) |
+| **Soft Glass Light (150% DPI)** | [theme_soft_glass_light_150.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_soft_glass_light_150.png) |
+| **Soft Glass Dark (200% DPI)** | [theme_soft_glass_dark_200.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_soft_glass_dark_200.png) |
+| **Soft Glass Light (200% DPI)** | [theme_soft_glass_light_200.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_soft_glass_light_200.png) |
+| **Reduce Effects Mode (Dark)** | [theme_reduce_effects_dark.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_reduce_effects_dark.png) |
+| **Reduce Effects Mode (Light)** | [theme_reduce_effects_light.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_reduce_effects_light.png) |
+| **Diagnostics Tab** | [tab_diagnostics_dark.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/tab_diagnostics_dark.png) |
+| **Preferences Tab** | [tab_preferences_dark.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/tab_preferences_dark.png) |
+| **Echo Doctor Diagnostic Modal** | [modal_echo_doctor_dark.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/modal_echo_doctor_dark.png) |
+| **DSP Self-Test Modal** | [modal_selftest_dark.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/modal_selftest_dark.png) |

@@ -49,10 +49,40 @@
 - [x] Enhanced Voice Smoothness in Echo Cancellation: Removed hard sample-level clipping on echo prediction, raised silence detection threshold to 0.002 (-54 dBFS) to eliminate soundcard dither false-triggers, implemented continuous spline crossfade between active and bypass states, and tuned Geigel threshold to 0.92 * ref_peak.
 - [x] Fixed Screen Share Double Voice & Voice Echo: Widened vocal pitch exclusion window in delay estimator to isolate speech harmonics, enabled multi-window candidate persistence locking, auto-stopped Live Voice Monitor on minimize/hide-to-tray to protect desktop audio stream, verified 28.72 dB ERLE with 0.07 dB speech delta, and generated A/B proof WAVs in `ab_samples/`.
 - [x] Backend Safety Contract & Automated IPC Verification: Generated `ipc-contract.json`, created automated contract test verifying all commands, arguments, types, ranges, and frontend invoke calls, aligned `set_ptt_state` parameter, and added full E2E backend controls test suite.
+- [x] Soft Glass Theme Implementation & Multi-DPI Verification: Restyled frontend with design tokens in `theme-soft-glass.css`, bundled local Inter woff2 typography (OFL-1.1), implemented 4-tab calm navigation, "Reduce effects" mode with automatic fallback, 15 fps meter throttling, 0% CPU idle throttling, verified zero console errors across CDP smoke tests, and captured 25 screenshots at 100%, 150%, and 200% DPI.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 53: Implement "Soft Glass" Design System, Local Typography, and Performance Fallbacks
+- **Soft Glass Design Tokens (`crates/quietmic-app/ui/theme-soft-glass.css`)**:
+  - Implemented 12px card radius (`--radius-card`), 8px control radius (`--radius-control`), and pill radius (`--radius-pill`).
+  - Implemented calm pastel gradient backdrops for both "Soft Glass Light" (`linear-gradient(135deg, #e9ecf8, #dfe9f4, #e0f2ec)`) and "Soft Glass Dark" (`linear-gradient(145deg, #0e121a, #151a28, #111e22)`).
+  - Translucent panels: 55–70% fill, 1px white hairline border, `backdrop-filter: blur(12px) saturate(120%)`.
+  - Max 4 blurred surfaces visible simultaneously; no animated gradients or blurs.
+  - Low-glare neutral typography: `#212636` on light (13.38:1 contrast) and `#f0f3f8` on dark (15.65:1 contrast), exceeding WCAG AA $\ge 4.5:1$.
+- **Local Inter Typography & Licenses (`crates/quietmic-app/ui/fonts/`, `THIRD_PARTY_NOTICES.md`)**:
+  - Bundled local WOFF2 font files for weights 400, 500, 600, and 700.
+  - Zero external CDN or telemetry requests.
+  - Enforced `font-variant-numeric: tabular-nums` for rock-solid non-jittering dB meters and microsecond latency counters.
+  - Documented Rasmus Andersson's SIL Open Font License 1.1 in `THIRD_PARTY_NOTICES.md`.
+- **Component & Tab Hierarchy (`crates/quietmic-app/ui/index.html`)**:
+  - 4 calm tabs: **Audio**, **Diagnostics**, **Preferences**, and **About**.
+  - Big tactile power button (Active / Bypassed / Error).
+  - Sliding segmented mode switch (`None`, `Light`, `Standard`, `Max Quality`).
+  - Tactile sliders, input VU meter with red `CLIP` LED badge alert.
+- **Hardware Fallback & Performance Guard (`crates/quietmic-app/ui/app.js`)**:
+  - Setting "Reduce effects": converts blur and translucency into solid tinted surfaces.
+  - Auto-fallback triggers: turns ON automatically if `backdrop-filter` is unsupported, if software GPU rendering is detected, or if measured UI frame time exceeds 24 ms for $>2$ seconds continuously while visible.
+  - Throttled meters to 15 fps (66 ms).
+  - Strict 0% UI CPU when hidden or minimized to tray (`clearInterval(pollIntervalId)`).
+- **Verification & Multi-DPI Screenshots (`docs/screenshots/`, `scripts/ui_smoke_test.ps1`)**:
+  - Chrome DevTools Protocol automated smoke test verified zero console errors across power toggle, mode switch, slider input, theme switch, tab navigation, and reduce effects mode.
+  - Captured 25 screenshots covering Dark, Light, Reduce Effects, Diagnostics, Preferences, Modals, and DPI scales (100%, 150%, 200%).
+  - Verified audio regression test (`test_regression_noise_leak`): 18.2 dB (Light), 15.4 dB (Standard), 19.1 dB (MaxQuality) noise suppression with 0 pass-through frames.
+  - Verified per-frame benchmarks: Light RTF = 0.0058–0.0082 ($\approx 0.7\%$ CPU), Standard RTF = 0.0029–0.0044 ($\approx 0.35\%$ CPU), latency $0.03–0.08$ ms, meeting all performance budgets.
+  - Updated `DESIGN.md` and `README.md`.
 
 ### Commit 52: Establish Backend Safety Contract, Automated IPC Verification, and E2E Controls Test
 - **IPC Safety Contract (`ipc-contract.json`)**:

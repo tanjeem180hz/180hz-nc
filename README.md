@@ -38,28 +38,27 @@ Everything required for 180hz nc to function perfectly is bundled into `180hz-nc
 
 ---
 
-## 🎛️ Modern Audio Control Center & Unified Card UI
+## 🎛️ Modern Audio Control Center: Soft Glass Workspace
 
-**180hz nc** features a clean, professional, commercial-grade audio interface built for maximum efficiency and clarity:
+**180hz nc** features the **"Soft Glass"** design system — a modern desktop workspace with subtle translucent panels, soft frosted-glass surfaces, gentle blur effects (`blur(12px) saturate(120%)`), and rounded corners (12px cards, 8px controls):
 
-- **Streamlined Card Layout**: All vital controls are visible at a glance without navigating complex menus — Microphone, Speaker, Live Voice Tester, Noise Suppression, Sensitivity, and Echo Cancellation.
-- **Master Power Button**: Instant one-click toggle in the header between `Active` (emerald glow) and `Bypassed` (amber glow).
-- **Dark & Light Mode Support**: One-click theme toggle (`🌙` / `☀️`) switching seamlessly between deep slate Dark Mode and crisp executive Light Mode (`daylight`), remembered automatically in config.
-- **Hero Live Voice Tester**:
+- **Calm Pastel Gradient Backdrop**: Fixed low-saturation pastel backdrop with gentle ambient glows.
+- **Master Power Button**: Instant tactile toggle in the header between `Active` (soft emerald glow) and `Bypassed` (neutral).
+- **Soft Glass Dark & Light Variants**: One-click theme toggle (`🌙` / `☀️`) switching seamlessly between "Soft Glass Dark" and "Soft Glass Light", with WCAG AA compliance ($\ge 4.5:1$ text contrast).
+- **Hero Live Voice Monitor**:
   - Interactive circular test button with real-time green pulsing audio feedback.
-  - **A/B Monitor Switch**: Compare `✨ Cleaned` vs `🎙️ Original (Dry)` audio in headphones with 1 click while speaking.
-- **Noise Suppression 4-Mode Switch**: Rapid switching across `None`, `Light`, `Standard`, and `Max Quality` (Krisp-level isolation).
+  - **A/B Monitor Switch**: Compare `Cleaned` vs `Raw` audio in headphones with 1 click while speaking.
+- **Noise Suppression 4-Mode Switch**: Sliding segmented control with `None`, `Light`, `Standard`, and `Max Quality` (Krisp-level isolation).
 - **Live Input VU Meter & CLIP Alert**: Calibrated dB meter (`-60 dB` to `0 dB`) with an instant red `CLIP` LED badge alert whenever signal reaches $\ge -0.5$ dBFS.
-- **Echo Doctor Diagnostics**: One-click `🩺 Echo Doctor` modal that inspects Windows audio routes, flags feedback loops, and provides step-by-step Discord screen sharing instructions.
-- **Zero Idle CPU**: Automatically drops polling rate when minimized or hidden to the system tray (**0% CPU**).
+- **4-Tab Clean Navigation**: Organizes tools into calm cards (*Audio*, *Diagnostics*, *Preferences*, *About*).
+- **Reduce Effects Mode**: Hardware fallback that converts blur and translucency to solid tinted surfaces, with automatic activation on software GPUs or frame drops.
+- **Zero Idle CPU**: Automatically halts UI polling when minimized or hidden to the system tray (**0% UI CPU**).
 
-*(Note: The experimental "Signal Lab" oscilloscope UI remains fully preserved in the remote git branch `origin/theme-signal-lab`)*.
+### 📸 Soft Glass Theme Preview
 
-### 📸 UI Theme Preview
-
-| Dark Theme (Default) | Light Theme (`daylight`) | Echo Doctor Diagnostic Modal |
+| Soft Glass Dark | Soft Glass Light | Diagnostics & Echo Doctor |
 | :---: | :---: | :---: |
-| ![Dark Theme](docs/screenshots/theme_classic_dark.png) | ![Light Theme](docs/screenshots/theme_classic_light.png) | ![Echo Doctor Modal](docs/screenshots/echo_doctor_modal.png) |
+| ![Soft Glass Dark](docs/screenshots/theme_soft_glass_dark_100.png) | ![Soft Glass Light](docs/screenshots/theme_soft_glass_light_100.png) | ![Echo Doctor Modal](docs/screenshots/modal_echo_doctor_dark.png) |
 
 ---
 
