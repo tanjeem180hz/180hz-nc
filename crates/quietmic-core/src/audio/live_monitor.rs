@@ -249,9 +249,10 @@ impl LiveMonitorController {
                             *last_error_cb.lock() = Some(
                                 "Acoustic feedback (howling) detected! Monitor was automatically muted to protect your hearing. Please use headphones.".to_string()
                             );
-                            data.fill(0);
-                            is_active_cb.store(false, Ordering::Relaxed);
-                            return;
+                            scratch_blended[..input_needed].fill(0.0);
+                        } else if feedback_cb.load(Ordering::Relaxed) {
+                            feedback_cb.store(false, Ordering::Relaxed);
+                            *last_error_cb.lock() = None;
                         }
 
                         for s in scratch_blended[..input_needed].iter_mut() {
@@ -296,12 +297,6 @@ impl LiveMonitorController {
                     move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                         if !is_active_cb.load(Ordering::Relaxed) {
                             data.fill(0.0);
-                            return;
-                        }
-
-                        if feedback_cb.load(Ordering::Relaxed) {
-                            data.fill(0.0);
-                            is_active_cb.store(false, Ordering::Relaxed);
                             return;
                         }
 
@@ -352,9 +347,10 @@ impl LiveMonitorController {
                             *last_error_cb.lock() = Some(
                                 "Acoustic feedback (howling) detected! Monitor was automatically muted to protect your hearing. Please use headphones.".to_string()
                             );
-                            data.fill(0.0);
-                            is_active_cb.store(false, Ordering::Relaxed);
-                            return;
+                            scratch_blended[..input_needed].fill(0.0);
+                        } else if feedback_cb.load(Ordering::Relaxed) {
+                            feedback_cb.store(false, Ordering::Relaxed);
+                            *last_error_cb.lock() = None;
                         }
 
                         // Apply volume scaling and ear-protection soft limiter
@@ -431,21 +427,15 @@ impl LiveMonitorController {
         *self.last_activity.lock() = Instant::now();
     }
 
-    /// Returns current status for UI updates and checks for 10-minute inactivity auto-stop.
+    /// Returns current status for UI updates.
     pub fn get_status(&mut self) -> LiveMonitorStatus {
         let is_active = self.is_active.load(Ordering::Relaxed);
         let ab_val = self.ab_mode.load(Ordering::Relaxed);
         let volume = f32::from_bits(self.volume_bits.load(Ordering::Relaxed));
         let feedback_detected = self.feedback_detected.load(Ordering::Relaxed);
 
-        // Auto-stop after 10 minutes (600 seconds) of inactivity
-        if is_active && self.last_activity.lock().elapsed().as_secs() > 600 {
-            tracing::info!("Auto-stopping Live Test after 10 minutes of inactivity");
-            self.stop();
-        }
-
         LiveMonitorStatus {
-            is_active: self.is_active.load(Ordering::Relaxed),
+            is_active,
             ab_mode: if ab_val == 1 { "Original".to_string() } else { "Cleaned".to_string() },
             volume,
             feedback_detected,

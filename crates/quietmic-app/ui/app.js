@@ -219,6 +219,7 @@ let isBypassed = false;
 let currentMode = 'MaxQuality';
 let currentTheme = 'dark';
 let isLiveMonitoring = false;
+let liveStatusPollCount = 0;
 let lastClippingCount = 0;
 let clipTimer = null;
 let pollIntervalId = null;
@@ -469,13 +470,13 @@ async function selectNoiseMode(mode) {
 // Live Voice Tester Suite (Hero Feature)
 // -------------------------------------------------------------
 function updateLiveTestUI(active) {
-  isLiveMonitoring = active;
-  if (active) {
+  isLiveMonitoring = !!active;
+  if (isLiveMonitoring) {
     liveVoiceBtn.classList.add('active');
     liveVoiceIconOff.style.display = 'none';
     liveVoiceIconOn.style.display = 'block';
-    liveVoiceTitle.innerHTML = 'Live Voice Active <span class="live-pulse-dot">●</span>';
-    liveVoiceDesc.textContent = 'Streaming microphone audio directly to your headphones';
+    liveVoiceTitle.innerHTML = '<span class="live-pulse-dot"></span>Live Monitor: ON';
+    liveVoiceDesc.textContent = 'Streaming live monitor audio to headphones.';
   } else {
     liveVoiceBtn.classList.remove('active');
     liveVoiceIconOff.style.display = 'block';
@@ -502,6 +503,14 @@ async function pollMetrics() {
   try {
     const metrics = await invoke('get_metrics');
     if (!metrics) return;
+
+    // Periodic live monitor synchronization
+    if (liveStatusPollCount++ % 10 === 0) {
+      const liveStatus = await invoke('get_live_test_status').catch(() => null);
+      if (liveStatus && liveStatus.is_active !== isLiveMonitoring) {
+        updateLiveTestUI(liveStatus.is_active);
+      }
+    }
 
     // Peak VU Meter
     const inDb = metrics.input_peak_db;
@@ -689,8 +698,38 @@ function setupEventListeners() {
     spkAutoBadge.textContent = 'Selected';
   });
 
-  // Live Voice Button
-  liveVoiceBtn.addEventListener('click', toggleLiveTest);
+  // Live Voice Button (Strictly Mouse Click Only - Immune to Keyboard Space / Enter / Any Key)
+  liveVoiceBtn.addEventListener('click', (e) => {
+    // Immediately blur so liveVoiceBtn NEVER retains document focus
+    liveVoiceBtn.blur();
+
+    // Guard against synthetic keyboard clicks (detail === 0 with no mouse pointer coordinates)
+    const isSynthetic = (e && e.detail === 0 && (!e.pointerType || e.pointerType === ''));
+    if (isSynthetic) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
+    toggleLiveTest();
+  });
+
+  // Explicitly prevent any keyboard keydown/keyup/focus from activating liveVoiceBtn
+  liveVoiceBtn.addEventListener('keydown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    liveVoiceBtn.blur();
+    return false;
+  });
+  liveVoiceBtn.addEventListener('keyup', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    liveVoiceBtn.blur();
+    return false;
+  });
+  liveVoiceBtn.addEventListener('focus', () => {
+    liveVoiceBtn.blur();
+  });
 
   // A/B Monitor Switches
   if (abCleanedBtn && abOriginalBtn) {
@@ -868,6 +907,15 @@ function setupEventListeners() {
 
     window.addEventListener('keydown', captureKey, true);
   });
+
+  // Guard against any keyboard key (Space, Enter, etc.) triggering liveVoiceBtn
+  window.addEventListener('keydown', (e) => {
+    if (document.activeElement === liveVoiceBtn || e.target === liveVoiceBtn) {
+      liveVoiceBtn.blur();
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
 
   // Global PTT Key Listeners
   window.addEventListener('keydown', (e) => {

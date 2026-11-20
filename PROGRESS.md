@@ -42,10 +42,28 @@
 - [x] Part D: Cross-Version Windows Reliability (Per-User Mutex, TaskbarCreated Recovery, Audio Stream Watchdog, Quoted Run Path, Pinning Guide, COMPAT_REPORT.md).
 - [x] Part E: Elevate Suppression Strength & Quality with Dedicated MaxQualityEngine, Zero-Latency Pitch-Synchronous Harmonic Refinement, and Dynamic Attenuation Scaling.
 - [x] Removed 10-Second Test Recorder from Backend and Frontend (Eliminated heap buffer & audio thread lock, cleaned IPC commands & UI).
+- [x] Fixed Live Voice Monitor: Enforced strict mouse-click-only activation, immunized from keyboard Space/Enter and UI buttons, removed premature feedback session termination, and aligned card design with spec.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 46: Fix Live Voice Monitor Mouse-Click-Only Activation & Design Alignment
+- **Accurate UI Alignment (`crates/quietmic-app/ui/index.html` & `style.css`)**:
+  - Re-aligned the Live Voice Monitor card with the exact spec from user design: header row with uppercase `LIVE VOICE MONITOR` on the left and `[ Raw ] [ Cleaned ]` buttons on the right.
+  - Positioned the circular microphone button `(o)` side-by-side with `• Live Monitor: ON` (with glowing emerald indicator) and subtitle `Streaming live monitor audio to headphones.`
+  - Removed bulky bottom toolbars and refined compact button styling with cyan active highlight for Cleaned.
+- **Strict Mouse-Click-Only Toggle & Keyboard Immunity (`crates/quietmic-app/ui/app.js`)**:
+  - Implemented `tabindex="-1"` and `blur()` on focus/click so `liveVoiceBtn` never retains keyboard focus.
+  - Added filter in `click` handler guarding against synthetic keyboard-dispatched clicks (`e.detail === 0` without mouse pointer coordinates).
+  - Added capturing event listener on `window` and `liveVoiceBtn` to swallow `keydown` and `keyup` events for Space, Enter, or any other keyboard keys, completely preventing keyboard shortcuts or accidental keypresses from toggling the live mic.
+  - Added periodic status sync in `pollMetrics()` ensuring the UI status accurately reflects backend state.
+- **Backend Robustness (`crates/quietmic-core/src/audio/live_monitor.rs`)**:
+  - Replaced permanent `is_active = false` termination in acoustic howling detection with per-frame audio frame silencing and auto-recovery. The live test session is never killed automatically by loud speech, pitch vibrations, or room resonance.
+  - Removed arbitrary 10-minute inactivity auto-stop from `get_status()`. The live monitor now only stops when the user explicitly clicks the button with their mouse.
+- **Verification**:
+  - Clippy check passed cleanly with 0 warnings (`-D warnings`).
+  - Unit tests passed cleanly with 0 errors.
 
 ### Commit 45: Completely Remove 10-Second Test Recorder from Backend and Frontend
 - **Backend Clean-up (`crates/quietmic-core/src/audio/live_monitor.rs`)**:

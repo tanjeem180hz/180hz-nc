@@ -113,10 +113,18 @@
         <input type="range" id="speakerVolumeSlider" min="0" max="100" value="100" class="slider" aria-label="Speaker Volume Slider">
       </section>
 
-      <!-- Live Voice Tester (Hero Centerpiece with A/B Monitor) -->
+      <!-- Live Voice Monitor (Accurate Layout matching design) -->
       <section class="card live-test-card" aria-labelledby="liveVoiceTitle">
-        <div class="live-test-center">
-          <button id="liveVoiceBtn" class="live-voice-circle-btn" type="button" title="Click to test your voice live in headphones">
+        <div class="card-row" style="margin-bottom: 10px;">
+          <span class="card-label" style="text-transform: uppercase; font-weight: 700; font-size: 11px; letter-spacing: 0.6px;">Live Voice Monitor</span>
+          <div class="ab-buttons" id="abModeToggle">
+            <button type="button" id="abOriginalBtn" class="ab-btn" title="Listen to raw unprocessed microphone audio">Raw</button>
+            <button type="button" id="abCleanedBtn" class="ab-btn active" title="Listen to AI Cleaned audio">Cleaned</button>
+          </div>
+        </div>
+
+        <div class="live-test-body">
+          <button id="liveVoiceBtn" class="live-voice-circle-btn" type="button" tabindex="-1" title="Click with mouse to test your voice live in headphones">
             <!-- Non-active / Slashed Mic Icon (Off state) -->
             <svg id="liveVoiceIconOff" class="voice-icon icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="1" y1="1" x2="23" y2="23"></line>
@@ -137,17 +145,6 @@
           <div class="live-test-info">
             <div id="liveVoiceTitle" class="live-voice-title">Test Your Voice Live</div>
             <div id="liveVoiceDesc" class="live-voice-desc">Click icon to hear your voice live in headphones</div>
-          </div>
-        </div>
-
-        <!-- A/B Audio Switch -->
-        <div class="live-test-suite">
-          <div class="ab-switch-group">
-            <span class="suite-label">Monitor Stream:</span>
-            <div class="ab-buttons" id="abModeToggle">
-              <button type="button" id="abCleanedBtn" class="ab-btn active" title="Listen to AI Cleaned audio">✨ Cleaned</button>
-              <button type="button" id="abOriginalBtn" class="ab-btn" title="Listen to raw unprocessed microphone audio">🎙️ Original (Dry)</button>
-            </div>
           </div>
         </div>
       </section>
