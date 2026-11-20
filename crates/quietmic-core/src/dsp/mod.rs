@@ -12,7 +12,7 @@ pub mod transient;
 pub mod vad;
 
 pub use auto_sensitivity::AutoSensitivityAdapter;
-pub use biquad::HighPassFilter;
+pub use biquad::{HighPassFilter, PeakingFilter};
 pub use comfort_noise::ComfortNoiseGenerator;
 pub use crossfade::{CrossfadeMode, CrossfadeSwitch};
 pub use drift::DriftCompensator;

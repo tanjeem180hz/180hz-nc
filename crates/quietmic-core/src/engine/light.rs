@@ -8,6 +8,7 @@ pub struct LightEngine {
     vad_probability: f32,
     smoothed_vad_gain: f32,
     hangover_counter: usize,
+    suppression: f32,
     scratch_in: Box<[f32; Self::FRAME_SIZE]>,
     scratch_out: Box<[f32; Self::FRAME_SIZE]>,
 }
@@ -21,9 +22,19 @@ impl LightEngine {
             vad_probability: 0.0,
             smoothed_vad_gain: 1.0,
             hangover_counter: 0,
+            suppression: 1.0,
             scratch_in: Box::new([0.0; Self::FRAME_SIZE]),
             scratch_out: Box::new([0.0; Self::FRAME_SIZE]),
         }
+    }
+
+    /// Sets suppression strength factor (0.0 to 1.0).
+    pub fn set_suppression(&mut self, factor: f32) {
+        self.suppression = factor.clamp(0.0, 1.0);
+    }
+
+    pub fn suppression(&self) -> f32 {
+        self.suppression
     }
 
     /// Returns the Voice Activity probability estimated by RNNoise's recurrent model (0.0 to 1.0).
@@ -49,6 +60,7 @@ impl DenoiseEngine for LightEngine {
         self.vad_probability = 0.0;
         self.smoothed_vad_gain = 1.0;
         self.hangover_counter = 0;
+        self.suppression = 1.0;
         self.scratch_in.fill(0.0);
         self.scratch_out.fill(0.0);
     }
@@ -96,11 +108,13 @@ impl DenoiseEngine for LightEngine {
         };
 
         // When speech is present: preserve 100% full natural speech harmonics (unity gain)
-        // When speech is absent: smooth background floor attenuation down to 0.001 (-60 dB)
+        // When speech is absent: smooth background floor attenuation scaled by suppression (down to -80 dB at 1.0)
+        let min_floor = (1.0 - self.suppression * 0.999).clamp(0.0001, 0.05) * 0.01;
         let target_gate = if is_speech {
             1.0f32
         } else {
-            (self.vad_probability / VAD_ONSET).clamp(0.001, 0.05) * 0.02
+            let base = (self.vad_probability / VAD_ONSET).clamp(0.0001, 0.05) * 0.02;
+            (base * (1.0 - self.suppression * 0.95)).max(min_floor)
         };
 
         // Instant speech onset: guarantee 100% full speech preservation with zero syllable clipping

@@ -11,6 +11,7 @@ pub struct ResidualSuppressor {
     suppression_gain: f32,
     prev_sample: f32,
     enabled: bool,
+    strength: f32,
 }
 
 impl ResidualSuppressor {
@@ -21,6 +22,7 @@ impl ResidualSuppressor {
             suppression_gain: 1.0,
             prev_sample: 0.0,
             enabled: true,
+            strength: 1.0,
         }
     }
 
@@ -36,11 +38,20 @@ impl ResidualSuppressor {
         self.enabled
     }
 
+    pub fn set_strength(&mut self, strength: f32) {
+        self.strength = strength.clamp(0.0, 1.0);
+    }
+
+    pub fn strength(&self) -> f32 {
+        self.strength
+    }
+
     pub fn reset(&mut self) {
         self.running_noise_floor = 1e-4;
         self.running_speech_level = 1e-2;
         self.suppression_gain = 1.0;
         self.prev_sample = 0.0;
+        self.strength = 1.0;
     }
 
     /// Processes a 10 ms frame (480 samples) in-place with zero latency.
@@ -111,12 +122,13 @@ impl ResidualSuppressor {
         let snr = frame_rms / self.running_noise_floor;
 
         // Smooth post-filter gain
+        let quiet_gain = 0.02 * (1.0 - self.strength * 0.85); // down to 0.003 (-50 dB)
         let target_gain = if is_voiced_speech || snr > 2.5 {
             1.0 // Full 100% natural speech preservation
         } else if snr < 1.5 {
-            0.02 // 34 dB residual suppression during quiet intervals
+            quiet_gain
         } else {
-            0.50 // Soft blend in transitional vowels
+            0.50 * (1.0 - self.strength * 0.50) // Soft blend in transitional vowels
         };
 
         let release_rate = if target_gain > self.suppression_gain {
@@ -124,6 +136,10 @@ impl ResidualSuppressor {
         } else {
             0.04
         };
+
+        let click_deriv_thresh = 0.12 - 0.03 * self.strength;
+        let click_abs_thresh = 0.15 - 0.05 * self.strength;
+        let click_clamp = 0.10 * (1.0 - self.strength * 0.60);
 
         for s in frame.iter_mut() {
             let in_val = *s;
@@ -135,9 +151,9 @@ impl ResidualSuppressor {
 
             // Fast clamp on sharp mechanical click impulses ONLY during quiet intervals / non-speech.
             // Never clamp active voiced speech waveforms to prevent cracking or clipping loud voice!
-            let is_click_impulse = !is_voiced_speech && (deriv > 0.12) && (abs_val > 0.15);
+            let is_click_impulse = !is_voiced_speech && (deriv > click_deriv_thresh) && (abs_val > click_abs_thresh);
             if is_click_impulse {
-                *s = in_val.clamp(-0.10, 0.10);
+                *s = in_val.clamp(-click_clamp, click_clamp);
             } else {
                 *s = in_val * self.suppression_gain;
             }

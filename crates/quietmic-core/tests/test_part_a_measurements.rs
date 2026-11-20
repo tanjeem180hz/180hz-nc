@@ -191,8 +191,15 @@ fn test_part_a_measure_noise_only_vs_speech_active() {
         std_pipe.set_strength(1.0);
         let (std_no_nr, std_sp_nr) = evaluate_pipeline_segments(&mut std_pipe, &clean_speech, &noise_only, &noisy_mixture);
 
-        println!("[SNR = {:>2.0} dB]  Light Mode    => Noise-Only Red: {:>5.1} dB | Speech-Active Red: {:>5.1} dB", snr, light_no_nr, light_sp_nr);
-        println!("[SNR = {:>2.0} dB]  Standard Mode => Noise-Only Red: {:>5.1} dB | Speech-Active Red: {:>5.1} dB", snr, std_no_nr, std_sp_nr);
+        // 3. Test Max Quality Mode (Dual-Stage Neural + ERB Wiener)
+        let mut max_pipe = AudioPipeline::new(48000, 48000).unwrap();
+        max_pipe.set_mode(EngineMode::MaxQuality);
+        max_pipe.set_strength(1.0);
+        let (max_no_nr, max_sp_nr) = evaluate_pipeline_segments(&mut max_pipe, &clean_speech, &noise_only, &noisy_mixture);
+
+        println!("[SNR = {:>2.0} dB]  Light Mode      => Noise-Only Red: {:>5.1} dB | Speech-Active Red: {:>5.1} dB", snr, light_no_nr, light_sp_nr);
+        println!("[SNR = {:>2.0} dB]  Standard Mode   => Noise-Only Red: {:>5.1} dB | Speech-Active Red: {:>5.1} dB", snr, std_no_nr, std_sp_nr);
+        println!("[SNR = {:>2.0} dB]  MaxQuality Mode => Noise-Only Red: {:>5.1} dB | Speech-Active Red: {:>5.1} dB", snr, max_no_nr, max_sp_nr);
         println!("--------------------------------------------------------------------------");
     }
 }

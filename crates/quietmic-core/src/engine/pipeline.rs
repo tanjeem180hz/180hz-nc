@@ -5,6 +5,7 @@ use crate::dsp::{
 use crate::engine::aec::EchoCanceller;
 use crate::engine::diagnostics::DiagnosticTapProducers;
 use crate::engine::light::LightEngine;
+use crate::engine::max_quality::MaxQualityEngine;
 use crate::engine::standard::StandardEngine;
 use crate::engine::traits::DenoiseEngine;
 use crate::engine::voice_isolation::VoiceIsolationEngine;
@@ -21,6 +22,7 @@ pub enum EngineMode {
 pub enum ActiveEngine {
     Light(LightEngine),
     Standard(Box<StandardEngine>),
+    MaxQuality(Box<MaxQualityEngine>),
     VoiceIsolation(Box<VoiceIsolationEngine>),
 }
 
@@ -157,7 +159,9 @@ impl AudioPipeline {
                     ActiveEngine::Standard(Box::new(s))
                 }
                 EngineMode::MaxQuality => {
-                    ActiveEngine::Light(LightEngine::new())
+                    let mut mq = MaxQualityEngine::new();
+                    mq.set_suppression(self.strength);
+                    ActiveEngine::MaxQuality(Box::new(mq))
                 }
                 EngineMode::VoiceIsolation => {
                     let mut v = VoiceIsolationEngine::new(Box::new(LightEngine::new()));
@@ -179,8 +183,12 @@ impl AudioPipeline {
         let s = strength.clamp(0.0, 1.0);
         self.strength = s;
         self.smoother.set_target(s);
-        if let ActiveEngine::Standard(ref mut std_eng) = self.active_engine {
-            std_eng.set_suppression(s);
+        self.residual.set_strength(s);
+        match self.active_engine {
+            ActiveEngine::Light(ref mut e) => e.set_suppression(s),
+            ActiveEngine::Standard(ref mut e) => e.set_suppression(s),
+            ActiveEngine::MaxQuality(ref mut e) => e.set_suppression(s),
+            ActiveEngine::VoiceIsolation(_) => {}
         }
     }
 
@@ -331,6 +339,7 @@ impl AudioPipeline {
     pub fn get_runtime_parameters(&self) -> EngineRuntimeParameters {
         let (att_limit, pf_en, pf_beta) = match &self.active_engine {
             ActiveEngine::Standard(e) => (e.attenuation_limit_db(), true, e.post_filter_beta()),
+            ActiveEngine::MaxQuality(_) => (54.0, true, 1.75),
             _ => (36.0, false, 1.0),
         };
         EngineRuntimeParameters {
@@ -482,6 +491,13 @@ impl AudioPipeline {
                 res
             }
             ActiveEngine::Standard(e) => {
+                let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
+                if res.is_ok() {
+                    self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
+                }
+                res
+            }
+            ActiveEngine::MaxQuality(e) => {
                 let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
                 if res.is_ok() {
                     self.wet_buffer.copy_from_slice(&self.cleaned_buffer);

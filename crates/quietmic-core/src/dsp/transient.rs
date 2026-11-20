@@ -117,8 +117,8 @@ impl TransientSuppressor {
                 || (deriv > 0.25 && transient_ratio > 30.0);
 
             if is_impulse {
-                // Clamped transient attenuation
-                self.suppression_gain = 0.05;
+                // Clamped transient attenuation (-34 dB)
+                self.suppression_gain = 0.02;
             } else {
                 // Smooth exponential recovery to unity
                 self.suppression_gain += self.recovery_rate * (1.0 - self.suppression_gain);

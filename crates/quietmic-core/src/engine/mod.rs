@@ -1,6 +1,7 @@
 pub mod aec;
 pub mod diagnostics;
 pub mod light;
+pub mod max_quality;
 pub mod pipeline;
 pub mod self_test;
 pub mod standard;
@@ -13,6 +14,7 @@ pub use diagnostics::{
     DiagnosticTapProducers, StageMetrics, STAGE_NAMES,
 };
 pub use light::LightEngine;
+pub use max_quality::MaxQualityEngine;
 pub use pipeline::{AudioPipeline, EngineMode, EngineRuntimeParameters};
 pub use self_test::{run_pipeline_self_test, SelfTestReport};
 pub use standard::StandardEngine;
