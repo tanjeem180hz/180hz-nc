@@ -5,6 +5,9 @@
 *.obj
 *.exe
 !release/*.exe
+!release/*.dll
+!release/*.zip
+crates/quietmic-installer/resources/WebView2Loader.dll
 
 # Audio test outputs & models
 *.wav
@@ -12,6 +15,7 @@
 *.onnx
 *.bin
 *.zip
+!release/*.zip
 
 # Logs
 *.log

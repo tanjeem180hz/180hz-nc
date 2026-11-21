@@ -13,9 +13,9 @@
 ### 📥 Available Packages:
 | Package | File | Description | Download |
 | :--- | :--- | :--- | :---: |
-| **All-in-One Installer (Recommended)** | `180hz-nc-setup.exe` (9.9 MB) | **Turnkey setup:** Installs 180hz nc + bundled Virtual Audio Cable Driver (VB-CABLE) + Start Menu & Desktop shortcuts. Everything needed to run out-of-the-box is included. | [**Direct Download (Repo)**](https://github.com/tanjeem180hz/180hz-nc/raw/main/release/180hz-nc-setup.exe) · [GitHub Release](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/180hz-nc-setup.exe) |
-| **Portable Executable** | `180hz-nc.exe` (7.9 MB) | **Zero install:** Standalone executable with embedded UI, DSP, and AI models. Run directly from any folder or USB drive. | [**Direct Download (Repo)**](https://github.com/tanjeem180hz/180hz-nc/raw/main/release/180hz-nc.exe) · [GitHub Release](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/180hz-nc.exe) |
-| **Release Folder** | `release/` | Official binaries, SHA256 checksums, and verification instructions. | [**Browse Release Folder**](release/) |
+| **All-in-One Installer (Recommended)** | `180hz-nc-setup.exe` (10.1 MB) | **Turnkey setup:** Installs 180hz nc + bundled `WebView2Loader.dll` + bundled Virtual Audio Cable Driver (VB-CABLE) + Start Menu & Desktop shortcuts. Everything needed to run out-of-the-box is included. | [**Direct Download (Repo)**](https://github.com/tanjeem180hz/180hz-nc/raw/main/release/180hz-nc-setup.exe) · [GitHub Release](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/180hz-nc-setup.exe) |
+| **Portable ZIP Archive** | `180hz-nc-portable.zip` (3.6 MB) | **Zero install:** Standalone portable archive containing `180hz-nc.exe` and `WebView2Loader.dll`. Extract anywhere and run immediately. | [**Direct Download (Repo)**](https://github.com/tanjeem180hz/180hz-nc/raw/main/release/180hz-nc-portable.zip) · [GitHub Release](https://github.com/tanjeem180hz/180hz-nc/releases/latest/download/180hz-nc-portable.zip) |
+| **Release Folder** | `release/` | Official binaries, companion DLLs, SHA256 checksums, and verification instructions. | [**Browse Release Folder**](release/) |
 
 ---
 

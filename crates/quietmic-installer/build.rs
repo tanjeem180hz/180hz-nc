@@ -8,6 +8,7 @@ fn main() {
     println!("cargo:rerun-if-changed=resources/installer.manifest");
     println!("cargo:rerun-if-changed=resources/icon.ico");
     println!("cargo:rerun-if-changed=resources/app.exe");
+    println!("cargo:rerun-if-changed=resources/WebView2Loader.dll");
     println!("cargo:rerun-if-changed=resources/vbcable_pack.zip");
     println!("cargo:rerun-if-changed=resources/180hz_cert.cer");
 
@@ -57,6 +58,32 @@ fn main() {
     // Ensure app.exe exists for compilation
     if !app_target.exists() {
         let _ = fs::write(&app_target, b"180HZ_NC_STUB_EXE");
+    }
+
+    let webview2_target = resources_dir.join("WebView2Loader.dll");
+    let webview2_candidates = [
+        Path::new("../../target/release/WebView2Loader.dll"),
+        Path::new("../../target/debug/WebView2Loader.dll"),
+    ];
+    let mut wv2_copied = false;
+    for cand in &webview2_candidates {
+        if cand.exists() {
+            let should_copy = if webview2_target.exists() {
+                let cand_len = fs::metadata(cand).map(|m| m.len()).unwrap_or(0);
+                let target_len = fs::metadata(&webview2_target).map(|m| m.len()).unwrap_or(0);
+                cand_len != target_len || cand_len == 0
+            } else {
+                true
+            };
+            if should_copy {
+                let _ = fs::copy(cand, &webview2_target);
+            }
+            wv2_copied = true;
+            break;
+        }
+    }
+    if !wv2_copied && !webview2_target.exists() {
+        let _ = fs::write(&webview2_target, b"WEBVIEW2_LOADER_STUB");
     }
 
     let vbcable_target = resources_dir.join("vbcable_pack.zip");

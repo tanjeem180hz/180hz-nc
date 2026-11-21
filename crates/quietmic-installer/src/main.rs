@@ -24,6 +24,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 const APP_EXE: &[u8] = include_bytes!("../resources/app.exe");
+const WEBVIEW2_LOADER: &[u8] = include_bytes!("../resources/WebView2Loader.dll");
 const VBCABLE_ZIP: &[u8] = include_bytes!("../resources/vbcable_pack.zip");
 const CERT_BYTES: &[u8] = include_bytes!("../resources/180hz_cert.cer");
 
@@ -312,17 +313,21 @@ fn run_install(silent: bool, autostart: Option<bool>) -> Result<(), String> {
     // Write application executables to primary install dir
     fs::write(&exe_path, APP_EXE).map_err(|e| format!("Failed to install 180hz nc.exe: {}", e))?;
     let _ = fs::write(&cli_exe_path, APP_EXE);
+    fs::write(install_dir.join("WebView2Loader.dll"), WEBVIEW2_LOADER)
+        .map_err(|e| format!("Failed to install WebView2Loader.dll: {}", e))?;
 
     // Also update legacy directory so that existing pins/shortcuts launch without error
     if legacy_dir.exists() {
         let _ = fs::write(legacy_dir.join("180Hz-NC.exe"), APP_EXE);
         let _ = fs::write(legacy_dir.join("180hz nc.exe"), APP_EXE);
+        let _ = fs::write(legacy_dir.join("WebView2Loader.dll"), WEBVIEW2_LOADER);
         if let Ok(current_exe) = std::env::current_exe() {
             let _ = fs::copy(&current_exe, legacy_dir.join("Uninstall.exe"));
         }
     }
     if legacy_quietmic.exists() {
         let _ = fs::write(legacy_quietmic.join("QuietMic.exe"), APP_EXE);
+        let _ = fs::write(legacy_quietmic.join("WebView2Loader.dll"), WEBVIEW2_LOADER);
     }
 
     // Copy installer executable as Uninstaller
@@ -503,11 +508,13 @@ mod tests {
     #[test]
     fn test_embedded_payloads_validity() {
         assert!(APP_EXE.len() > 1_000_000, "180Hz NC embedded exe must be > 1MB (was {} bytes)", APP_EXE.len());
+        assert!(WEBVIEW2_LOADER.len() > 50_000, "WebView2Loader.dll must be > 50KB (was {} bytes)", WEBVIEW2_LOADER.len());
         assert!(VBCABLE_ZIP.len() > 500_000, "VB-CABLE driver zip must be > 500KB (was {} bytes)", VBCABLE_ZIP.len());
         assert!(CERT_BYTES.len() > 100, "180Hz NC security cert must be > 100 bytes (was {} bytes)", CERT_BYTES.len());
         // Verify ZIP magic header
         assert_eq!(&VBCABLE_ZIP[0..4], b"PK\x03\x04", "Must be valid ZIP archive");
-        // Verify PE MZ magic header for 180Hz-NC.exe
+        // Verify PE MZ magic header for 180Hz-NC.exe and WebView2Loader.dll
         assert_eq!(&APP_EXE[0..2], b"MZ", "Must be valid Windows PE executable");
+        assert_eq!(&WEBVIEW2_LOADER[0..2], b"MZ", "Must be valid Windows PE DLL");
     }
 }

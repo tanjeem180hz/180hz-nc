@@ -52,10 +52,30 @@
 - [x] Soft Glass Theme Implementation & Multi-DPI Verification: Restyled frontend with design tokens in `theme-soft-glass.css`, bundled local Inter woff2 typography (OFL-1.1), implemented 4-tab calm navigation, "Reduce effects" mode with automatic fallback, 15 fps meter throttling, 0% CPU idle throttling, verified zero console errors across CDP smoke tests, and captured 25 screenshots at 100%, 150%, and 200% DPI.
 - [x] Official Release Packaging: Rebuilt release binaries with the embedded Soft Glass theme and local fonts (`180hz-nc.exe` standalone and `180hz-nc-setup.exe` all-in-one installer), created `release/` distribution directory with `SHA256SUMS.txt`, configured `.gitignore` to track release binaries, and added direct repository download links in `README.md`.
 - [x] Dual Theme Switcher (Classic Dark & Soft Glass): Restored the original Classic 180Hz UI alongside the new Soft Glass theme, added seamless theme selector in header and preferences, updated release executables with dual theme support and SHA-256 checksums.
+- [x] Fixed Windows Startup Error (Missing WebView2Loader.dll): Embedded `WebView2Loader.dll` directly into the turnkey installer (`180hz-nc-setup.exe`), provided companion DLL and pre-packaged `180hz-nc-portable.zip` in `release/`, updated local installation in AppData, resolved HKCU Run autostart key, and verified clean startup launch with 0 DLL errors.
 
 ---
 
 ## 2. Completed Tasks & Measurements
+
+### Commit 56: Fix WebView2Loader.dll Missing Startup Error, Embed Companion DLL in Setup, and Package Portable ZIP
+- **Root Cause Analysis**:
+  - The Windows autostart registry key (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`) invoked `180hz nc.exe --minimized`.
+  - Windows PE loader failed during initial dynamic link resolution because `WebView2Loader.dll` was missing from the target directory, triggering the system error dialog: *"The code execution cannot proceed because WebView2Loader.dll was not found."*
+- **Installer Enhancement (`crates/quietmic-installer`)**:
+  - Added `WebView2Loader.dll` embedding (`const WEBVIEW2_LOADER: &[u8] = include_bytes!("../resources/WebView2Loader.dll")`).
+  - Updated `build.rs` to automatically stage `WebView2Loader.dll` from build output into installer resources.
+  - Updated `run_installer()` to extract `WebView2Loader.dll` alongside `180hz nc.exe` and `180hz-nc.exe` into `C:\Program Files\180hz nc\`, `180Hz-NC\`, and `QuietMic\`.
+  - Updated unit test `test_embedded_payloads_validity` asserting `WEBVIEW2_LOADER` PE MZ header and size (> 50 KB).
+- **Local Startup Resolution & Verification**:
+  - Staged `180hz nc.exe`, `180hz-nc.exe`, and `WebView2Loader.dll` in `%LOCALAPPDATA%\180hz nc\`.
+  - Updated `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` to point to `"%LOCALAPPDATA%\180hz nc\180hz nc.exe" --minimized`.
+  - Executed automated launch test: process launched cleanly with PID, ran minimized with zero DLL errors, and exited cleanly.
+- **Release Distribution (`release/`)**:
+  - Updated `release/180hz-nc-setup.exe` (10,584,576 bytes, embedding WebView2Loader.dll).
+  - Added standalone `release/WebView2Loader.dll` (160,880 bytes).
+  - Created turnkey `release/180hz-nc-portable.zip` (3,647,498 bytes) containing both `180hz-nc.exe` and `WebView2Loader.dll`.
+  - Updated `release/SHA256SUMS.txt`, `release/README.md`, and root `README.md`.
 
 ### Commit 55: Add Dual Theme Switcher (Classic Dark & Soft Glass) and Update Release Binaries
 - **Dual Theme Support**:
