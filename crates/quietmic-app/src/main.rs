@@ -202,30 +202,41 @@ fn set_sensitivity_threshold(threshold: f32, state: State<AppState>) -> Result<(
 #[tauri::command]
 fn set_noise_mode(mode: String, state: State<AppState>) -> Result<(), String> {
     let mut cfg = state.config.lock();
-    match mode.as_str() {
+    let eng_mode = match mode.as_str() {
         "None" | "Bypass" => {
             cfg.bypass = true;
             cfg.mode = "None".to_string();
+            EngineMode::None
         }
         "Light" => {
             cfg.bypass = false;
             cfg.mode = "Light".to_string();
+            EngineMode::Light
         }
         "Standard" => {
             cfg.bypass = false;
             cfg.mode = "Standard".to_string();
+            EngineMode::Standard
         }
         "MaxQuality" | "Max Quality" | "Krisp" => {
             cfg.bypass = false;
             cfg.mode = "MaxQuality".to_string();
+            EngineMode::MaxQuality
         }
         _ => {
             cfg.bypass = false;
             cfg.mode = mode.clone();
+            EngineMode::MaxQuality
         }
-    }
+    };
     let _ = cfg.save();
-    restart_audio_stream(&state, &cfg)
+    if let Some(ref ctrl) = *state.stream_controller.lock() {
+        ctrl.set_bypass(cfg.bypass);
+        ctrl.set_mode(eng_mode);
+        Ok(())
+    } else {
+        restart_audio_stream(&state, &cfg)
+    }
 }
 
 #[tauri::command]
@@ -375,11 +386,23 @@ fn get_engine_runtime_parameters(state: State<AppState>) -> quietmic_core::Engin
 fn set_mode(mode: String, state: State<AppState>) -> Result<(), String> {
     let mut cfg = state.config.lock();
     cfg.mode = mode.clone();
+    let eng_mode = match cfg.mode.as_str() {
+        "None" | "Bypass" => EngineMode::None,
+        "Light" => EngineMode::Light,
+        "Standard" => EngineMode::Standard,
+        "MaxQuality" | "Max Quality" | "Krisp" => EngineMode::MaxQuality,
+        "VoiceIsolation" => EngineMode::VoiceIsolation,
+        _ => EngineMode::MaxQuality,
+    };
     let _ = cfg.save();
     tracing::info!("Settings -> Engine: mode={}, strength={}, aec={}, auto_sens={}", cfg.mode, cfg.strength, cfg.aec_enabled, cfg.auto_sensitivity);
 
-    // Reconfigure active audio stream
-    restart_audio_stream(&state, &cfg)
+    if let Some(ref ctrl) = *state.stream_controller.lock() {
+        ctrl.set_mode(eng_mode);
+        Ok(())
+    } else {
+        restart_audio_stream(&state, &cfg)
+    }
 }
 
 #[tauri::command]
@@ -389,7 +412,12 @@ fn set_strength(strength: f32, state: State<AppState>) -> Result<(), String> {
     let _ = cfg.save();
     tracing::info!("Settings -> Engine: strength={:.2}", cfg.strength);
 
-    restart_audio_stream(&state, &cfg)
+    if let Some(ref ctrl) = *state.stream_controller.lock() {
+        ctrl.set_strength(cfg.strength);
+        Ok(())
+    } else {
+        restart_audio_stream(&state, &cfg)
+    }
 }
 
 #[tauri::command]
@@ -398,7 +426,12 @@ fn set_bypass(bypass: bool, state: State<AppState>) -> Result<(), String> {
     cfg.bypass = bypass;
     let _ = cfg.save();
 
-    restart_audio_stream(&state, &cfg)
+    if let Some(ref ctrl) = *state.stream_controller.lock() {
+        ctrl.set_bypass(bypass);
+        Ok(())
+    } else {
+        restart_audio_stream(&state, &cfg)
+    }
 }
 
 #[tauri::command]

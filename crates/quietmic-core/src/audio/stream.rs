@@ -217,6 +217,9 @@ pub struct AudioStreamControls {
     pub auto_sensitivity: Arc<AtomicBool>,
     pub sensitivity_threshold_dbfs: Arc<AtomicU32>,
     pub aec_enabled: Arc<AtomicBool>,
+    pub strength_bits: Arc<AtomicU32>,
+    pub bypass: Arc<AtomicBool>,
+    pub mode_code: Arc<AtomicU32>,
 }
 
 impl Default for AudioStreamControls {
@@ -228,6 +231,9 @@ impl Default for AudioStreamControls {
             auto_sensitivity: Arc::new(AtomicBool::new(true)),
             sensitivity_threshold_dbfs: Arc::new(AtomicU32::new((-50.0f32).to_bits())),
             aec_enabled: Arc::new(AtomicBool::new(false)),
+            strength_bits: Arc::new(AtomicU32::new(1.0f32.to_bits())),
+            bypass: Arc::new(AtomicBool::new(false)),
+            mode_code: Arc::new(AtomicU32::new(3)), // 3 = MaxQuality
         }
     }
 }
@@ -563,13 +569,23 @@ impl AudioStreamController {
         };
 
         // 4. Dedicated Audio Worker Thread (MMCSS Pro Audio)
+        let mode_code = match pipeline.mode() {
+            EngineMode::None => 0,
+            EngineMode::Light => 1,
+            EngineMode::Standard => 2,
+            EngineMode::MaxQuality => 3,
+            EngineMode::VoiceIsolation => 4,
+        };
         let controls = AudioStreamControls {
             mic_volume_bits: Arc::new(AtomicU32::new(pipeline.mic_gain().to_bits())),
             ptt_enabled: Arc::new(AtomicBool::new(pipeline.is_push_to_talk())),
             ptt_active: Arc::new(AtomicBool::new(pipeline.is_ptt_active())),
-            auto_sensitivity: Arc::new(AtomicBool::new(true)),
+            auto_sensitivity: Arc::new(AtomicBool::new(pipeline.is_auto_sensitivity())),
             sensitivity_threshold_dbfs: Arc::new(AtomicU32::new(pipeline.sensitivity_threshold_dbfs().to_bits())),
             aec_enabled: Arc::new(AtomicBool::new(pipeline.is_aec_enabled())),
+            strength_bits: Arc::new(AtomicU32::new(pipeline.strength().to_bits())),
+            bypass: Arc::new(AtomicBool::new(pipeline.is_bypassed())),
+            mode_code: Arc::new(AtomicU32::new(mode_code)),
         };
         let is_running_worker = Arc::clone(&running);
         let worker_metrics = Arc::clone(&metrics);
@@ -612,6 +628,24 @@ impl AudioStreamController {
                     let aec_en = worker_controls.aec_enabled.load(Ordering::Relaxed);
                     worker_pipeline.set_aec_enabled(aec_en);
                     worker_metrics.aec_enabled.store(aec_en, Ordering::Relaxed);
+
+                    let strength = f32::from_bits(worker_controls.strength_bits.load(Ordering::Relaxed));
+                    worker_pipeline.set_strength(strength);
+
+                    let bypass = worker_controls.bypass.load(Ordering::Relaxed);
+                    worker_pipeline.set_bypass(bypass);
+
+                    let target_mode = match worker_controls.mode_code.load(Ordering::Relaxed) {
+                        0 => EngineMode::None,
+                        1 => EngineMode::Light,
+                        2 => EngineMode::Standard,
+                        3 => EngineMode::MaxQuality,
+                        4 => EngineMode::VoiceIsolation,
+                        _ => EngineMode::MaxQuality,
+                    };
+                    if worker_pipeline.mode() != target_mode {
+                        worker_pipeline.set_mode(target_mode);
+                    }
 
                     // Drain AEC reference samples with continuous sample clock:
                     if let Some(ref mut r_cons) = ref_cons {
@@ -930,6 +964,25 @@ impl AudioStreamController {
 
     pub fn set_aec_enabled(&self, enabled: bool) {
         self.controls.aec_enabled.store(enabled, Ordering::Relaxed);
+    }
+
+    pub fn set_strength(&self, strength: f32) {
+        self.controls.strength_bits.store(strength.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+    }
+
+    pub fn set_bypass(&self, bypass: bool) {
+        self.controls.bypass.store(bypass, Ordering::Relaxed);
+    }
+
+    pub fn set_mode(&self, mode: EngineMode) {
+        let code = match mode {
+            EngineMode::None => 0,
+            EngineMode::Light => 1,
+            EngineMode::Standard => 2,
+            EngineMode::MaxQuality => 3,
+            EngineMode::VoiceIsolation => 4,
+        };
+        self.controls.mode_code.store(code, Ordering::Relaxed);
     }
 
     pub fn is_aec_enabled(&self) -> bool {

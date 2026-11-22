@@ -7,6 +7,7 @@ pub struct TransientSuppressor {
     prev_sample: f32,
     suppression_gain: f32,
     recovery_rate: f32,
+    hold_counter: usize,
     enabled: bool,
 }
 
@@ -19,6 +20,7 @@ impl TransientSuppressor {
             prev_sample: 0.0,
             suppression_gain: 1.0,
             recovery_rate: 0.08, // Smooth release
+            hold_counter: 0,
             enabled: true,
         }
     }
@@ -35,6 +37,7 @@ impl TransientSuppressor {
         self.smoothed_energy = 1e-3;
         self.prev_sample = 0.0;
         self.suppression_gain = 1.0;
+        self.hold_counter = 0;
     }
 
     /// Checks if a frame contains harmonic speech pitch or low-frequency vowel energy.
@@ -117,7 +120,11 @@ impl TransientSuppressor {
                 || (deriv > 0.25 && transient_ratio > 30.0);
 
             if is_impulse {
-                // Clamped transient attenuation (-34 dB)
+                // Clamped transient attenuation (-34 dB) with 2.5 ms burst hold
+                self.hold_counter = 120;
+                self.suppression_gain = 0.02;
+            } else if self.hold_counter > 0 {
+                self.hold_counter -= 1;
                 self.suppression_gain = 0.02;
             } else {
                 // Smooth exponential recovery to unity

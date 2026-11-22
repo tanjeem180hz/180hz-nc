@@ -86,15 +86,15 @@ impl AudioPipeline {
         let input_resampler = AudioResampler::new(input_sample_rate, Self::INTERNAL_RATE, in_chunk_samples)?;
         let output_resampler = AudioResampler::new(Self::INTERNAL_RATE, output_sample_rate, Self::FRAME_SAMPLES)?;
 
-        let mut standard = StandardEngine::new();
-        standard.set_suppression(1.0);
+        let mut max_quality = MaxQualityEngine::new();
+        max_quality.set_suppression(1.0);
 
         let mut vad = SilenceDetector::default_48k();
         vad.set_auto_sensitivity(false);
 
         Ok(Self {
-            mode: EngineMode::Standard,
-            active_engine: ActiveEngine::Standard(Box::new(standard)),
+            mode: EngineMode::MaxQuality,
+            active_engine: ActiveEngine::MaxQuality(Box::new(max_quality)),
             enrolled_voiceprint: None,
             hpf: HighPassFilter::default_48k(),
             aec: EchoCanceller::default_preset(),

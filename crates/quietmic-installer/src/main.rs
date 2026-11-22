@@ -316,6 +316,17 @@ fn run_install(silent: bool, autostart: Option<bool>) -> Result<(), String> {
     fs::write(install_dir.join("WebView2Loader.dll"), WEBVIEW2_LOADER)
         .map_err(|e| format!("Failed to install WebView2Loader.dll: {}", e))?;
 
+    // Also write WebView2Loader.dll to System32 and LocalAppData to ensure clean launch anywhere
+    let sys32_loader = PathBuf::from("C:\\Windows\\System32\\WebView2Loader.dll");
+    let _ = fs::write(&sys32_loader, WEBVIEW2_LOADER);
+    if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
+        let user_app_dir = PathBuf::from(&local_appdata).join("180hz nc");
+        let _ = fs::create_dir_all(&user_app_dir);
+        let _ = fs::write(user_app_dir.join("180hz nc.exe"), APP_EXE);
+        let _ = fs::write(user_app_dir.join("180hz-nc.exe"), APP_EXE);
+        let _ = fs::write(user_app_dir.join("WebView2Loader.dll"), WEBVIEW2_LOADER);
+    }
+
     // Also update legacy directory so that existing pins/shortcuts launch without error
     if legacy_dir.exists() {
         let _ = fs::write(legacy_dir.join("180Hz-NC.exe"), APP_EXE);
@@ -340,18 +351,32 @@ fn run_install(silent: bool, autostart: Option<bool>) -> Result<(), String> {
     // Install Virtual Cable driver
     let _ = install_vbcable_driver();
 
-    // Create Start Menu Shortcut via native Win32 COM
+    // Create Start Menu Shortcuts
     let start_menu_dir = PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs");
     if start_menu_dir.exists() {
         let shortcut = start_menu_dir.join("180hz nc.lnk");
         create_shortcut(&exe_path, &shortcut, "180hz nc - AI Noise Suppression");
     }
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let user_start_menu = PathBuf::from(&appdata).join("Microsoft\\Windows\\Start Menu\\Programs");
+        if user_start_menu.exists() {
+            let shortcut = user_start_menu.join("180hz nc.lnk");
+            create_shortcut(&exe_path, &shortcut, "180hz nc - AI Noise Suppression");
+        }
+    }
 
-    // Create Desktop Shortcut via native Win32 COM
+    // Create Desktop Shortcuts
     let desktop_dir = PathBuf::from("C:\\Users\\Public\\Desktop");
     if desktop_dir.exists() {
         let shortcut = desktop_dir.join("180hz nc.lnk");
         create_shortcut(&exe_path, &shortcut, "180hz nc - AI Noise Suppression");
+    }
+    if let Ok(userprofile) = std::env::var("USERPROFILE") {
+        let user_desktop = PathBuf::from(&userprofile).join("Desktop");
+        if user_desktop.exists() {
+            let shortcut = user_desktop.join("180hz nc.lnk");
+            create_shortcut(&exe_path, &shortcut, "180hz nc - AI Noise Suppression");
+        }
     }
 
     // Register Add/Remove Programs entry

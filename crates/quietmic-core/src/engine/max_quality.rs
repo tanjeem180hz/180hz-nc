@@ -154,24 +154,27 @@ impl DenoiseEngine for MaxQualityEngine {
         // Stage 1: Neural AI Speech Separation (RNNoise)
         self.stage1_neural.process_frame(&in_frame[..Self::FRAME_SIZE], &mut *self.scratch_out)?;
 
-        let vad_prob = self.stage1_neural.vad_probability();
-        let is_speech_instant = vad_prob >= 0.38;
-        if is_speech_instant {
-            self.hangover_counter = 12; // 120 ms hangover
-        } else if self.hangover_counter > 0 {
-            self.hangover_counter -= 1;
-        }
-        let is_speech = is_speech_instant || self.hangover_counter > 0;
-
         // Stage 2: Pitch Tracking on Neural-Cleaned Signal
         let (lag, corr) = Self::estimate_pitch_helper(&self.scratch_out[..], &self.pitch_history[..], self.best_pitch_lag);
         self.best_pitch_lag = lag;
         self.pitch_correlation = corr;
 
+        let vad_prob = self.stage1_neural.vad_probability();
+        // Multi-feature speech detection:
+        // Confirmed vocal chord periodicity (corr > 0.35) with moderate RNNoise (vad_prob >= 0.22),
+        // OR high confidence RNNoise speech probability (vad_prob >= 0.50).
+        let is_speech_instant = vad_prob >= 0.50 || (vad_prob >= 0.22 && corr > 0.35);
+        if is_speech_instant {
+            self.hangover_counter = 14; // 140 ms hangover
+        } else if self.hangover_counter > 0 {
+            self.hangover_counter -= 1;
+        }
+        let is_speech = is_speech_instant || self.hangover_counter > 0;
+
         // Stage 3: Harmonic Refinement & Inter-Harmonic Noise Attenuation
-        if is_speech && self.pitch_correlation > 0.45 && self.suppression_factor > 0.10 {
+        if is_speech && self.pitch_correlation > 0.40 && self.suppression_factor > 0.10 {
             // Harmonic blending: reinforces periodic voice harmonics while canceling uncorrelated noise
-            let blend_weight = (0.30 * self.suppression_factor * (self.pitch_correlation - 0.45) / 0.55).clamp(0.0, 0.30);
+            let blend_weight = (0.35 * self.suppression_factor * (self.pitch_correlation - 0.40) / 0.60).clamp(0.0, 0.35);
 
             for i in 0..Self::FRAME_SIZE {
                 let s_curr = self.scratch_out[i];
@@ -185,12 +188,12 @@ impl DenoiseEngine for MaxQualityEngine {
         }
 
         // Stage 4: High-grade Non-speech silence floor attenuation
-        let min_floor = (1.0 - self.suppression_factor * 0.999).clamp(0.0001, 1.0);
+        let min_floor = (1.0 - self.suppression_factor * 0.9999).clamp(0.00005, 1.0);
         let target_floor = if is_speech { 1.0f32 } else { min_floor };
         if is_speech {
             self.smoothed_floor_gain = 1.0;
         } else {
-            self.smoothed_floor_gain += (target_floor - self.smoothed_floor_gain) * 0.08;
+            self.smoothed_floor_gain += (target_floor - self.smoothed_floor_gain) * 0.16;
         }
 
         if self.smoothed_floor_gain < 0.999 {
