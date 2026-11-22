@@ -277,7 +277,7 @@ impl DenoiseEngine for StandardEngine {
         };
 
         // Pass 2: Apply per-bin fine spectral Wiener gains with decision-directed over-subtraction
-        let oversub = 1.0 + 1.25 * self.suppression_factor; // 2.25x over-subtraction at 100% suppression
+        let oversub = 1.0 + 1.50 * self.suppression_factor; // 2.50x over-subtraction at 100% suppression
         for (b, &(start, end)) in self.band_bin_ranges.iter().enumerate() {
             let noise = self.noise_estimate[b];
 

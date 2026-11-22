@@ -19,9 +19,9 @@
         <div class="brand-info">
           <div class="brand-title-row">
             <h1 class="brand-title">180hz nc</h1>
-            <span class="version-tag">PRO 90% AI</span>
+            <span class="version-tag">90% AI STUDIO</span>
           </div>
-          <span class="brand-subtitle" id="brandSubtitle">Studio Voice Clarity & Screen Share Shield</span>
+          <span class="brand-subtitle" id="brandSubtitle">Studio Voice Clarity &amp; Screen Share Shield</span>
         </div>
       </div>
 
@@ -36,7 +36,7 @@
           <span id="masterPowerText">Active</span>
         </button>
 
-        <!-- Theme Selector (Preserved for compatibility and user choice) -->
+        <!-- Theme Selector (Dropdown preserved for test automation & preferences) -->
         <select id="themeSelector" class="theme-selector-dropdown" title="Select UI Theme & Style" aria-label="Select Theme">
           <option value="classic-dark">Dark Studio (Obsidian)</option>
           <option value="soft-glass-dark">Soft Glass Dark</option>
@@ -97,11 +97,11 @@
     <!-- Main Content Workspaces -->
     <main class="cards-layout">
       <!-- ==================================================================
-           TAB 1: AUDIO WORKSPACE
+           TAB 1: AUDIO WORKSPACE (Streamlined & Simplified)
            ================================================================== -->
       <div id="paneAudio" class="tab-pane" role="tabpanel" aria-labelledby="tabBtnAudio">
         
-        <!-- HERO SECTION: Noise Suppression Engine & Power Master -->
+        <!-- SECTION 1: AI Noise Cancellation Hero Card -->
         <section class="card hero-engine-card" aria-labelledby="nsCardTitle">
           <div class="card-row">
             <div class="card-title-group">
@@ -111,23 +111,23 @@
                 </svg>
               </div>
               <div>
-                <span id="nsCardTitle" class="card-label">Noise Suppression Engine</span>
-                <div class="card-subdesc">Deep neural speech isolation & harmonic comb-filtering</div>
+                <span id="nsCardTitle" class="card-label">Noise Shield</span>
+                <div class="card-subdesc">Deep neural voice isolation &amp; acoustic suppression</div>
               </div>
             </div>
             <div class="badge-group">
-              <span id="noiseReductionBadge" class="auto-badge badge-active">90% High Quality</span>
+              <span id="noiseReductionBadge" class="auto-badge badge-active">90% Studio Clean</span>
               <span id="suppressionDbBadge" class="auto-badge badge-delta">-28 dB Cut</span>
             </div>
           </div>
 
-          <!-- Segmented 4-Mode Selector with Sliding Pill -->
+          <!-- Segmented 4-Mode Selector -->
           <div class="segmented-control" role="group" aria-label="Noise Suppression Mode">
             <button type="button" class="seg-btn" data-mode="None" title="Raw unprocessed microphone audio">
               <span class="seg-icon">⚪</span>
               <span class="seg-label">Bypass</span>
             </button>
-            <button type="button" class="seg-btn" data-mode="Light" title="RNNoise fast AI (< 1% CPU)">
+            <button type="button" class="seg-btn" data-mode="Light" title="Fast AI lightweight mode (< 1% CPU)">
               <span class="seg-icon">🍃</span>
               <span class="seg-label">Light</span>
             </button>
@@ -161,98 +161,154 @@
           </div>
         </section>
 
-        <!-- DUAL AUDIO ROUTING: Microphone & Speaker Cards -->
-        <div class="device-grid">
-          <!-- Input Microphone Card -->
-          <section class="card device-card" aria-labelledby="micCardTitle">
-            <div class="card-row">
-              <div class="card-title-group">
-                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                  <line x1="12" y1="19" x2="12" y2="23"></line>
-                  <line x1="8" y1="23" x2="16" y2="23"></line>
-                </svg>
-                <div>
-                  <label id="micCardTitle" for="micSelect" class="card-label">Microphone Input</label>
-                  <div class="card-subdesc">Studio capture device</div>
+        <!-- SECTION 2: Audio Devices & Protection Strip -->
+        <section class="card device-card" aria-labelledby="devicesHeader">
+          <div class="card-row">
+            <div class="card-title-group">
+              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+              </svg>
+              <div>
+                <span id="devicesHeader" class="card-label">Devices &amp; Protection</span>
+                <div class="card-subdesc">Input capture, virtual output routing &amp; echo defense</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dual Columns: Microphone & Speaker -->
+          <div class="device-grid">
+            <!-- Left: Microphone -->
+            <div class="device-col">
+              <div class="card-row" style="margin-bottom: 6px;">
+                <label id="micCardTitle" for="micSelect" class="sub-label">Microphone Input</label>
+                <span class="auto-badge" id="micAutoBadge">Auto</span>
+              </div>
+              <div class="select-wrapper">
+                <select id="micSelect" class="dropdown" aria-label="Microphone Device Selection">
+                  <option value="">Detecting microphone...</option>
+                </select>
+              </div>
+              <div class="meter-wrapper" style="margin-top: 8px;">
+                <div class="meter-header">
+                  <span class="meter-title">Input Level</span>
+                  <span id="micMeterDb" class="meter-text">-60 dB</span>
+                </div>
+                <div class="meter-container">
+                  <div class="meter-bar">
+                    <div id="micMeterFill" class="meter-fill" style="width: 0%;"></div>
+                  </div>
+                  <span id="clippingIndicator" class="clip-badge">CLIP</span>
                 </div>
               </div>
-              <span class="auto-badge" id="micAutoBadge">Auto Detected</span>
-            </div>
-            
-            <div class="select-wrapper">
-              <select id="micSelect" class="dropdown" aria-label="Microphone Device Selection">
-                <option value="">Detecting microphone...</option>
-              </select>
+              <div class="slider-row" style="margin-top: 6px;">
+                <span class="slider-label">Mic Gain</span>
+                <span id="micVolText" class="slider-val">100%</span>
+              </div>
+              <input type="range" id="micVolumeSlider" min="0" max="200" value="100" class="slider" aria-label="Microphone Volume Slider">
             </div>
 
+            <!-- Right: Speaker & Virtual Output -->
+            <div class="device-col">
+              <div class="card-row" style="margin-bottom: 6px;">
+                <label id="spkCardTitle" for="speakerSelect" class="sub-label">Speaker / Reference</label>
+                <span class="auto-badge" id="spkAutoBadge">Auto</span>
+              </div>
+              <div class="select-wrapper">
+                <select id="speakerSelect" class="dropdown" aria-label="Speaker / Headphone Device Selection">
+                  <option value="">Detecting speaker...</option>
+                </select>
+              </div>
+              <div class="meter-wrapper" style="margin-top: 8px;">
+                <div class="meter-header">
+                  <span class="meter-title">Cleaned Virtual Output</span>
+                  <span id="outputMeterDb" class="meter-text">-60 dB</span>
+                </div>
+                <div class="meter-container">
+                  <div class="meter-bar">
+                    <div id="outputMeterFill" class="meter-fill output-fill" style="width: 0%;"></div>
+                  </div>
+                  <span id="outputCleanBadge" class="out-badge">CLEAN</span>
+                </div>
+              </div>
+              <div class="slider-row" style="margin-top: 6px;">
+                <span class="slider-label">Output Vol</span>
+                <span id="speakerVolText" class="slider-val">100%</span>
+              </div>
+              <input type="range" id="speakerVolumeSlider" min="0" max="100" value="100" class="slider" aria-label="Speaker Volume Slider">
+            </div>
+          </div>
+
+          <!-- Bottom Protection Strip: Echo Shield, Auto-Sensitivity, Push-to-Talk -->
+          <div class="features-compact-row">
+            <!-- Echo Shield Toggle -->
+            <div class="feature-item">
+              <div class="feature-info">
+                <div class="title-with-badge">
+                  <span id="aecCardTitle" class="feature-title">Echo Shield</span>
+                  <span class="screen-shield-badge">Screen Share Guard</span>
+                </div>
+                <span class="feature-hint">Stops double-voice echo</span>
+              </div>
+              <div class="feature-action">
+                <span id="loopWarningPill" class="auto-badge badge-alert" style="display: none;">⚠️ Loop</span>
+                <label class="switch" title="Toggle Acoustic Echo Cancellation">
+                  <input type="checkbox" id="aecToggle">
+                  <span class="slider-round"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Auto Sensitivity Toggle -->
+            <div class="feature-item">
+              <div class="feature-info">
+                <span id="sensCardTitle" class="feature-title">Auto Sensitivity</span>
+                <span class="feature-hint">Smart dynamic gate</span>
+              </div>
+              <div class="feature-action">
+                <label class="switch" title="Toggle Automatic Input Sensitivity Adaptation">
+                  <input type="checkbox" id="autoSensitivityToggle" checked>
+                  <span class="slider-round"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Push to Talk Toggle -->
+            <div class="feature-item">
+              <div class="feature-info">
+                <span id="pttCardTitle" class="feature-title">Push to Talk</span>
+                <span class="feature-hint">Hold key to transmit</span>
+              </div>
+              <div class="feature-action">
+                <label class="switch" title="Toggle Push to Talk">
+                  <input type="checkbox" id="pttToggle">
+                  <span class="slider-round"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Expandable Manual Sensitivity Controls -->
+          <div id="manualSensitivitySection" class="slider-section disabled" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
             <div class="slider-row">
-              <span class="slider-label">Mic Gain</span>
-              <span id="micVolText" class="slider-val">100%</span>
+              <span class="slider-label">Sensitivity Threshold</span>
+              <span id="sensitivityText" class="slider-val">-50 dB</span>
             </div>
-            <input type="range" id="micVolumeSlider" min="0" max="200" value="100" class="slider" aria-label="Microphone Volume Slider">
+            <input type="range" id="sensitivitySlider" min="-80" max="-10" value="-50" class="slider" disabled aria-label="Manual Sensitivity Threshold Slider">
+          </div>
 
-            <!-- Real-Time Input VU Meter with Peak Hold & Clip LED -->
-            <div class="meter-wrapper">
-              <div class="meter-header">
-                <span class="meter-title">Input Peak Level</span>
-                <span id="micMeterDb" class="meter-text">-60 dB</span>
-              </div>
-              <div class="meter-container">
-                <div class="meter-bar">
-                  <div id="micMeterFill" class="meter-fill" style="width: 0%;"></div>
-                </div>
-                <span id="clippingIndicator" class="clip-badge">CLIP</span>
-              </div>
+          <!-- Expandable PTT Controls -->
+          <div id="pttControls" class="ptt-controls disabled" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
+            <div class="ptt-row">
+              <span class="slider-label">Shortcut Key:</span>
+              <button type="button" id="pttKeyBtn" class="key-bind-btn">Space</button>
+              <span id="pttStatusBadge" class="ptt-status">Muted</span>
             </div>
-          </section>
+          </div>
+        </section>
 
-          <!-- Output Speaker & Monitoring Card -->
-          <section class="card device-card" aria-labelledby="spkCardTitle">
-            <div class="card-row">
-              <div class="card-title-group">
-                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                </svg>
-                <div>
-                  <label id="spkCardTitle" for="speakerSelect" class="card-label">Speaker / Output</label>
-                  <div class="card-subdesc">Playback & reference source</div>
-                </div>
-              </div>
-              <span class="auto-badge" id="spkAutoBadge">Auto Detected</span>
-            </div>
-            
-            <div class="select-wrapper">
-              <select id="speakerSelect" class="dropdown" aria-label="Speaker / Headphone Device Selection">
-                <option value="">Detecting speaker...</option>
-              </select>
-            </div>
-
-            <div class="slider-row">
-              <span class="slider-label">Output Volume</span>
-              <span id="speakerVolText" class="slider-val">100%</span>
-            </div>
-            <input type="range" id="speakerVolumeSlider" min="0" max="100" value="100" class="slider" aria-label="Speaker Volume Slider">
-
-            <!-- Virtual Cable / Output Status Pill -->
-            <div class="meter-wrapper">
-              <div class="meter-header">
-                <span class="meter-title">Cleaned Mic Virtual Output</span>
-                <span id="outputMeterDb" class="meter-text">-60 dB</span>
-              </div>
-              <div class="meter-container">
-                <div class="meter-bar">
-                  <div id="outputMeterFill" class="meter-fill output-fill" style="width: 0%;"></div>
-                </div>
-                <span id="outputCleanBadge" class="out-badge">CLEAN</span>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <!-- LIVE VOICE MONITOR & WAVEFORM VISUALIZER -->
+        <!-- SECTION 3: Live Voice Monitor & Real-Time Waveform -->
         <section class="card live-test-card" aria-labelledby="liveVoiceTitle">
           <div class="card-row">
             <div class="card-title-group">
@@ -261,8 +317,8 @@
                 <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
               </svg>
               <div>
-                <span class="card-label">Live Voice Monitor & Visualizer</span>
-                <div class="card-subdesc">Instant zero-latency headphone test & real-time oscilloscope</div>
+                <span class="card-label">Hear Yourself (Mic Test)</span>
+                <div class="card-subdesc">Instant zero-latency monitor &amp; dual oscilloscope</div>
               </div>
             </div>
 
@@ -304,89 +360,6 @@
             </div>
           </div>
         </section>
-
-        <!-- ENHANCED CONTROL CARDS: Auto-Sensitivity & Echo Cancellation -->
-        <div class="features-grid">
-          <!-- Automatic Adjust Input Sensitivity Card -->
-          <section class="card feature-card" aria-labelledby="sensCardTitle">
-            <div class="toggle-row">
-              <div class="card-title-group">
-                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="3"></circle>
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                </svg>
-                <div>
-                  <span id="sensCardTitle" class="card-label">Auto Sensitivity</span>
-                  <div class="card-subdesc">Smart dynamic noise gate calibration</div>
-                </div>
-              </div>
-              <label class="switch" title="Toggle Automatic Input Sensitivity Adaptation">
-                <input type="checkbox" id="autoSensitivityToggle" checked>
-                <span class="slider-round"></span>
-              </label>
-            </div>
-            <div id="manualSensitivitySection" class="slider-section disabled" style="display: none;">
-              <div class="slider-row">
-                <span class="slider-label">Sensitivity Threshold</span>
-                <span id="sensitivityText" class="slider-val">-50 dB</span>
-              </div>
-              <input type="range" id="sensitivitySlider" min="-80" max="-10" value="-50" class="slider" disabled aria-label="Manual Sensitivity Threshold Slider">
-            </div>
-          </section>
-
-          <!-- Echo Cancellation (AEC) & Screen Share Shield Card -->
-          <section class="card feature-card" aria-labelledby="aecCardTitle">
-            <div class="toggle-row">
-              <div class="card-title-group">
-                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                </svg>
-                <div>
-                  <div class="title-with-badge">
-                    <span id="aecCardTitle" class="card-label">Echo Shield</span>
-                    <span class="screen-shield-badge">Screen Share Guard</span>
-                  </div>
-                  <div class="card-subdesc">Prevents double-voice loopback in Discord / OBS</div>
-                </div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span id="loopWarningPill" class="auto-badge badge-alert" style="display: none;">⚠️ Loop Detected</span>
-                <label class="switch" title="Toggle Acoustic Echo Cancellation">
-                  <input type="checkbox" id="aecToggle">
-                  <span class="slider-round"></span>
-                </label>
-              </div>
-            </div>
-          </section>
-
-          <!-- Push to Talk Card -->
-          <section class="card feature-card" aria-labelledby="pttCardTitle">
-            <div class="toggle-row">
-              <div class="card-title-group">
-                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="2" y="4" width="20" height="16" rx="2"></rect>
-                  <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"></path>
-                </svg>
-                <div>
-                  <span id="pttCardTitle" class="card-label">Push to Talk</span>
-                  <div class="card-subdesc">Hold key to broadcast voice</div>
-                </div>
-              </div>
-              <label class="switch" title="Toggle Push to Talk">
-                <input type="checkbox" id="pttToggle">
-                <span class="slider-round"></span>
-              </label>
-            </div>
-            <div id="pttControls" class="ptt-controls disabled" style="display: none;">
-              <div class="ptt-row">
-                <span class="slider-label">Shortcut:</span>
-                <button type="button" id="pttKeyBtn" class="key-bind-btn">Space</button>
-                <span id="pttStatusBadge" class="ptt-status">Muted</span>
-              </div>
-            </div>
-          </section>
-        </div>
       </div>
 
       <!-- ==================================================================
@@ -401,7 +374,7 @@
                 <div class="diag-icon-box">🩺</div>
                 <div>
                   <span id="echoDocCardTitle" class="card-label">Echo Doctor</span>
-                  <div class="card-subdesc">Diagnose feedback loops & screen share audio paths</div>
+                  <div class="card-subdesc">Diagnose feedback loops &amp; screen share audio paths</div>
                 </div>
               </div>
               <button type="button" id="echoDoctorBtn" class="primary-action-btn">Launch Doctor</button>
@@ -418,7 +391,7 @@
                 <div class="diag-icon-box">⚡</div>
                 <div>
                   <span id="selfTestCardTitle" class="card-label">DSP Self-Test</span>
-                  <div class="card-subdesc">Verify 90% noise attenuation & latency with test sweep</div>
+                  <div class="card-subdesc">Verify 90% noise attenuation &amp; latency with test sweep</div>
                 </div>
               </div>
               <button type="button" id="pipelineSelfTestBtn" class="primary-action-btn">Run Self-Test</button>
@@ -474,7 +447,7 @@
                 <circle cx="12" cy="12" r="3"></circle>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
               </svg>
-              <span id="appPrefsTitle" class="card-label">App Preferences & Startup</span>
+              <span id="appPrefsTitle" class="card-label">App Preferences &amp; Startup</span>
             </div>
           </div>
 
@@ -535,7 +508,7 @@
           <!-- Taskbar Pinning Guide -->
           <div class="toggle-row" style="margin-top: 14px; border-top: 1px solid var(--border-subtle); padding-top: 14px;">
             <div>
-              <span class="sub-label">Taskbar & Tray Visibility</span>
+              <span class="sub-label">Taskbar &amp; Tray Visibility</span>
               <div class="card-subdesc">Keep 180hz nc icon pinned in Windows system tray</div>
             </div>
             <button type="button" id="togglePinGuideBtn" class="key-bind-btn">Pinning Guide</button>
@@ -568,7 +541,7 @@
               </div>
               <div>
                 <span id="aboutTitle" class="card-label">180hz nc</span>
-                <div class="card-subdesc">High-Grade 90% AI Voice Clarity & Echo Shield &bull; v1.0.4</div>
+                <div class="card-subdesc">High-Grade 90% AI Voice Clarity &amp; Echo Shield &bull; v1.0.4</div>
               </div>
             </div>
           </div>
@@ -635,7 +608,7 @@
         <div class="doctor-section-title text-blue">📢 Discord Screen Share Double-Voice Tips:</div>
         <ul id="doctorDiscordTips" class="doctor-list-plain">
           <li>Share an <strong>Application Window</strong> instead of Entire Screen so Discord captures audio only from that app.</li>
-          <li>In Discord Voice & Video settings, set Input to <strong>CABLE Output</strong> and Output to your <strong>Headphones</strong>.</li>
+          <li>In Discord Voice &amp; Video settings, set Input to <strong>CABLE Output</strong> and Output to your <strong>Headphones</strong>.</li>
         </ul>
       </div>
 
@@ -657,11 +630,11 @@
 
       <div id="pipelineResultBanner" class="doctor-banner banner-clean">
         <span id="pipelineResultIcon">✅</span>
-        <span id="pipelineResultText">Pipeline Verified & Healthy</span>
+        <span id="pipelineResultText">Pipeline Verified &amp; Healthy</span>
       </div>
 
       <div class="doctor-section">
-        <div class="doctor-section-title text-blue">DSP Integrity & Latency Telemetry:</div>
+        <div class="doctor-section-title text-blue">DSP Integrity &amp; Latency Telemetry:</div>
         <pre id="pipelineDetails" class="doctor-content-box mono-pre">Running diagnostic self-test...</pre>
       </div>
 
