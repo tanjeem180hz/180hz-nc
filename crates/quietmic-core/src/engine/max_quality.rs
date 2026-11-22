@@ -21,6 +21,8 @@ pub struct MaxQualityEngine {
     scratch_out: Box<[f32; Self::FRAME_SIZE]>,
     best_pitch_lag: usize,
     pitch_correlation: f32,
+    smoothed_floor_gain: f32,
+    hangover_counter: usize,
 }
 
 impl MaxQualityEngine {
@@ -40,6 +42,8 @@ impl MaxQualityEngine {
             scratch_out: Box::new([0.0f32; Self::FRAME_SIZE]),
             best_pitch_lag: 240,
             pitch_correlation: 0.0,
+            smoothed_floor_gain: 1.0,
+            hangover_counter: 0,
         }
     }
 
@@ -132,6 +136,8 @@ impl DenoiseEngine for MaxQualityEngine {
         self.scratch_out.fill(0.0);
         self.best_pitch_lag = 240;
         self.pitch_correlation = 0.0;
+        self.smoothed_floor_gain = 1.0;
+        self.hangover_counter = 0;
     }
 
     #[inline]
@@ -149,7 +155,13 @@ impl DenoiseEngine for MaxQualityEngine {
         self.stage1_neural.process_frame(&in_frame[..Self::FRAME_SIZE], &mut *self.scratch_out)?;
 
         let vad_prob = self.stage1_neural.vad_probability();
-        let is_speech = vad_prob >= 0.35;
+        let is_speech_instant = vad_prob >= 0.38;
+        if is_speech_instant {
+            self.hangover_counter = 12; // 120 ms hangover
+        } else if self.hangover_counter > 0 {
+            self.hangover_counter -= 1;
+        }
+        let is_speech = is_speech_instant || self.hangover_counter > 0;
 
         // Stage 2: Pitch Tracking on Neural-Cleaned Signal
         let (lag, corr) = Self::estimate_pitch_helper(&self.scratch_out[..], &self.pitch_history[..], self.best_pitch_lag);
@@ -157,9 +169,9 @@ impl DenoiseEngine for MaxQualityEngine {
         self.pitch_correlation = corr;
 
         // Stage 3: Harmonic Refinement & Inter-Harmonic Noise Attenuation
-        if is_speech && self.pitch_correlation > 0.50 && self.suppression_factor > 0.10 {
+        if is_speech && self.pitch_correlation > 0.45 && self.suppression_factor > 0.10 {
             // Harmonic blending: reinforces periodic voice harmonics while canceling uncorrelated noise
-            let blend_weight = (0.18 * self.suppression_factor * (self.pitch_correlation - 0.50) / 0.50).clamp(0.0, 0.18);
+            let blend_weight = (0.30 * self.suppression_factor * (self.pitch_correlation - 0.45) / 0.55).clamp(0.0, 0.30);
 
             for i in 0..Self::FRAME_SIZE {
                 let s_curr = self.scratch_out[i];
@@ -172,11 +184,18 @@ impl DenoiseEngine for MaxQualityEngine {
             out_frame[..Self::FRAME_SIZE].copy_from_slice(&self.scratch_out[..Self::FRAME_SIZE]);
         }
 
-        // Stage 4: Non-speech silence floor attenuation
-        if !is_speech {
-            let floor_atten = (1.0 - self.suppression_factor * 0.90).clamp(0.001, 1.0);
+        // Stage 4: High-grade Non-speech silence floor attenuation
+        let min_floor = (1.0 - self.suppression_factor * 0.999).clamp(0.0001, 1.0);
+        let target_floor = if is_speech { 1.0f32 } else { min_floor };
+        if is_speech {
+            self.smoothed_floor_gain = 1.0;
+        } else {
+            self.smoothed_floor_gain += (target_floor - self.smoothed_floor_gain) * 0.08;
+        }
+
+        if self.smoothed_floor_gain < 0.999 {
             for s in out_frame[..Self::FRAME_SIZE].iter_mut() {
-                *s *= floor_atten;
+                *s *= self.smoothed_floor_gain;
             }
         }
 

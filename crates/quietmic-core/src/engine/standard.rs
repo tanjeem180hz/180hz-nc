@@ -270,9 +270,14 @@ impl DenoiseEngine for StandardEngine {
         }
 
         let min_gain = 10.0f32.powf(-self.attenuation_limit_db / 20.0);
-        let vad_scale = (self.vad_estimate / 0.25).clamp(min_gain, 1.0);
+        let vad_scale = if is_speech_active {
+            1.0f32
+        } else {
+            (self.vad_estimate / 0.25).clamp(min_gain, 1.0)
+        };
 
-        // Pass 2: Apply per-bin fine spectral Wiener gains with current-frame VAD scaling
+        // Pass 2: Apply per-bin fine spectral Wiener gains with decision-directed over-subtraction
+        let oversub = 1.0 + 1.25 * self.suppression_factor; // 2.25x over-subtraction at 100% suppression
         for (b, &(start, end)) in self.band_bin_ranges.iter().enumerate() {
             let noise = self.noise_estimate[b];
 
@@ -280,11 +285,12 @@ impl DenoiseEngine for StandardEngine {
                 let k = start + offset;
                 let bin_power = (spec.norm_sqr() * FFT_NORM_SQ).max(1e-11);
                 let bin_snr = (bin_power / noise.max(1e-10)).max(0.01);
+                let excess_snr = (bin_snr - oversub).max(0.0);
 
                 let prior = if is_startup {
-                    (bin_snr - 1.0).max(0.01)
+                    excess_snr.max(0.01)
                 } else {
-                    0.80 * (self.bin_prev_gain[k].powi(2) * self.bin_prior[k]) + 0.20 * (bin_snr - 1.0).max(0.0)
+                    0.80 * (self.bin_prev_gain[k].powi(2) * self.bin_prior[k]) + 0.20 * excess_snr
                 };
                 self.bin_prior[k] = prior;
 
