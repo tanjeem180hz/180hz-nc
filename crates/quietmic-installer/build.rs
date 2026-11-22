@@ -17,6 +17,7 @@ fn main() {
 
     let app_target = resources_dir.join("app.exe");
     let release_candidates = [
+        Path::new("../../target/release/quietmic-launcher.exe"),
         Path::new("../../target/release/quietmic-app.exe"),
         Path::new("../../target/release/180hz nc.exe"),
     ];

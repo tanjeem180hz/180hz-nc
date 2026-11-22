@@ -4,6 +4,7 @@ members = [
     "crates/quietmic-bench",
     "crates/quietmic-app",
     "crates/quietmic-installer",
+    "crates/quietmic-launcher",
 ]
 resolver = "2"
 

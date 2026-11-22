@@ -1,0 +1,8 @@
+[package]
+name = "quietmic-launcher"
+version = "0.1.0"
+edition = "2021"
+authors = ["180Hz Engineering Team"]
+description = "180Hz NC - Standalone Self-Extracting Launcher"
+
+[dependencies]

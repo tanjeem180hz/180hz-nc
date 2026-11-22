@@ -1,5 +1,5 @@
 # Stop running 180hz nc process if active so files can be updated
-Get-Process -Name "180hz*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process -Name "180hz*", "quietmic*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500
 
 # Remove extra old exe in target\release
@@ -8,13 +8,24 @@ if (Test-Path "target/release/180hz nc.exe.old") {
 }
 
 # Update release binaries in target\release
-Copy-Item "target/release/quietmic-app.exe" "target/release/180hz nc.exe" -Force
-Copy-Item "target/release/quietmic-app.exe" "target/release/180hz-nc.exe" -Force
-Copy-Item "target/release/quietmic-app.exe" "release/180hz-nc.exe" -Force
+# 1. quietmic-app.exe is the core Tauri application
+# 2. quietmic-launcher.exe is the standalone launcher that embeds WebView2Loader.dll
+if (Test-Path "target/release/quietmic-launcher.exe") {
+    Copy-Item "target/release/quietmic-launcher.exe" "target/release/180hz nc.exe" -Force
+    Copy-Item "target/release/quietmic-launcher.exe" "target/release/180hz-nc.exe" -Force
+    Copy-Item "target/release/quietmic-launcher.exe" "release/180hz-nc.exe" -Force
+    Copy-Item "target/release/quietmic-launcher.exe" "release/180hz nc.exe" -Force
+} else {
+    Copy-Item "target/release/quietmic-app.exe" "target/release/180hz nc.exe" -Force
+    Copy-Item "target/release/quietmic-app.exe" "target/release/180hz-nc.exe" -Force
+    Copy-Item "target/release/quietmic-app.exe" "release/180hz-nc.exe" -Force
+}
 Copy-Item "target/release/WebView2Loader.dll" "release/WebView2Loader.dll" -Force
 
 # Copy installer directly from target\release\180hz-nc-setup.exe
-Copy-Item "target/release/180hz-nc-setup.exe" "release/180hz-nc-setup.exe" -Force
+if (Test-Path "target/release/180hz-nc-setup.exe") {
+    Copy-Item "target/release/180hz-nc-setup.exe" "release/180hz-nc-setup.exe" -Force
+}
 
 # Create portable package
 $staging = "target/portable_staging"
@@ -22,8 +33,11 @@ if (Test-Path $staging) {
     Remove-Item $staging -Recurse -Force
 }
 New-Item -ItemType Directory -Path $staging -Force | Out-Null
-Copy-Item "target/release/quietmic-app.exe" "$staging/180hz nc.exe" -Force
-Copy-Item "target/release/quietmic-app.exe" "$staging/180hz-nc.exe" -Force
+if (Test-Path "target/release/quietmic-launcher.exe") {
+    Copy-Item "target/release/quietmic-launcher.exe" "$staging/180hz nc.exe" -Force
+    Copy-Item "target/release/quietmic-launcher.exe" "$staging/180hz-nc.exe" -Force
+}
+Copy-Item "target/release/quietmic-app.exe" "$staging/quietmic-app.exe" -Force
 Copy-Item "release/WebView2Loader.dll" "$staging/WebView2Loader.dll" -Force
 Copy-Item "README.md" "$staging/README.md" -Force
 
@@ -38,8 +52,14 @@ $appData = Join-Path $env:LOCALAPPDATA "180hz nc"
 if (!(Test-Path $appData)) {
     New-Item -ItemType Directory -Path $appData -Force | Out-Null
 }
-Copy-Item "target/release/quietmic-app.exe" (Join-Path $appData "180hz nc.exe") -Force
-Copy-Item "target/release/quietmic-app.exe" (Join-Path $appData "180hz-nc.exe") -Force
+if (Test-Path "target/release/quietmic-launcher.exe") {
+    Copy-Item "target/release/quietmic-launcher.exe" (Join-Path $appData "180hz nc.exe") -Force
+    Copy-Item "target/release/quietmic-launcher.exe" (Join-Path $appData "180hz-nc.exe") -Force
+} else {
+    Copy-Item "target/release/quietmic-app.exe" (Join-Path $appData "180hz nc.exe") -Force
+    Copy-Item "target/release/quietmic-app.exe" (Join-Path $appData "180hz-nc.exe") -Force
+}
+Copy-Item "target/release/quietmic-app.exe" (Join-Path $appData "quietmic-app.exe") -Force
 Copy-Item "release/WebView2Loader.dll" (Join-Path $appData "WebView2Loader.dll") -Force
 Write-Host "Updated LocalAppData at $appData successfully."
 
@@ -58,13 +78,15 @@ $scStart.WorkingDirectory = $appData
 $scStart.Description = "180hz nc - Real-Time AI Noise Suppression"
 $scStart.Save()
 
-$desktopDir = [Environment]::GetFolderPath('Desktop')
-if (Test-Path $desktopDir) {
-    $scDesktop = $ws.CreateShortcut("$desktopDir\180hz nc.lnk")
-    $scDesktop.TargetPath = (Join-Path $appData "180hz nc.exe")
-    $scDesktop.WorkingDirectory = $appData
-    $scDesktop.Description = "180hz nc - Real-Time AI Noise Suppression"
-    $scDesktop.Save()
+$desktopDirs = @([Environment]::GetFolderPath('Desktop'), "$env:USERPROFILE\Desktop")
+foreach ($d in $desktopDirs) {
+    if (Test-Path $d) {
+        $scDesktop = $ws.CreateShortcut((Join-Path $d "180hz nc.lnk"))
+        $scDesktop.TargetPath = (Join-Path $appData "180hz nc.exe")
+        $scDesktop.WorkingDirectory = $appData
+        $scDesktop.Description = "180hz nc - Real-Time AI Noise Suppression"
+        $scDesktop.Save()
+    }
 }
 
 # Update SHA256SUMS.txt
