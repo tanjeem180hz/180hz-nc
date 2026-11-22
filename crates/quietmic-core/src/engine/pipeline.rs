@@ -153,7 +153,7 @@ impl AudioPipeline {
                 EngineMode::Light => ActiveEngine::Light(LightEngine::new()),
                 EngineMode::Standard => {
                     let mut s = StandardEngine::new();
-                    s.set_attenuation_limit_db(36.0);
+                    s.set_attenuation_limit_db(40.0);
                     s.set_post_filter(true, 1.35);
                     s.set_suppression(self.strength);
                     ActiveEngine::Standard(Box::new(s))

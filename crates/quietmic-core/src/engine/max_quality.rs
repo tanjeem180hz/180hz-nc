@@ -159,11 +159,26 @@ impl DenoiseEngine for MaxQualityEngine {
         self.best_pitch_lag = lag;
         self.pitch_correlation = corr;
 
+        // Measure crest factor to reject sharp mechanical clicks and keyboard spikes
+        let mut sum_sq = 0.0f32;
+        let mut peak = 0.0f32;
+        for &s in in_frame[..Self::FRAME_SIZE].iter() {
+            let a = s.abs();
+            if a > peak {
+                peak = a;
+            }
+            sum_sq += a * a;
+        }
+        let frame_rms = (sum_sq / Self::FRAME_SIZE as f32).sqrt().max(1e-6);
+        let crest_factor = peak / frame_rms;
+        let is_click = crest_factor > 4.5 && corr < 0.28;
+
         let vad_prob = self.stage1_neural.vad_probability();
         // Multi-feature speech detection:
-        // Confirmed vocal chord periodicity (corr > 0.35) with moderate RNNoise (vad_prob >= 0.22),
-        // OR high confidence RNNoise speech probability (vad_prob >= 0.50).
-        let is_speech_instant = vad_prob >= 0.50 || (vad_prob >= 0.22 && corr > 0.35);
+        // Sharp mechanical clicks can never trigger or hold speech activity!
+        // Speech requires vocal chord periodicity (corr > 0.32) with moderate RNNoise (vad_prob >= 0.22),
+        // OR high confidence RNNoise speech probability (vad_prob >= 0.52).
+        let is_speech_instant = !is_click && (vad_prob >= 0.52 || (vad_prob >= 0.22 && corr > 0.32));
         if is_speech_instant {
             self.hangover_counter = 14; // 140 ms hangover
         } else if self.hangover_counter > 0 {
@@ -185,6 +200,14 @@ impl DenoiseEngine for MaxQualityEngine {
             }
         } else {
             out_frame[..Self::FRAME_SIZE].copy_from_slice(&self.scratch_out[..Self::FRAME_SIZE]);
+        }
+
+        // Clamp residual mechanical click spikes during non-speech intervals
+        if is_click && self.suppression_factor > 0.30 {
+            let click_clamp = 0.03 * (1.0 - self.suppression_factor * 0.60);
+            for s in out_frame[..Self::FRAME_SIZE].iter_mut() {
+                *s = s.clamp(-click_clamp, click_clamp);
+            }
         }
 
         // Stage 4: High-grade Non-speech silence floor attenuation
