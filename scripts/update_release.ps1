@@ -22,8 +22,11 @@ if (Test-Path "target/release/quietmic-launcher.exe") {
 }
 Copy-Item "target/release/WebView2Loader.dll" "release/WebView2Loader.dll" -Force
 
-# Copy installer directly from target\release\180hz-nc-setup.exe
-if (Test-Path "target/release/180hz-nc-setup.exe") {
+# Copy installer directly from target\release\quietmic-installer.exe or 180hz-nc-setup.exe
+if (Test-Path "target/release/quietmic-installer.exe") {
+    Copy-Item "target/release/quietmic-installer.exe" "target/release/180hz-nc-setup.exe" -Force
+    Copy-Item "target/release/quietmic-installer.exe" "release/180hz-nc-setup.exe" -Force
+} elseif (Test-Path "target/release/180hz-nc-setup.exe") {
     Copy-Item "target/release/180hz-nc-setup.exe" "release/180hz-nc-setup.exe" -Force
 }
 

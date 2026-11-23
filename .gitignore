@@ -8,6 +8,7 @@
 !release/*.dll
 !release/*.zip
 crates/quietmic-installer/resources/WebView2Loader.dll
+crates/quietmic-launcher/resources/
 
 # Audio test outputs & models
 *.wav

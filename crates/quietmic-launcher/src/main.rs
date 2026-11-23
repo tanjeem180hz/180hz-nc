@@ -5,8 +5,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-const WEBVIEW2_LOADER: &[u8] = include_bytes!("../../../release/WebView2Loader.dll");
-const APP_EXE: &[u8] = include_bytes!("../../../release/180hz-nc.exe");
+const WEBVIEW2_LOADER: &[u8] = include_bytes!("../resources/WebView2Loader.dll");
+const APP_EXE: &[u8] = include_bytes!("../resources/quietmic-app.exe");
 
 fn main() {
     let local_dir = match env::var("LOCALAPPDATA") {
@@ -39,12 +39,16 @@ fn main() {
         let _ = fs::write(&target_app, APP_EXE);
     }
 
-    // 3. If running from another directory, also try writing WebView2Loader.dll there
+    // 3. If running from another directory, also ensure WebView2Loader.dll is there
     if let Ok(cur_exe) = env::current_exe() {
         if let Some(parent) = cur_exe.parent() {
             if parent != local_dir {
                 let local_dll = parent.join("WebView2Loader.dll");
-                if !local_dll.exists() {
+                let needs_write = match fs::metadata(&local_dll) {
+                    Ok(m) => m.len() != WEBVIEW2_LOADER.len() as u64,
+                    Err(_) => true,
+                };
+                if needs_write {
                     let _ = fs::write(&local_dll, WEBVIEW2_LOADER);
                 }
             }
