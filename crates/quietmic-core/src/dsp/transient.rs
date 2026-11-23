@@ -114,18 +114,19 @@ impl TransientSuppressor {
             self.smoothed_energy += 0.005 * (instant_energy - self.smoothed_energy);
             self.smoothed_energy = self.smoothed_energy.max(1e-5);
 
-            // Impulse detection: sudden transient ratio > 16.0, high derivative, without speech
+            // Impulse detection: sudden transient ratio > 16.0, high derivative, ONLY in non-speech intervals
             let transient_ratio = instant_energy / self.smoothed_energy;
-            let is_impulse = (!is_speech && transient_ratio > 16.0 && deriv > 0.08 && abs_val > 0.04)
-                || (deriv > 0.25 && transient_ratio > 30.0);
+            let is_impulse = !is_speech
+                && ((transient_ratio > 16.0 && deriv > 0.08 && abs_val > 0.04)
+                    || (deriv > 0.30 && transient_ratio > 35.0));
 
             if is_impulse {
                 // Clamped transient attenuation (-34 dB) with 2.5 ms burst hold
                 self.hold_counter = 120;
-                self.suppression_gain = 0.02;
+                self.suppression_gain = 0.03;
             } else if self.hold_counter > 0 {
                 self.hold_counter -= 1;
-                self.suppression_gain = 0.02;
+                self.suppression_gain = 0.03;
             } else {
                 // Smooth exponential recovery to unity
                 self.suppression_gain += self.recovery_rate * (1.0 - self.suppression_gain);

@@ -117,18 +117,12 @@ impl DenoiseEngine for LightEngine {
             (base * (1.0 - self.suppression * 0.95)).max(min_floor)
         };
 
-        // Instant speech onset: guarantee 100% full speech preservation with zero syllable clipping
-        if is_speech {
-            self.smoothed_vad_gain = 1.0;
-        }
-
-        // Smooth gain decay into silence (~30ms release)
-        let release_coeff = 0.025f32;
-
+        // Smooth gain transition with continuous sample-rate slew (fast ~4ms attack, smooth ~35ms release)
+        // Eliminates sudden step jumps, pops, and chopping
         for (i, &s) in self.scratch_out.iter().enumerate() {
-            if !is_speech {
-                self.smoothed_vad_gain += (target_gate - self.smoothed_vad_gain) * release_coeff;
-            }
+            let diff = target_gate - self.smoothed_vad_gain;
+            let slew = if diff > 0.0 { 0.005f32 } else { 0.0006f32 };
+            self.smoothed_vad_gain += diff * slew;
             out_frame[i] = (s * SCALE_FROM_16BIT) * self.smoothed_vad_gain;
         }
 

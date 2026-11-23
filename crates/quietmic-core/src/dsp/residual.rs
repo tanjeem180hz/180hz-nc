@@ -149,11 +149,13 @@ impl ResidualSuppressor {
 
             self.suppression_gain += release_rate * (target_gain - self.suppression_gain);
 
-            // Fast clamp on sharp mechanical click impulses ONLY during quiet intervals / non-speech.
+            // Fast soft attenuation on sharp mechanical click impulses ONLY during quiet intervals / non-speech.
             // Never clamp active voiced speech waveforms to prevent cracking or clipping loud voice!
-            let is_click_impulse = !is_voiced_speech && (deriv > click_deriv_thresh) && (abs_val > click_abs_thresh);
+            let is_click_impulse = !is_voiced_speech && crest_factor > 6.0 && (deriv > click_deriv_thresh) && (abs_val > click_abs_thresh);
             if is_click_impulse {
-                *s = in_val.clamp(-click_clamp, click_clamp);
+                let sign = in_val.signum();
+                let excess = abs_val - click_clamp;
+                *s = sign * (click_clamp + excess.max(0.0) * 0.10) * self.suppression_gain;
             } else {
                 *s = in_val * self.suppression_gain;
             }

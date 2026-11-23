@@ -103,7 +103,7 @@ impl StandardEngine {
             suppression_factor: 1.0,
             attenuation_limit_db: 40.0,
             post_filter_enabled: true,
-            post_filter_beta: 1.55,
+            post_filter_beta: 1.15,
             init_frames: 0,
             band_bin_ranges,
         }
@@ -277,7 +277,7 @@ impl DenoiseEngine for StandardEngine {
         };
 
         // Pass 2: Apply per-bin fine spectral Wiener gains with decision-directed over-subtraction
-        let oversub = 1.0 + 1.50 * self.suppression_factor; // 2.50x over-subtraction at 100% suppression
+        let oversub = 1.0 + 0.35 * self.suppression_factor; // Clean over-subtraction preserving natural vocal timbre
         for (b, &(start, end)) in self.band_bin_ranges.iter().enumerate() {
             let noise = self.noise_estimate[b];
 
