@@ -180,16 +180,16 @@ impl DenoiseEngine for MaxQualityEngine {
         // OR high confidence RNNoise speech probability (vad_prob >= 0.52).
         let is_speech_instant = !is_click && (vad_prob >= 0.52 || (vad_prob >= 0.22 && corr > 0.32));
         if is_speech_instant {
-            self.hangover_counter = 14; // 140 ms hangover
+            self.hangover_counter = 12; // 120 ms hangover
         } else if self.hangover_counter > 0 {
             self.hangover_counter -= 1;
         }
         let is_speech = is_speech_instant || self.hangover_counter > 0;
 
         // Stage 3: Harmonic Refinement & Inter-Harmonic Noise Attenuation
-        if is_speech && self.pitch_correlation > 0.40 && self.suppression_factor > 0.10 {
+        if is_speech && self.pitch_correlation > 0.35 && self.suppression_factor > 0.10 {
             // Harmonic blending: reinforces periodic voice harmonics while canceling uncorrelated noise
-            let blend_weight = (0.35 * self.suppression_factor * (self.pitch_correlation - 0.40) / 0.60).clamp(0.0, 0.35);
+            let blend_weight = (0.40 * self.suppression_factor * (self.pitch_correlation - 0.35) / 0.65).clamp(0.0, 0.40);
 
             for i in 0..Self::FRAME_SIZE {
                 let s_curr = self.scratch_out[i];
@@ -204,19 +204,20 @@ impl DenoiseEngine for MaxQualityEngine {
 
         // Clamp residual mechanical click spikes during non-speech intervals
         if is_click && self.suppression_factor > 0.30 {
-            let click_clamp = 0.03 * (1.0 - self.suppression_factor * 0.60);
+            let click_clamp = 0.02 * (1.0 - self.suppression_factor * 0.60);
             for s in out_frame[..Self::FRAME_SIZE].iter_mut() {
                 *s = s.clamp(-click_clamp, click_clamp);
             }
         }
 
         // Stage 4: High-grade Non-speech silence floor attenuation
-        let min_floor = (1.0 - self.suppression_factor * 0.9999).clamp(0.00005, 1.0);
+        let min_floor = (1.0 - self.suppression_factor * 0.9999).clamp(0.00003, 1.0);
         let target_floor = if is_speech { 1.0f32 } else { min_floor };
         if is_speech {
             self.smoothed_floor_gain = 1.0;
         } else {
-            self.smoothed_floor_gain += (target_floor - self.smoothed_floor_gain) * 0.16;
+            let decay_speed = if vad_prob < 0.20 && corr < 0.25 { 0.26 } else { 0.16 };
+            self.smoothed_floor_gain += (target_floor - self.smoothed_floor_gain) * decay_speed;
         }
 
         if self.smoothed_floor_gain < 0.999 {

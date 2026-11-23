@@ -122,19 +122,19 @@ impl ResidualSuppressor {
         let snr = frame_rms / self.running_noise_floor;
 
         // Smooth post-filter gain
-        let quiet_gain = 0.02 * (1.0 - self.strength * 0.85); // down to 0.003 (-50 dB)
+        let quiet_gain = 0.015 * (1.0 - self.strength * 0.85); // down to 0.0022 (-53 dB)
         let target_gain = if is_voiced_speech || (snr > 3.0 && max_norm_corr > 0.30) {
             1.0 // Full 100% natural speech preservation
         } else if snr < 1.6 {
             quiet_gain
         } else {
-            0.50 * (1.0 - self.strength * 0.50) // Soft blend in transitional vowels
+            0.45 * (1.0 - self.strength * 0.50) // Soft blend in transitional vowels
         };
 
         let release_rate = if target_gain > self.suppression_gain {
-            0.15 // Fast recovery so speech consonants are never muffled
+            0.18 // Fast recovery so speech consonants are never muffled
         } else {
-            0.04
+            0.09 // Responsive noise floor decay
         };
 
         let click_deriv_thresh = 0.12 - 0.03 * self.strength;
