@@ -64,6 +64,9 @@ fn main() {
     let mut cmd = Command::new(&target_app);
     cmd.args(&args);
     cmd.current_dir(&local_dir);
+    let path_var = env::var("PATH").unwrap_or_default();
+    let new_path = format!("{};{}", local_dir.to_string_lossy(), path_var);
+    cmd.env("PATH", new_path);
 
     if is_cli {
         match cmd.status() {

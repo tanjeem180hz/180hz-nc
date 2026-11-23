@@ -11,8 +11,8 @@
     "windows": [
       {
         "title": "180hz nc",
-        "width": 460,
-        "height": 680,
+        "width": 380,
+        "height": 480,
         "resizable": false,
         "fullscreen": false,
         "center": true,
