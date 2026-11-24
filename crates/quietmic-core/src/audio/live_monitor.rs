@@ -205,7 +205,7 @@ impl LiveMonitorController {
                 dev.build_output_stream(
                     &config.into(),
                     move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
-                        if !is_active_cb.load(Ordering::Relaxed) || feedback_cb.load(Ordering::Relaxed) {
+                        if !is_active_cb.load(Ordering::Relaxed) {
                             data.fill(0);
                             return;
                         }
@@ -239,10 +239,10 @@ impl LiveMonitorController {
                             }
                         }
 
-                        // Cap buffer overrun to 100 ms (~4800 samples) to prevent latency buildup
+                        // Cap buffer overrun gently without causing massive 80ms audio jumps
                         if avail > 4800 {
-                            let excess = avail - PRE_ROLL_SAMPLES;
-                            for _ in 0..excess {
+                            let to_drop = (avail - 1920).min(input_needed);
+                            for _ in 0..to_drop {
                                 let _ = r_lock.try_pop();
                                 let _ = c_lock.try_pop();
                             }
@@ -260,7 +260,11 @@ impl LiveMonitorController {
                         if to_read < input_needed {
                             scratch_raw[to_read..input_needed].fill(0.0);
                             scratch_clean[to_read..input_needed].fill(0.0);
-                            primed_i16 = false;
+                            // Only un-prime if buffer is completely dry (to_read == 0)
+                            // This eliminates 33 Hz buffer flapping and vocal chopping!
+                            if to_read == 0 {
+                                primed_i16 = false;
+                            }
                         }
 
                         crossfade.process_frame(
@@ -356,10 +360,10 @@ impl LiveMonitorController {
                             }
                         }
 
-                        // Cap buffer overrun to 100 ms (~4800 samples) to prevent latency buildup
+                        // Cap buffer overrun gently without causing massive 80ms audio jumps
                         if avail > 4800 {
-                            let excess = avail - PRE_ROLL_SAMPLES;
-                            for _ in 0..excess {
+                            let to_drop = (avail - 1920).min(input_needed);
+                            for _ in 0..to_drop {
                                 let _ = r_lock.try_pop();
                                 let _ = c_lock.try_pop();
                             }
@@ -377,7 +381,11 @@ impl LiveMonitorController {
                         if to_read < input_needed {
                             scratch_raw[to_read..input_needed].fill(0.0);
                             scratch_clean[to_read..input_needed].fill(0.0);
-                            primed_f32 = false;
+                            // Only un-prime if buffer is completely dry (to_read == 0)
+                            // This eliminates 33 Hz buffer flapping and vocal chopping!
+                            if to_read == 0 {
+                                primed_f32 = false;
+                            }
                         }
 
                         // Perform smooth click-free A/B crossfade

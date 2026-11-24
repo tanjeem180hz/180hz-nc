@@ -534,15 +534,14 @@ impl AudioPipeline {
 
         // Step 5b: Apply Sensitivity Gating
         // If signal is below input sensitivity threshold, gate to digital silence.
-        // Note: MaxQuality (DeepFilterNet3) natively performs full-spectrum deep filtering
-        // down to -120 dB crystalline silence; skipping secondary gating prevents syllable clipping.
-        match &self.active_engine {
-            ActiveEngine::MaxQuality(_) => {}
-            _ => {
-                if !is_active {
-                    self.wet_buffer.fill(0.0);
-                } else {
-                    // Step 5c: Apply Second-Stage Residual Suppressor
+        // Guarantees 100% digital silence during non-speech pauses (zero background noise leak).
+        if !is_active {
+            self.wet_buffer.fill(0.0);
+        } else {
+            // Step 5c: Apply Second-Stage Residual Suppressor for spectral engines
+            match &self.active_engine {
+                ActiveEngine::MaxQuality(_) => {}
+                _ => {
                     self.residual.process_frame(&mut self.wet_buffer);
                 }
             }

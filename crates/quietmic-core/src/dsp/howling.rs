@@ -9,6 +9,7 @@ pub struct HowlingDetector {
     consecutive_howl_frames: usize,
     howl_trigger_frames: usize,  // Consecutive frames needed to declare feedback (e.g. 6 frames = 60 ms)
     prev_period: f32,
+    quiet_frames: usize,
     triggered: bool,
 }
 
@@ -30,19 +31,21 @@ impl HowlingDetector {
             consecutive_howl_frames: 0,
             howl_trigger_frames: trigger_frames,
             prev_period: 0.0,
+            quiet_frames: 0,
             triggered: false,
         }
     }
 
     /// Default configuration for 48 kHz 10 ms speech frames.
     pub fn default_48k() -> Self {
-        Self::new(48000.0, -26.0, 60.0)
+        Self::new(48000.0, -24.0, 60.0)
     }
 
     /// Resets detector state.
     pub fn reset(&mut self) {
         self.consecutive_howl_frames = 0;
         self.prev_period = 0.0;
+        self.quiet_frames = 0;
         self.triggered = false;
     }
 
@@ -73,8 +76,15 @@ impl HowlingDetector {
         // If below energy threshold, feedback is physically impossible at this level
         if rms < self.energy_threshold || peak < 1e-4 {
             self.consecutive_howl_frames = self.consecutive_howl_frames.saturating_sub(1);
+            self.quiet_frames += 1;
+            // Auto-recover after 15 quiet frames (150 ms)
+            if self.quiet_frames >= 15 {
+                self.triggered = false;
+            }
             return self.triggered;
         }
+
+        self.quiet_frames = 0;
 
         // 2. Crest Factor: Peak / RMS
         // For a pure sine wave (howling tone), Crest Factor is sqrt(2) ≈ 1.414.
@@ -103,10 +113,10 @@ impl HowlingDetector {
 
                 // Howling typically occurs between 300 Hz and 5000 Hz in typical rooms
                 let is_in_feedback_freq_range = (250.0..=5500.0).contains(&est_freq);
-                let is_consistent_period = self.prev_period > 0.0 && (avg_half_period - self.prev_period).abs() < 1.5;
+                let is_consistent_period = self.prev_period > 0.0 && (avg_half_period - self.prev_period).abs() < 1.0;
 
                 self.prev_period = avg_half_period;
-                is_in_feedback_freq_range && (is_consistent_period || zero_crossings >= 8)
+                is_in_feedback_freq_range && is_consistent_period
             } else {
                 false
             }
@@ -114,14 +124,17 @@ impl HowlingDetector {
             false
         };
 
-        // Feedback signature: High energy + sinusoidal crest factor (< 2.2) + tonal stability
-        if crest_factor < 2.2 && is_tonal {
+        // Feedback signature: High sustained energy + purely sinusoidal crest factor (< 1.80) + tight pitch period stability
+        if crest_factor < 1.80 && is_tonal {
             self.consecutive_howl_frames += 1;
             if self.consecutive_howl_frames >= self.howl_trigger_frames {
                 self.triggered = true;
             }
         } else {
             self.consecutive_howl_frames = self.consecutive_howl_frames.saturating_sub(1);
+            if self.consecutive_howl_frames == 0 {
+                self.triggered = false;
+            }
         }
 
         self.triggered

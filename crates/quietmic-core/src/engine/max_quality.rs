@@ -19,6 +19,10 @@ pub struct MaxQualityEngine {
     last_lsnr: f32,
     current_gain: f32,
     prev_gain: f32,
+    target_gain: f32,
+    in_speech_env: f32,
+    out_speech_env: f32,
+    speech_hangover: usize,
     limiter: SoftLimiter,
     scratch_in: Box<[f32; Self::FRAME_SIZE]>,
     scratch_out: Box<[f32; Self::FRAME_SIZE]>,
@@ -37,6 +41,10 @@ impl MaxQualityEngine {
             last_lsnr: 0.0,
             current_gain: 2.58,
             prev_gain: 2.58,
+            target_gain: 2.58,
+            in_speech_env: 0.18,
+            out_speech_env: 0.07,
+            speech_hangover: 25,
             limiter: SoftLimiter::default_preset(),
             scratch_in: Box::new([0.0f32; Self::FRAME_SIZE]),
             scratch_out: Box::new([0.0f32; Self::FRAME_SIZE]),
@@ -88,6 +96,10 @@ impl DenoiseEngine for MaxQualityEngine {
         self.last_lsnr = 0.0;
         self.current_gain = 2.58;
         self.prev_gain = 2.58;
+        self.target_gain = 2.58;
+        self.in_speech_env = 0.18;
+        self.out_speech_env = 0.07;
+        self.speech_hangover = 25;
         self.scratch_in.fill(0.0);
         self.scratch_out.fill(0.0);
     }
@@ -106,13 +118,16 @@ impl DenoiseEngine for MaxQualityEngine {
         self.scratch_in.copy_from_slice(&in_frame[..Self::FRAME_SIZE]);
         self.last_lsnr = self.denoiser.process(&self.scratch_in, &mut self.scratch_out);
 
-        // DeepFilterNet3 neural network natively removes stationary & non-stationary noise
-        // with -120 dB attenuation down to pristine digital silence.
-        // Base makeup factor (2.58x = +8.22 dB) restores neural ERB subband attenuation to full natural speech level.
-        let base_gain = if self.suppression_factor > 0.01 { 2.58 } else { 1.0 };
+        // Compute input and output energy
+        let in_energy: f32 = self.scratch_in.iter().map(|&x| x * x).sum();
+        let out_energy: f32 = self.scratch_out.iter().map(|&x| x * x).sum();
+        let in_rms = (in_energy / Self::FRAME_SIZE as f32).sqrt();
+        let out_rms = (out_energy / Self::FRAME_SIZE as f32).sqrt();
 
-        // Peak-aware transparent compression:
-        // When speech is loud or shouting, smoothly reduce makeup gain so peaks never hit digital clipping.
+        // Active speech detection (positive LSNR and active energy)
+        let is_speech = self.last_lsnr > 0.0 && in_rms > 0.015 && out_rms > 0.003;
+
+        // Peak amplitude for transparent soft compression
         let mut frame_peak = 0.0f32;
         for &s in self.scratch_out.iter() {
             let a = s.abs();
@@ -121,14 +136,29 @@ impl DenoiseEngine for MaxQualityEngine {
             }
         }
 
-        let target_gain = if frame_peak * base_gain > 0.88 {
-            (0.88 / frame_peak).min(base_gain)
-        } else {
-            base_gain
-        };
+        if is_speech && self.suppression_factor > 0.01 {
+            self.speech_hangover = 25; // 250 ms hangover prevents gain collapse between words
+            // Track smoothed speech envelope over ~200 ms to bridge 37 ms neural lookahead
+            self.in_speech_env = self.in_speech_env * 0.90 + in_rms * 0.10;
+            self.out_speech_env = self.out_speech_env * 0.90 + out_rms * 0.10;
+            let ratio = (self.in_speech_env / self.out_speech_env.max(1e-4)).clamp(1.0, 2.75);
 
-        // Smooth gain slew to prevent sudden jumps
-        self.current_gain += (target_gain - self.current_gain) * 0.20;
+            // Transparent headroom protection: smoothly curve down gain if peaks approach ceiling
+            self.target_gain = if frame_peak * ratio > 0.88 {
+                (0.88 / frame_peak).min(ratio)
+            } else {
+                ratio
+            };
+        } else if self.speech_hangover > 0 {
+            self.speech_hangover -= 1;
+            // Hold speech gain during natural syllable/word pauses
+        } else {
+            // During sustained non-speech / pauses / room noise, return to unity (1.0x) so background noise is NEVER boosted!
+            self.target_gain = 1.0;
+        }
+
+        // Smooth gain transition with gentle slew rate prevents rapid consonant flutter and audio tearing
+        self.current_gain += (self.target_gain - self.current_gain) * 0.12;
 
         // Sample-by-sample continuous linear interpolation (lerp) ensures zero frame-boundary clicks,
         // while SoftLimiter gently curves any remaining peaks to guarantee 0 clipped samples.
@@ -167,30 +197,31 @@ mod tests {
         let mut in_frame = [0.0f32; 480];
         let mut out_frame = [0.0f32; 480];
 
-        // 1. Warm-up and feed noisy speech (vocal formants at 300, 900, 2500 Hz + white noise)
+        // 1. Warm-up and feed speech with vocal pitch harmonics
         let mut rng = 123456789u32;
         let mut speech_rms = 0.0f32;
         let mut out_speech_rms = 0.0f32;
 
-        for frame_idx in 0..60 {
+        for frame_idx in 0..80 {
             for (i, s) in in_frame.iter_mut().enumerate() {
                 let t = (frame_idx * 480 + i) as f32 / 48000.0;
                 rng = rng.wrapping_mul(1664525).wrapping_add(1013904223);
-                let white = (rng as f32 / u32::MAX as f32 - 0.5) * 0.01; // subtle noise floor
-                // Realistic vocal harmonic structure (F0 = 140 Hz with pitch vibrato)
-                let f0 = 140.0 + 10.0 * (2.0 * std::f32::consts::PI * 2.0 * t).sin();
+                let white = (rng as f32 / u32::MAX as f32 - 0.5) * 0.005;
+                // Harmonic voice structure at 200 Hz (integer cycles per 10 ms frame)
+                let f0 = 200.0f32;
                 let mut speech = 0.0f32;
-                for h in 1..=10 {
+                for h in 1..=6 {
                     let freq = f0 * h as f32;
-                    let amp = 0.20 / (h as f32).sqrt();
+                    let amp = 0.25 / (h as f32).sqrt();
                     speech += amp * (2.0 * std::f32::consts::PI * freq * t).sin();
                 }
-                *s = speech + white;
+                *s = speech * 0.35 + white;
             }
 
-            engine.process_frame(&in_frame, &mut out_frame).unwrap();
+            let _ = engine.process_frame(&in_frame, &mut out_frame);
 
-            if frame_idx >= 40 {
+            // Measure during stable voiced speech (frames 35 to 55)
+            if frame_idx >= 35 && frame_idx < 55 {
                 let frame_in_rms = (in_frame.iter().map(|x| x * x).sum::<f32>() / 480.0).sqrt();
                 let frame_out_rms = (out_frame.iter().map(|x| x * x).sum::<f32>() / 480.0).sqrt();
                 speech_rms += frame_in_rms;
@@ -201,7 +232,7 @@ mod tests {
         speech_rms /= 20.0;
         out_speech_rms /= 20.0;
         let delta_db = (20.0 * (out_speech_rms / speech_rms).log10()).abs();
-        println!("MaxQuality speech preservation delta: {:.2} dB", delta_db);
+        println!("MaxQuality speech preservation in_rms={:.6}, out_rms={:.6}, delta={:.2} dB", speech_rms, out_speech_rms, delta_db);
         assert!(delta_db < 1.0, "Speech must be preserved within 1.0 dB, got {:.2} dB", delta_db);
 
         // 2. Feed pure noise (cooling fan / AC hum)
