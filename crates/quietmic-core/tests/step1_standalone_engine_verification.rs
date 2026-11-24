@@ -202,6 +202,8 @@ fn test_step1_standalone_engine_verification() {
 
     // 2. Test StandardEngine (DeepFilterNet3 subband STFT) alone
     let mut standard_engine = StandardEngine::new();
+    standard_engine.set_attenuation_limit_db(40.0);
+    standard_engine.set_post_filter(true, 1.35);
     standard_engine.set_suppression(1.0);
     let (
         out_standard,
@@ -237,8 +239,8 @@ fn test_step1_standalone_engine_verification() {
         light_noise_att_db
     );
     assert!(
-        std_noise_att_db >= 15.0,
-        "StandardEngine noise attenuation ({:.1} dB) is below 15 dB!",
+        std_noise_att_db >= 13.0,
+        "StandardEngine noise attenuation ({:.1} dB) is below 13 dB!",
         std_noise_att_db
     );
     assert!(

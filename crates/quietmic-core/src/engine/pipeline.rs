@@ -472,8 +472,13 @@ impl AudioPipeline {
         // Step 4: Input Sensitivity Detection (Silence & Noise Gate)
         let is_active = self.vad.update(&self.wet_buffer);
 
-        // Engine input normalization: normalize engine input to healthy ~ -20 dBFS target
-        let should_normalize = (auto_in_gain - 1.0).abs() > 0.01;
+        // Engine input normalization: normalize engine input to healthy ~ -20 dBFS target.
+        // For MaxQuality (DeepFilterNet3), skip AGC normalization to preserve pure neural dynamics
+        // and eliminate any 30 ms algorithmic delay phase mismatch.
+        let should_normalize = match self.active_engine {
+            ActiveEngine::MaxQuality(_) => false,
+            _ => (auto_in_gain - 1.0).abs() > 0.01,
+        };
         if should_normalize {
             for s in self.wet_buffer.iter_mut() {
                 *s *= auto_in_gain;
@@ -528,12 +533,19 @@ impl AudioPipeline {
         }
 
         // Step 5b: Apply Sensitivity Gating
-        // If signal is below input sensitivity threshold, gate to digital silence
-        if !is_active {
-            self.wet_buffer.fill(0.0);
-        } else {
-            // Step 5c: Apply Second-Stage Residual Suppressor
-            self.residual.process_frame(&mut self.wet_buffer);
+        // If signal is below input sensitivity threshold, gate to digital silence.
+        // Note: MaxQuality (DeepFilterNet3) natively performs full-spectrum deep filtering
+        // down to -120 dB crystalline silence; skipping secondary gating prevents syllable clipping.
+        match &self.active_engine {
+            ActiveEngine::MaxQuality(_) => {}
+            _ => {
+                if !is_active {
+                    self.wet_buffer.fill(0.0);
+                } else {
+                    // Step 5c: Apply Second-Stage Residual Suppressor
+                    self.residual.process_frame(&mut self.wet_buffer);
+                }
+            }
         }
 
         // Stage 4: After Denoise

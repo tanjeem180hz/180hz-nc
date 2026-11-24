@@ -125,7 +125,7 @@ fn evaluate_pipeline_segments(
     // Cross-correlation lag search
     let mut best_lag = 0;
     let mut max_corr = f32::NEG_INFINITY;
-    for lag in 0..=960 {
+    for lag in 0..=1920 {
         let mut corr = 0.0f32;
         for i in 0..eval_len.min(3000) {
             corr += clean_speech[s_start + i] * cleaned[s_start + lag + i];

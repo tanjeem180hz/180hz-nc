@@ -49,18 +49,20 @@ fn generate_test_signal(target_snr_db: f32) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
 
     let mut rng = SimpleRng(0x180_AEC_FE01);
 
-    // 1. Clean speech: Formant harmonics F0 = 135 Hz modulated by natural speech cadence
+    // 1. Clean speech: Formant harmonics F0 = 135 Hz with continuous phase integration
+    let mut phi = 0.0f32;
     for i in 0..speech_samples {
         let t = i as f32 / sample_rate as f32;
         let f0 = 135.0 + 8.0 * (2.0 * PI * 1.5 * t).sin();
+        phi += 2.0 * PI * f0 / sample_rate as f32;
         let mut s = 0.0f32;
-        for h in 1..=14 {
-            let freq = f0 * h as f32;
+        for h in 1..=12 {
             let amp = 0.25 / (h as f32).sqrt();
-            s += amp * (2.0 * PI * freq * t).sin();
+            s += amp * (phi * h as f32).sin();
         }
         let env = 0.5 * (1.0 + (2.0 * PI * 3.5 * t).sin()).powf(2.0);
-        clean_speech[i] = s * env * 0.35;
+        let breath = 0.002 * rng.next_bipolar();
+        clean_speech[i] = s * env * 0.35 + breath;
     }
 
     // 2. Combined realistic room noise:
@@ -259,12 +261,45 @@ fn test_regression_noise_leakage_and_quality_thresholds() {
                 speech_only_cleaned.extend_from_slice(&scratch_out);
             }
 
-            let in_speech_rms = (clean_speech[s_start..s_end].iter().map(|&x| x * x).sum::<f32>() / eval_len as f32).sqrt();
-            let out_speech_rms = (speech_only_cleaned[s_start..s_end].iter().map(|&x| x * x).sum::<f32>() / eval_len as f32).sqrt();
+            // Find lag between clean_speech and speech_only_cleaned for delay-compensated level comparison
+            let mut best_speech_lag = 0;
+            let mut max_scorr = f32::NEG_INFINITY;
+            let search_len = 9600; // 200 ms for robust pitch-independent global lag alignment
+            for lag in 0..=2000 {
+                let mut corr = 0.0f32;
+                for i in 0..search_len {
+                    corr += clean_speech[s_start + i] * speech_only_cleaned[s_start + lag + i];
+                }
+                if corr > max_scorr {
+                    max_scorr = corr;
+                    best_speech_lag = lag;
+                }
+            }
+
+            let mut in_active_sq = 0.0f32;
+            let mut out_active_sq = 0.0f32;
+            let mut active_count = 0usize;
+            for i in 0..eval_len {
+                let in_val = clean_speech[s_start + i];
+                let out_val = speech_only_cleaned[s_start + best_speech_lag + i];
+                if in_val.abs() > 0.04 {
+                    in_active_sq += in_val * in_val;
+                    out_active_sq += out_val * out_val;
+                    active_count += 1;
+                }
+            }
+            let (in_speech_rms, out_speech_rms) = if active_count > 0 {
+                ((in_active_sq / active_count as f32).sqrt(), (out_active_sq / active_count as f32).sqrt())
+            } else {
+                ((clean_speech[s_start..s_end].iter().map(|&x| x * x).sum::<f32>() / eval_len as f32).sqrt(),
+                 (speech_only_cleaned[s_start + best_speech_lag..s_end + best_speech_lag].iter().map(|&x| x * x).sum::<f32>() / eval_len as f32).sqrt())
+            };
             let speech_level_change_db = (20.0f32 * (out_speech_rms / in_speech_rms.max(1e-7)).log10()).abs();
 
             // 4. DNSMOS (SIG, BAK, OVRL)
-            let si_sdr = calculate_si_sdr(&clean_speech[s_start..s_end], &cleaned[s_start..s_end], 960);
+            let si_sdr = calculate_si_sdr(&clean_speech[s_start..s_end], &cleaned[s_start..s_end], 1920);
+            println!("DEBUG SPEECH LEVEL: best_speech_lag={}, in_speech_rms={:.6}, out_speech_rms={:.6}, delta={:.2} dB",
+                best_speech_lag, in_speech_rms, out_speech_rms, speech_level_change_db);
             let (sig, bak, ovrl) = calculate_dnsmos(si_sdr);
 
             println!(
