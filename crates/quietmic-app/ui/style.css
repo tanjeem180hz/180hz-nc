@@ -22,37 +22,57 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 40px;
-  background: radial-gradient(circle at 50% 45%, #0e1522 0%, #080b11 75%);
+  gap: 18px;
+  background: radial-gradient(circle at 50% 42%, #0e1624 0%, #080b11 75%);
   overflow: hidden;
 }
 
-/* Ambient Radial Glow behind the button */
+/* Ambient Radial Glow */
 .ambient-glow {
   position: absolute;
-  top: 42%;
+  top: 40%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 320px;
-  height: 320px;
+  width: 340px;
+  height: 340px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(16, 185, 129, 0.22) 0%, rgba(6, 182, 212, 0.12) 40%, transparent 70%);
-  filter: blur(40px);
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.24) 0%, rgba(6, 182, 212, 0.12) 45%, transparent 70%);
+  filter: blur(48px);
   pointer-events: none;
   transition: opacity 0.5s ease, transform 0.5s ease;
   opacity: 1;
 }
 
 .ambient-glow.off {
-  opacity: 0.05;
+  opacity: 0.04;
   transform: translate(-50%, -50%) scale(0.8);
 }
 
-/* Master Shield Toggle Button */
+/* Acoustic Live Voice Sonar Scope Wrapper */
+.sonar-wrapper {
+  position: relative;
+  width: 340px;
+  height: 340px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#sonarRadarCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 340px;
+  height: 340px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Master Shield Toggle Button (Sonar Core) */
 .shield-toggle {
   position: relative;
-  width: 154px;
-  height: 154px;
+  width: 150px;
+  height: 150px;
   border-radius: 50%;
   border: none;
   outline: none;
@@ -64,8 +84,8 @@ html, body {
   z-index: 10;
   transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.4s ease;
   box-shadow: 
-    0 12px 36px rgba(0, 0, 0, 0.6),
-    inset 0 1px 1px rgba(255, 255, 255, 0.15),
+    0 12px 36px rgba(0, 0, 0, 0.65),
+    inset 0 1px 1px rgba(255, 255, 255, 0.18),
     inset 0 -2px 6px rgba(0, 0, 0, 0.5);
   -webkit-tap-highlight-color: transparent;
 }
@@ -92,9 +112,9 @@ html, body {
 /* Outer Breathing Pulse Aura */
 .ring-pulse {
   position: absolute;
-  inset: -14px;
+  inset: -12px;
   border-radius: 50%;
-  border: 1.5px solid rgba(16, 185, 129, 0.4);
+  border: 1.5px solid rgba(16, 185, 129, 0.45);
   animation: auraPulse 2.8s infinite ease-out;
   pointer-events: none;
   transition: opacity 0.4s ease;
@@ -118,8 +138,8 @@ html, body {
 
 /* Shield SVG Icon */
 .shield-icon {
-  width: 64px;
-  height: 64px;
+  width: 62px;
+  height: 62px;
   color: #10b981;
   filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.75));
   transition: color 0.4s ease, filter 0.4s ease;
@@ -158,24 +178,37 @@ html, body {
   opacity: 0.35;
 }
 
-/* --- LIVE VOICE VISUALIZER CONTAINER --- */
+/* --- LIVE VOICE SONAR CONTAINER --- */
 .voice-container {
   position: relative;
   width: 300px;
-  height: 80px;
+  height: 76px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 16px;
-  background: rgba(14, 21, 34, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(10px);
+  background: rgba(14, 21, 34, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
   z-index: 5;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.voice-container:hover {
+  border-color: rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 12px rgba(16, 185, 129, 0.15);
+}
+
+.voice-container:active {
+  transform: scale(0.985);
 }
 
 #voiceCanvas {
   display: block;
   width: 300px;
-  height: 80px;
+  height: 76px;
 }

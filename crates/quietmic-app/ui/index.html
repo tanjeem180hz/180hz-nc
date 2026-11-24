@@ -10,18 +10,24 @@
   <div class="stage">
     <div class="ambient-glow" id="ambientGlow"></div>
 
-    <button type="button" id="masterToggle" class="shield-toggle active" aria-label="Toggle">
-      <div class="ring-pulse"></div>
-      <div class="ring-border"></div>
-      <svg class="shield-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        <path class="shield-core" d="M12 8v5"/>
-        <circle class="shield-node" cx="12" cy="16" r="1" fill="currentColor"/>
-      </svg>
-    </button>
+    <!-- Acoustic Live Voice Sonar Scope -->
+    <div class="sonar-wrapper" id="sonarWrapper">
+      <canvas id="sonarRadarCanvas" width="340" height="340"></canvas>
 
-    <div class="voice-container">
-      <canvas id="voiceCanvas" width="300" height="80"></canvas>
+      <button type="button" id="masterToggle" class="shield-toggle active" aria-label="Toggle">
+        <div class="ring-pulse"></div>
+        <div class="ring-border"></div>
+        <svg class="shield-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path class="shield-core" d="M12 8v5"/>
+          <circle class="shield-node" cx="12" cy="16" r="1" fill="currentColor"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Live Voice Sonar Waveform / Depth Sonogram -->
+    <div class="voice-container" id="voiceContainer">
+      <canvas id="voiceCanvas" width="300" height="76"></canvas>
     </div>
   </div>
 
