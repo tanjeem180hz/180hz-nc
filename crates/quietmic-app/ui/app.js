@@ -57,7 +57,6 @@ let isActive = true;
 let currentWaveform = new Array(48).fill(0);
 let targetWaveform = new Array(48).fill(0);
 let smoothedPeak = 0;
-let isMonitorActive = false;
 
 // Sonar Simulation State
 let sweepAngle = 0;
@@ -135,23 +134,6 @@ async function init() {
   // Master single-click toggle
   masterToggle.addEventListener('click', () => {
     setSuppressionState(!isActive);
-  });
-
-  // Clicking lower voice container toggles live monitor hear-through
-  voiceContainer.addEventListener('click', async () => {
-    try {
-      const res = await invoke('toggle_live_test', { deviceName: null });
-      isMonitorActive = !!res;
-      if (isMonitorActive) {
-        voiceContainer.style.borderColor = 'rgba(16, 185, 129, 0.7)';
-        voiceContainer.style.boxShadow = '0 0 16px rgba(16, 185, 129, 0.4)';
-      } else {
-        voiceContainer.style.borderColor = 'rgba(255, 255, 255, 0.05)';
-        voiceContainer.style.boxShadow = 'none';
-      }
-    } catch (err) {
-      console.warn('Live monitor toggle:', err);
-    }
   });
 
   try {
