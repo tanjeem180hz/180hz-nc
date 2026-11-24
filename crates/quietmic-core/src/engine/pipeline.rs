@@ -538,13 +538,8 @@ impl AudioPipeline {
         if !is_active {
             self.wet_buffer.fill(0.0);
         } else {
-            // Step 5c: Apply Second-Stage Residual Suppressor for spectral engines
-            match &self.active_engine {
-                ActiveEngine::MaxQuality(_) => {}
-                _ => {
-                    self.residual.process_frame(&mut self.wet_buffer);
-                }
-            }
+            // Step 5c: Apply Second-Stage Residual Suppressor to eliminate clicks, hiss, and ambient spill
+            self.residual.process_frame(&mut self.wet_buffer);
         }
 
         // Stage 4: After Denoise

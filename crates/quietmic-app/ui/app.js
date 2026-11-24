@@ -108,6 +108,7 @@ async function setSuppressionState(active) {
     try {
       await invoke('set_mode', { mode: 'MaxQuality' });
       await invoke('set_strength', { strength: 1.0 });
+      await invoke('set_mic_volume', { volume: 1.0 });
       await invoke('set_auto_sensitivity', { enabled: true });
       await invoke('set_bypass', { bypass: false });
     } catch (err) {

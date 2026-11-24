@@ -187,10 +187,10 @@ impl AutoSensitivityAdapter {
 
         // 4. Adaptive threshold in dBFS
         let threshold_dbfs = if self.enabled {
-            // Dynamic threshold: 5 dB above minimum-statistics noise floor
-            // Whisper protection: minimum threshold down to -56 dBFS
-            // Loud speech / noisy environment threshold up to -24 dBFS
-            (self.last_noise_floor_db + 5.0).clamp(-56.0, -24.0)
+            // Dynamic threshold: 3 dB above minimum-statistics noise floor
+            // Whisper protection: minimum threshold down to -58 dBFS
+            // Conversational speech protection: ceiling at -44 dBFS so soft speech is never cut off
+            (self.last_noise_floor_db + 3.0).clamp(-58.0, -44.0)
         } else {
             self.manual_threshold_dbfs
         };

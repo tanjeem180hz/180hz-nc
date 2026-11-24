@@ -39,12 +39,12 @@ impl MaxQualityEngine {
             denoiser,
             suppression_factor: 1.0,
             last_lsnr: 0.0,
-            current_gain: 2.58,
-            prev_gain: 2.58,
-            target_gain: 2.58,
-            in_speech_env: 0.18,
-            out_speech_env: 0.07,
-            speech_hangover: 25,
+            current_gain: 1.0,
+            prev_gain: 1.0,
+            target_gain: 1.0,
+            in_speech_env: 0.10,
+            out_speech_env: 0.10,
+            speech_hangover: 15,
             limiter: SoftLimiter::default_preset(),
             scratch_in: Box::new([0.0f32; Self::FRAME_SIZE]),
             scratch_out: Box::new([0.0f32; Self::FRAME_SIZE]),
@@ -94,12 +94,12 @@ impl DenoiseEngine for MaxQualityEngine {
     fn reset(&mut self) {
         self.denoiser.reset();
         self.last_lsnr = 0.0;
-        self.current_gain = 2.58;
-        self.prev_gain = 2.58;
-        self.target_gain = 2.58;
-        self.in_speech_env = 0.18;
-        self.out_speech_env = 0.07;
-        self.speech_hangover = 25;
+        self.current_gain = 1.0;
+        self.prev_gain = 1.0;
+        self.target_gain = 1.0;
+        self.in_speech_env = 0.10;
+        self.out_speech_env = 0.10;
+        self.speech_hangover = 15;
         self.scratch_in.fill(0.0);
         self.scratch_out.fill(0.0);
     }
@@ -124,8 +124,8 @@ impl DenoiseEngine for MaxQualityEngine {
         let in_rms = (in_energy / Self::FRAME_SIZE as f32).sqrt();
         let out_rms = (out_energy / Self::FRAME_SIZE as f32).sqrt();
 
-        // Active speech detection (positive LSNR and active energy)
-        let is_speech = self.last_lsnr > 0.0 && in_rms > 0.015 && out_rms > 0.003;
+        // Active speech detection (positive LSNR or active speech energy)
+        let is_speech = self.last_lsnr > 0.0 || (in_rms > 0.003 && in_rms > out_rms * 1.25);
 
         // Peak amplitude for transparent soft compression
         let mut frame_peak = 0.0f32;
@@ -137,7 +137,7 @@ impl DenoiseEngine for MaxQualityEngine {
         }
 
         if is_speech && self.suppression_factor > 0.01 {
-            self.speech_hangover = 25; // 250 ms hangover prevents gain collapse between words
+            self.speech_hangover = 20; // 200 ms hangover prevents gain collapse between words
             // Track smoothed speech envelope over ~200 ms to bridge 37 ms neural lookahead
             self.in_speech_env = self.in_speech_env * 0.90 + in_rms * 0.10;
             self.out_speech_env = self.out_speech_env * 0.90 + out_rms * 0.10;
