@@ -194,8 +194,9 @@ impl DenoiseEngine for StandardEngine {
         let mut speech_energy_sum = 0.0f32;
         let mut noise_energy_sum = 0.0f32;
         let mut active_speech_bands = 0usize;
+        let mut active_high_bands = 0usize;
         const FFT_NORM_SQ: f32 = 1.0 / (960.0 * 960.0);
-        const MAX_NOISE_FLOOR: f32 = 1e-3; // -30 dBFS ceiling for stationary ambient fan/AC noise
+        const MAX_NOISE_FLOOR: f32 = 0.05; // -13 dBFS ceiling for loud stationary ambient fan/AC noise
         let is_startup = self.init_frames < 5;
         if is_startup {
             self.init_frames += 1;
@@ -214,10 +215,13 @@ impl DenoiseEngine for StandardEngine {
 
             let noise = self.noise_estimate[b];
             let snr = (band_power / noise.max(1e-10)).max(0.01);
-            if (2..=26).contains(&b) {
-                if snr > 1.8 {
+            if (1..=24).contains(&b) {
+                if snr > 2.0 {
                     speech_energy_sum += band_power;
                     active_speech_bands += 1;
+                    if b >= 7 {
+                        active_high_bands += 1;
+                    }
                 } else {
                     noise_energy_sum += band_power;
                 }
@@ -234,11 +238,12 @@ impl DenoiseEngine for StandardEngine {
             0.0
         };
 
-        // Speech requires broadband harmonics (multiple formant bands elevated) and high SNR,
-        // or a strong harmonic in speech formant range dominating frame energy (> 50%).
-        let is_speech_active = (active_speech_bands >= 3 && instant_vad > 0.25)
-            || (active_speech_bands >= 5 && instant_vad > 0.15)
-            || (active_speech_bands >= 1 && instant_vad > 0.50 && speech_energy_sum > 2e-6);
+        // Human speech produces multiple harmonic formant peaks across bands 1..=24 (80Hz - 5000Hz),
+        // or unvoiced speech (whispers, fricatives /s/, /sh/) with multiple upper formant resonances (>= 800 Hz).
+        // Isolated low-frequency motor tones (60Hz AC hum, 120Hz fan) have speech_energy_sum < 0.001 and active_high_bands <= 2.
+        let is_speech_active = (active_speech_bands >= 4 && instant_vad > 0.25)
+            || (active_speech_bands >= 3 && instant_vad > 0.35 && speech_energy_sum > 0.001)
+            || (active_high_bands >= 3 && instant_vad > 0.40 && speech_energy_sum > 5e-4);
 
         if is_speech_active {
             // Instant attack: if speech starts, snap VAD immediately to prevent onset plosive muting!

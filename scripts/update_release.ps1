@@ -81,15 +81,19 @@ $scStart.WorkingDirectory = $appData
 $scStart.Description = "180hz nc - Real-Time AI Noise Suppression"
 $scStart.Save()
 
-$desktopDirs = @([Environment]::GetFolderPath('Desktop'), "$env:USERPROFILE\Desktop")
+$desktopDirs = @(
+    [Environment]::GetFolderPath('Desktop'),
+    "$env:USERPROFILE\Desktop",
+    "$env:USERPROFILE\OneDrive\Desktop",
+    "$env:OneDrive\Desktop"
+) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+
 foreach ($d in $desktopDirs) {
-    if (Test-Path $d) {
-        $scDesktop = $ws.CreateShortcut((Join-Path $d "180hz nc.lnk"))
-        $scDesktop.TargetPath = (Join-Path $appData "180hz nc.exe")
-        $scDesktop.WorkingDirectory = $appData
-        $scDesktop.Description = "180hz nc - Real-Time AI Noise Suppression"
-        $scDesktop.Save()
-    }
+    $scDesktop = $ws.CreateShortcut((Join-Path $d "180hz nc.lnk"))
+    $scDesktop.TargetPath = (Join-Path $appData "180hz nc.exe")
+    $scDesktop.WorkingDirectory = $appData
+    $scDesktop.Description = "180hz nc - Real-Time AI Noise Suppression"
+    $scDesktop.Save()
 }
 
 # Update SHA256SUMS.txt

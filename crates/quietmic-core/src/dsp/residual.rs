@@ -106,12 +106,14 @@ impl ResidualSuppressor {
             }
         }
 
-        // Voiced speech requires harmonic pitch correlation or dominant formant resonance with speech-level energy
+        // Voiced speech (vocal fold vibration) or unvoiced speech (whispers, fricatives /s/, /sh/)
+        let is_unvoiced_speech = high_e > low_e * 0.8 && frame_rms > 0.004 && crest_factor < 5.0;
         let is_voiced_speech = (max_norm_corr > 0.38 || (frame_rms > 0.03 && low_e > high_e * 2.0)) && crest_factor < 5.0 && frame_rms > 0.003;
+        let is_speech = is_voiced_speech || is_unvoiced_speech;
 
         // Update running noise floor and speech level trackers:
-        // Adapt noise floor during non-voiced intervals (noise/hiss), freeze during voiced speech
-        if !is_voiced_speech {
+        // Adapt noise floor during non-speech intervals (noise/hiss), freeze during speech
+        if !is_speech {
             self.running_noise_floor += 0.05 * (frame_rms - self.running_noise_floor);
         } else if frame_rms > self.running_noise_floor * 2.0 {
             self.running_speech_level += 0.05 * (frame_rms - self.running_speech_level);
@@ -123,7 +125,7 @@ impl ResidualSuppressor {
 
         // Smooth post-filter gain
         let quiet_gain = 0.015 * (1.0 - self.strength * 0.85); // down to 0.0022 (-53 dB)
-        let target_gain = if is_voiced_speech || (snr > 3.0 && max_norm_corr > 0.30) {
+        let target_gain = if is_speech || (snr > 3.0 && max_norm_corr > 0.30) {
             1.0 // Full 100% natural speech preservation
         } else if snr < 1.6 {
             quiet_gain
