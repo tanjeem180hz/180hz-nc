@@ -196,6 +196,10 @@ impl LiveMonitorController {
         let err_cb_active = Arc::clone(&self.is_active);
         let err_cb_error = Arc::clone(&self.last_error);
 
+        const PRE_ROLL_SAMPLES: usize = 960; // 20 ms cushion at 48 kHz
+        let mut primed_i16 = false;
+        let mut primed_f32 = false;
+
         let stream = match sample_format {
             cpal::SampleFormat::I16 => {
                 dev.build_output_stream(
@@ -222,20 +226,41 @@ impl LiveMonitorController {
                             num_frames_needed
                         };
 
-                        let mut samples_read = 0usize;
-                        if let (Some(mut r_lock), Some(mut c_lock)) = (raw_cons_cb.try_lock(), clean_cons_cb.try_lock()) {
-                            let avail = r_lock.occupied_len().min(c_lock.occupied_len());
-                            let to_read = input_needed.min(avail);
-                            for i in 0..to_read {
-                                scratch_raw[i] = r_lock.try_pop().unwrap_or(0.0);
-                                scratch_clean[i] = c_lock.try_pop().unwrap_or(0.0);
+                        let mut r_lock = raw_cons_cb.lock();
+                        let mut c_lock = clean_cons_cb.lock();
+                        let avail = r_lock.occupied_len().min(c_lock.occupied_len());
+
+                        if !primed_i16 {
+                            if avail >= PRE_ROLL_SAMPLES {
+                                primed_i16 = true;
+                            } else {
+                                data.fill(0);
+                                return;
                             }
-                            samples_read = to_read;
                         }
 
-                        if samples_read < input_needed {
-                            scratch_raw[samples_read..input_needed].fill(0.0);
-                            scratch_clean[samples_read..input_needed].fill(0.0);
+                        // Cap buffer overrun to 100 ms (~4800 samples) to prevent latency buildup
+                        if avail > 4800 {
+                            let excess = avail - PRE_ROLL_SAMPLES;
+                            for _ in 0..excess {
+                                let _ = r_lock.try_pop();
+                                let _ = c_lock.try_pop();
+                            }
+                        }
+
+                        let avail_now = r_lock.occupied_len().min(c_lock.occupied_len());
+                        let to_read = input_needed.min(avail_now);
+                        for i in 0..to_read {
+                            scratch_raw[i] = r_lock.try_pop().unwrap_or(0.0);
+                            scratch_clean[i] = c_lock.try_pop().unwrap_or(0.0);
+                        }
+                        drop(r_lock);
+                        drop(c_lock);
+
+                        if to_read < input_needed {
+                            scratch_raw[to_read..input_needed].fill(0.0);
+                            scratch_clean[to_read..input_needed].fill(0.0);
+                            primed_i16 = false;
                         }
 
                         crossfade.process_frame(
@@ -318,20 +343,41 @@ impl LiveMonitorController {
                             num_frames_needed
                         };
 
-                        let mut samples_read = 0usize;
-                        if let (Some(mut r_lock), Some(mut c_lock)) = (raw_cons_cb.try_lock(), clean_cons_cb.try_lock()) {
-                            let avail = r_lock.occupied_len().min(c_lock.occupied_len());
-                            let to_read = input_needed.min(avail);
-                            for i in 0..to_read {
-                                scratch_raw[i] = r_lock.try_pop().unwrap_or(0.0);
-                                scratch_clean[i] = c_lock.try_pop().unwrap_or(0.0);
+                        let mut r_lock = raw_cons_cb.lock();
+                        let mut c_lock = clean_cons_cb.lock();
+                        let avail = r_lock.occupied_len().min(c_lock.occupied_len());
+
+                        if !primed_f32 {
+                            if avail >= PRE_ROLL_SAMPLES {
+                                primed_f32 = true;
+                            } else {
+                                data.fill(0.0);
+                                return;
                             }
-                            samples_read = to_read;
                         }
 
-                        if samples_read < input_needed {
-                            scratch_raw[samples_read..input_needed].fill(0.0);
-                            scratch_clean[samples_read..input_needed].fill(0.0);
+                        // Cap buffer overrun to 100 ms (~4800 samples) to prevent latency buildup
+                        if avail > 4800 {
+                            let excess = avail - PRE_ROLL_SAMPLES;
+                            for _ in 0..excess {
+                                let _ = r_lock.try_pop();
+                                let _ = c_lock.try_pop();
+                            }
+                        }
+
+                        let avail_now = r_lock.occupied_len().min(c_lock.occupied_len());
+                        let to_read = input_needed.min(avail_now);
+                        for i in 0..to_read {
+                            scratch_raw[i] = r_lock.try_pop().unwrap_or(0.0);
+                            scratch_clean[i] = c_lock.try_pop().unwrap_or(0.0);
+                        }
+                        drop(r_lock);
+                        drop(c_lock);
+
+                        if to_read < input_needed {
+                            scratch_raw[to_read..input_needed].fill(0.0);
+                            scratch_clean[to_read..input_needed].fill(0.0);
+                            primed_f32 = false;
                         }
 
                         // Perform smooth click-free A/B crossfade

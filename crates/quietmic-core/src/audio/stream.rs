@@ -372,12 +372,22 @@ impl AudioStreamController {
                 cpal::SampleFormat::I16 => {
                     let mut out_cons = out_cons;
                     let is_running = Arc::clone(&is_running_render);
+                    let mut primed = false;
+                    const PRE_ROLL_SAMPLES: usize = 960;
                     dev.build_output_stream(
                         &out_cfg.into(),
                         move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
                             if !is_running.load(Ordering::Relaxed) {
                                 data.fill(0);
                                 return;
+                            }
+                            if !primed {
+                                if out_cons.occupied_len() >= PRE_ROLL_SAMPLES {
+                                    primed = true;
+                                } else {
+                                    data.fill(0);
+                                    return;
+                                }
                             }
                             if cable_channels > 1 {
                                 for frame in data.chunks_exact_mut(cable_channels) {
@@ -401,12 +411,22 @@ impl AudioStreamController {
                 _ => {
                     let mut out_cons = out_cons;
                     let is_running = Arc::clone(&is_running_render);
+                    let mut primed = false;
+                    const PRE_ROLL_SAMPLES: usize = 960;
                     dev.build_output_stream(
                         &out_cfg.into(),
                         move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                             if !is_running.load(Ordering::Relaxed) {
                                 data.fill(0.0);
                                 return;
+                            }
+                            if !primed {
+                                if out_cons.occupied_len() >= PRE_ROLL_SAMPLES {
+                                    primed = true;
+                                } else {
+                                    data.fill(0.0);
+                                    return;
+                                }
                             }
                             if cable_channels > 1 {
                                 for frame in data.chunks_exact_mut(cable_channels) {
@@ -608,7 +628,6 @@ impl AudioStreamController {
                 let mut ref_resampled = Vec::with_capacity(AudioPipeline::FRAME_SAMPLES * 4);
                 let ref_sr = worker_metrics.aec_ref_sample_rate.load(Ordering::Relaxed).max(8000);
                 let mut ref_resampler = AudioResampler::new(ref_sr, AudioPipeline::INTERNAL_RATE, AudioPipeline::FRAME_SAMPLES).ok();
-                let mut starvation_counter = 0usize;
 
                 while is_running_worker.load(Ordering::Relaxed) {
                     // Sync real-time controls to pipeline lock-free
@@ -727,18 +746,6 @@ impl AudioStreamController {
 
                         let elapsed_us = t0.elapsed().as_micros() as u64;
                         worker_metrics.frame_time_us.store(elapsed_us, Ordering::Relaxed);
-
-                        // Auto-downgrade under severe CPU starvation to prevent audible dropouts
-                        if elapsed_us > 8000 {
-                            starvation_counter += 1;
-                            if starvation_counter >= 5 && worker_pipeline.mode() != EngineMode::Light {
-                                tracing::warn!("CPU starvation detected (>80% frame budget over 5 consecutive frames). Auto-downgrading to Light mode.");
-                                worker_pipeline.set_mode(EngineMode::Light);
-                                starvation_counter = 0;
-                            }
-                        } else {
-                            starvation_counter = starvation_counter.saturating_sub(1);
-                        }
 
                         match res {
                             Ok(()) => {
