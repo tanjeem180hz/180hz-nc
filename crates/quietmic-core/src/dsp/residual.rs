@@ -123,25 +123,29 @@ impl ResidualSuppressor {
 
         let snr = frame_rms / self.running_noise_floor;
 
-        // Smooth post-filter gain
-        let quiet_gain = 0.015 * (1.0 - self.strength * 0.85); // down to 0.0022 (-53 dB)
+        // Smooth post-filter gain: crush non-speech valleys while leaving speech untouched
+        let quiet_gain = if self.strength >= 0.95 {
+            0.0005 // -66 dB valley floor for zero noise leakage
+        } else {
+            0.015 * (1.0 - self.strength * 0.90)
+        };
         let target_gain = if is_speech || (snr > 3.0 && max_norm_corr > 0.30) {
             1.0 // Full 100% natural speech preservation
-        } else if snr < 1.6 {
+        } else if snr < 1.8 {
             quiet_gain
         } else {
-            0.45 * (1.0 - self.strength * 0.50) // Soft blend in transitional vowels
+            0.22 * (1.0 - self.strength * 0.72) // Crisp decay in non-speech transitions
         };
 
         let release_rate = if target_gain > self.suppression_gain {
-            0.18 // Fast recovery so speech consonants are never muffled
+            0.25 // Instant recovery so speech consonants are never muffled
         } else {
-            0.09 // Responsive noise floor decay
+            0.14 // Fast noise floor decay
         };
 
-        let click_deriv_thresh = 0.12 - 0.03 * self.strength;
-        let click_abs_thresh = 0.15 - 0.05 * self.strength;
-        let click_clamp = 0.10 * (1.0 - self.strength * 0.60);
+        let click_deriv_thresh = 0.10 - 0.03 * self.strength;
+        let click_abs_thresh = 0.12 - 0.04 * self.strength;
+        let click_clamp = 0.08 * (1.0 - self.strength * 0.65);
 
         for s in frame.iter_mut() {
             let in_val = *s;

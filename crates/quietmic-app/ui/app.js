@@ -97,7 +97,7 @@ function setupCanvases() {
 }
 
 // Toggle master suppression state
-async function setSuppressionState(active) {
+async function setSuppressionState(active, applyBackend = true) {
   isActive = active;
 
   if (isActive) {
@@ -105,24 +105,28 @@ async function setSuppressionState(active) {
     masterToggle.classList.add('active');
     ambientGlow.classList.remove('off');
 
-    try {
-      await invoke('set_mode', { mode: 'MaxQuality' });
-      await invoke('set_strength', { strength: 1.0 });
-      await invoke('set_mic_volume', { volume: 1.0 });
-      await invoke('set_auto_sensitivity', { enabled: true });
-      await invoke('set_bypass', { bypass: false });
-    } catch (err) {
-      console.error('Error enabling maximum suppression:', err);
+    if (applyBackend) {
+      try {
+        await invoke('set_mode', { mode: 'MaxQuality' });
+        await invoke('set_strength', { strength: 1.0 });
+        await invoke('set_mic_volume', { volume: 1.0 });
+        await invoke('set_auto_sensitivity', { enabled: true });
+        await invoke('set_bypass', { bypass: false });
+      } catch (err) {
+        console.error('Error enabling maximum suppression:', err);
+      }
     }
   } else {
     masterToggle.classList.add('off');
     masterToggle.classList.remove('active');
     ambientGlow.classList.add('off');
 
-    try {
-      await invoke('set_bypass', { bypass: true });
-    } catch (err) {
-      console.error('Error bypassing suppression:', err);
+    if (applyBackend) {
+      try {
+        await invoke('set_bypass', { bypass: true });
+      } catch (err) {
+        console.error('Error bypassing suppression:', err);
+      }
     }
   }
 }
@@ -134,36 +138,68 @@ async function init() {
 
   // Master single-click toggle
   masterToggle.addEventListener('click', () => {
-    setSuppressionState(!isActive);
+    setSuppressionState(!isActive, true);
   });
 
   try {
     const config = await invoke('get_config');
     if (config) {
       if (config.bypass === true) {
-        setSuppressionState(false);
+        setSuppressionState(false, false);
       } else {
-        setSuppressionState(true);
+        setSuppressionState(true, false);
       }
     }
   } catch (err) {
     console.warn('Could not fetch initial config, defaulting to Active MaxQuality:', err);
   }
 
-  // Start polling metrics and drawing loop
+  // Start polling metrics and drawing loop (pauses automatically when hidden for 0% idle UI CPU)
+  document.addEventListener('visibilitychange', handleVisibilityChange);
   startMetricsPolling();
-  requestAnimationFrame(renderLoop);
+  if (!document.hidden) {
+    rafId = requestAnimationFrame(renderLoop);
+  }
 }
 
 // Polling loop for live metrics (waveform & peak)
 let isPolling = false;
+let pollIntervalId = null;
+let rafId = null;
+
+function handleVisibilityChange() {
+  if (document.hidden) {
+    stopMetricsPolling();
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  } else {
+    startMetricsPolling();
+    if (rafId === null) {
+      rafId = requestAnimationFrame(renderLoop);
+    }
+  }
+}
+
+function stopMetricsPolling() {
+  if (pollIntervalId !== null) {
+    clearInterval(pollIntervalId);
+    pollIntervalId = null;
+  }
+}
+
 function startMetricsPolling() {
-  setInterval(async () => {
-    if (isPolling) return;
+  if (pollIntervalId !== null || document.hidden) return;
+  pollIntervalId = setInterval(async () => {
+    if (isPolling || document.hidden) return;
     isPolling = true;
     try {
       const metrics = await invoke('get_metrics');
       if (metrics) {
+        if (typeof metrics.suppression_active === 'boolean' && metrics.suppression_active !== isActive) {
+          setSuppressionState(metrics.suppression_active, false);
+        }
         const wave = (isActive ? metrics.clean_waveform : metrics.raw_waveform) || [];
         if (wave.length > 0) {
           targetWaveform = wave;
@@ -187,6 +223,10 @@ function startMetricsPolling() {
 let globalPhase = 0;
 
 function renderLoop() {
+  if (document.hidden) {
+    rafId = null;
+    return;
+  }
   globalPhase += 0.05;
 
   // Smooth lerp waveform towards target
@@ -224,7 +264,7 @@ function renderLoop() {
   renderSonarRadar();
   renderVoiceSonarWave();
 
-  requestAnimationFrame(renderLoop);
+  rafId = requestAnimationFrame(renderLoop);
 }
 
 // ----------------------------------------------------------------------------

@@ -94,16 +94,16 @@ impl StandardEngine {
             complex_spectrum,
             time_synth,
             overlap_buffer: vec![0.0f32; frame_size],
-            noise_estimate: vec![1e-6f32; Self::NUM_BANDS],
+            noise_estimate: vec![1e-7f32; Self::NUM_BANDS],
             prior_snr: vec![1.0f32; Self::NUM_BANDS],
             prev_gain: vec![1.0f32; Self::NUM_BANDS],
             bin_prior: vec![1.0f32; num_bins],
             bin_prev_gain: vec![1.0f32; num_bins],
             vad_estimate: 0.0,
             suppression_factor: 1.0,
-            attenuation_limit_db: 40.0,
+            attenuation_limit_db: 50.0,
             post_filter_enabled: true,
-            post_filter_beta: 1.15,
+            post_filter_beta: 1.35,
             init_frames: 0,
             band_bin_ranges,
         }
@@ -154,13 +154,18 @@ impl DenoiseEngine for StandardEngine {
         self.time_window.fill(0.0);
         self.time_synth.fill(0.0);
         self.complex_spectrum.fill(Complex::new(0.0, 0.0));
-        self.noise_estimate.fill(1e-6);
+        self.noise_estimate.fill(1e-7);
         self.prior_snr.fill(1.0);
         self.prev_gain.fill(1.0);
         self.bin_prior.fill(1.0);
         self.bin_prev_gain.fill(1.0);
         self.vad_estimate = 0.0;
         self.init_frames = 0;
+    }
+
+    #[inline]
+    fn speech_confidence(&self) -> f32 {
+        self.vad_estimate
     }
 
     #[inline]
@@ -242,15 +247,15 @@ impl DenoiseEngine for StandardEngine {
         // or unvoiced speech (whispers, fricatives /s/, /sh/) with multiple upper formant resonances (>= 800 Hz).
         // Isolated low-frequency motor tones (60Hz AC hum, 120Hz fan) have speech_energy_sum < 0.001 and active_high_bands <= 2.
         let is_speech_active = (active_speech_bands >= 4 && instant_vad > 0.25)
-            || (active_speech_bands >= 3 && instant_vad > 0.35 && speech_energy_sum > 0.001)
-            || (active_high_bands >= 3 && instant_vad > 0.40 && speech_energy_sum > 5e-4);
+            || (active_speech_bands >= 3 && instant_vad > 0.35 && speech_energy_sum > 1e-4)
+            || (active_high_bands >= 3 && instant_vad > 0.40 && speech_energy_sum > 3e-5);
 
         if is_speech_active {
             // Instant attack: if speech starts, snap VAD immediately to prevent onset plosive muting!
             self.vad_estimate = self.vad_estimate.max(instant_vad).max(0.60);
         } else {
-            // Gentle release decay (hangover) across ~20 frames (200 ms)
-            self.vad_estimate *= 0.92;
+            // Crisp release decay across ~100 ms so non-speech pauses silence rapidly
+            self.vad_estimate *= 0.84;
         }
 
         // Pass 1b: Adapt noise floor based on CURRENT frame voice activity
@@ -275,14 +280,16 @@ impl DenoiseEngine for StandardEngine {
         }
 
         let min_gain = 10.0f32.powf(-self.attenuation_limit_db / 20.0);
-        let vad_scale = if is_speech_active {
+        let vad_scale = if is_speech_active || self.suppression_factor <= 0.01 {
             1.0f32
+        } else if self.suppression_factor >= 0.95 && self.vad_estimate < 0.03 {
+            0.0f32
         } else {
             (self.vad_estimate / 0.25).clamp(min_gain, 1.0)
         };
 
         // Pass 2: Apply per-bin fine spectral Wiener gains with decision-directed over-subtraction
-        let oversub = 1.0 + 0.35 * self.suppression_factor; // Clean over-subtraction preserving natural vocal timbre
+        let oversub = 1.0 + 0.85 * self.suppression_factor; // Aggressive over-subtraction preserving harmonic peaks
         for (b, &(start, end)) in self.band_bin_ranges.iter().enumerate() {
             let noise = self.noise_estimate[b];
 

@@ -67,6 +67,7 @@ pub struct AudioPipeline {
     push_to_talk: bool,
     ptt_active: bool,
     strength: f32, // 0.0 to 1.0
+    post_gate_gain: f32,
     frame_size: usize,
     dry_buffer: Vec<f32>,
     wet_buffer: Vec<f32>,
@@ -89,7 +90,7 @@ impl AudioPipeline {
         let mut max_quality = MaxQualityEngine::new();
         max_quality.set_suppression(1.0);
 
-        let mut vad = SilenceDetector::default_48k();
+        let mut vad = SilenceDetector::new(-58.0, 16, Self::FRAME_SAMPLES);
         vad.set_auto_sensitivity(false);
 
         Ok(Self {
@@ -114,6 +115,7 @@ impl AudioPipeline {
             push_to_talk: false,
             ptt_active: false,
             strength: 1.0,
+            post_gate_gain: 1.0,
             frame_size: Self::FRAME_SAMPLES,
             dry_buffer: vec![0.0f32; Self::FRAME_SAMPLES],
             wet_buffer: vec![0.0f32; Self::FRAME_SAMPLES],
@@ -153,7 +155,7 @@ impl AudioPipeline {
                 EngineMode::Light => ActiveEngine::Light(LightEngine::new()),
                 EngineMode::Standard => {
                     let mut s = StandardEngine::new();
-                    s.set_attenuation_limit_db(40.0);
+                    s.set_attenuation_limit_db(50.0);
                     s.set_post_filter(true, 1.35);
                     s.set_suppression(self.strength);
                     ActiveEngine::Standard(Box::new(s))
@@ -339,7 +341,7 @@ impl AudioPipeline {
     pub fn get_runtime_parameters(&self) -> EngineRuntimeParameters {
         let (att_limit, pf_en, pf_beta) = match &self.active_engine {
             ActiveEngine::Standard(e) => (e.attenuation_limit_db(), true, e.post_filter_beta()),
-            ActiveEngine::MaxQuality(_) => (54.0, true, 1.75),
+            ActiveEngine::MaxQuality(_) => (100.0, true, 1.75),
             _ => (36.0, false, 1.0),
         };
         EngineRuntimeParameters {
@@ -469,9 +471,6 @@ impl AudioPipeline {
             diag.push_stage(3, &self.wet_buffer);
         }
 
-        // Step 4: Input Sensitivity Detection (Silence & Noise Gate)
-        let is_active = self.vad.update(&self.wet_buffer);
-
         // Engine input normalization: normalize engine input to healthy ~ -20 dBFS target.
         // For MaxQuality (DeepFilterNet3), skip AGC normalization to preserve pure neural dynamics
         // and eliminate any 30 ms algorithmic delay phase mismatch.
@@ -487,34 +486,34 @@ impl AudioPipeline {
 
         // Step 5: Process through Denoise Engine
         // Neural & subband engines continuously process frames to maintain adapted recurrent state
-        let engine_res = match &mut self.active_engine {
+        let (engine_res, engine_speech_conf) = match &mut self.active_engine {
             ActiveEngine::Light(e) => {
                 let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
                 if res.is_ok() {
                     self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
                 }
-                res
+                (res, e.speech_confidence())
             }
             ActiveEngine::Standard(e) => {
                 let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
                 if res.is_ok() {
                     self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
                 }
-                res
+                (res, e.speech_confidence())
             }
             ActiveEngine::MaxQuality(e) => {
                 let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
                 if res.is_ok() {
                     self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
                 }
-                res
+                (res, e.speech_confidence())
             }
             ActiveEngine::VoiceIsolation(e) => {
                 let res = e.process_frame(&self.wet_buffer, &mut self.cleaned_buffer);
                 if res.is_ok() {
                     self.wet_buffer.copy_from_slice(&self.cleaned_buffer);
                 }
-                res
+                (res, e.speech_confidence())
             }
         };
 
@@ -532,13 +531,33 @@ impl AudioPipeline {
             }
         }
 
-        // Step 5b: Apply Sensitivity Gating
-        // If signal is below input sensitivity threshold, gate to digital silence.
-        // Guarantees 100% digital silence during non-speech pauses (zero background noise leak).
-        if !is_active {
-            self.wet_buffer.fill(0.0);
+        // Step 5b: Post-Denoise Neural + Sensitivity Gating
+        // Combine cleaned signal energy with active engine speech confidence so loud pre-denoise
+        // room noise (> -44 dBFS) cannot keep the gate open when neural/spectral VAD sees no speech.
+        let post_energy_active = self.vad.update(&self.wet_buffer);
+        let post_rms = {
+            let sum_sq: f32 = self.wet_buffer.iter().map(|&x| x * x).sum();
+            (sum_sq / self.wet_buffer.len().max(1) as f32).sqrt()
+        };
+        let is_active = if self.strength >= 0.90 {
+            (post_energy_active && (engine_speech_conf >= 0.36 || post_rms >= 0.045))
+                || engine_speech_conf >= 0.50
         } else {
-            // Step 5c: Apply Second-Stage Residual Suppressor to eliminate clicks, hiss, and ambient spill
+            post_energy_active || engine_speech_conf >= 0.45
+        };
+
+        if !is_active && self.strength >= 0.85 {
+            // Smooth 5 ms fade-to-zero eliminates all residual background noise & clicks in pauses
+            for s in self.wet_buffer.iter_mut() {
+                self.post_gate_gain *= 0.985;
+                if self.post_gate_gain < 1e-4 {
+                    self.post_gate_gain = 0.0;
+                }
+                *s *= self.post_gate_gain;
+            }
+        } else {
+            // Instant zero-latency wake-up on speech onset, then run second-stage residual suppressor
+            self.post_gate_gain = 1.0;
             self.residual.process_frame(&mut self.wet_buffer);
         }
 
@@ -794,6 +813,6 @@ mod tests {
         let params = pipeline.get_runtime_parameters();
         assert_eq!(params.strength, 1.0);
         assert!((params.wet_dry_ratio - 1.0).abs() < 1e-4);
-        assert_eq!(params.attenuation_limit_db, 40.0);
+        assert_eq!(params.attenuation_limit_db, 50.0);
     }
 }

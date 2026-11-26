@@ -123,10 +123,10 @@ impl TransientSuppressor {
             if is_impulse {
                 // Clamped transient attenuation (-34 dB) with 2.5 ms burst hold
                 self.hold_counter = 120;
-                self.suppression_gain = 0.03;
+                self.suppression_gain = 0.02;
             } else if self.hold_counter > 0 {
                 self.hold_counter -= 1;
-                self.suppression_gain = 0.03;
+                self.suppression_gain = 0.02;
             } else {
                 // Smooth exponential recovery to unity
                 self.suppression_gain += self.recovery_rate * (1.0 - self.suppression_gain);

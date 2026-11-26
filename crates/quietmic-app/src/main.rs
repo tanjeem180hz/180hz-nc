@@ -904,11 +904,26 @@ fn main() {
                                 let hotkey_id = msg.wParam.0 as i32;
                                 let state = app_handle.state::<AppState>();
                                 if hotkey_id == 1 {
-                                    let mut cfg = state.config.lock();
-                                    cfg.bypass = !cfg.bypass;
-                                    let _ = cfg.save();
-                                    let _ = restart_audio_stream(&state, &cfg);
-                                    tracing::info!("Global Hotkey: Bypass toggled to {}", cfg.bypass);
+                                    let bypass = {
+                                        let mut cfg = state.config.lock();
+                                        cfg.bypass = !cfg.bypass;
+                                        let _ = cfg.save();
+                                        cfg.bypass
+                                    };
+                                    let applied = {
+                                        let guard = state.stream_controller.lock();
+                                        if let Some(ref ctrl) = *guard {
+                                            ctrl.set_bypass(bypass);
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    };
+                                    if !applied {
+                                        let cfg = state.config.lock().clone();
+                                        let _ = restart_audio_stream(&state, &cfg);
+                                    }
+                                    tracing::info!("Global Hotkey: Bypass toggled to {}", bypass);
                                 } else if hotkey_id == 2 {
                                     let mut cfg = state.config.lock();
                                     cfg.muted = !cfg.muted;
@@ -1170,58 +1185,61 @@ fn main() {
                         }
                         "toggle_bypass" => {
                             let state = app.state::<AppState>();
-                            let mut cfg = state.config.lock();
-                            cfg.bypass = !cfg.bypass;
-                            let _ = cfg.save();
-                            let tooltip = format!("180hz nc - {}, {}", if cfg.bypass { "Bypassed" } else { "Active" }, cfg.mode);
+                            let (bypass, mode_str) = {
+                                let mut cfg = state.config.lock();
+                                cfg.bypass = !cfg.bypass;
+                                let _ = cfg.save();
+                                (cfg.bypass, cfg.mode.clone())
+                            };
+                            let tooltip = format!("180hz nc - {}, {}", if bypass { "Bypassed" } else { "Active" }, mode_str);
                             if let Some(tray) = app.tray_by_id("main-tray") {
                                 let _ = tray.set_tooltip(Some(tooltip));
                             }
-                            let _ = restart_audio_stream(&state, &cfg);
+                            let applied = {
+                                let guard = state.stream_controller.lock();
+                                if let Some(ref ctrl) = *guard {
+                                    ctrl.set_bypass(bypass);
+                                    true
+                                } else {
+                                    false
+                                }
+                            };
+                            if !applied {
+                                let cfg = state.config.lock().clone();
+                                let _ = restart_audio_stream(&state, &cfg);
+                            }
                         }
-                        "mode_none" => {
+                        id @ ("mode_none" | "mode_light" | "mode_standard" | "mode_max") => {
+                            let (cfg_mode, eng_mode, bypass, label) = match id {
+                                "mode_none" => ("None", EngineMode::None, true, "Bypassed, None"),
+                                "mode_light" => ("Light", EngineMode::Light, false, "Active, Light"),
+                                "mode_standard" => ("Standard", EngineMode::Standard, false, "Active, Standard"),
+                                _ => ("Krisp", EngineMode::MaxQuality, false, "Active, Max Quality"),
+                            };
                             let state = app.state::<AppState>();
-                            let mut cfg = state.config.lock();
-                            cfg.mode = "None".to_string();
-                            let _ = cfg.save();
-                            let tooltip = format!("180hz nc - {}, None", if cfg.bypass { "Bypassed" } else { "Active" });
-                            if let Some(tray) = app.tray_by_id("main-tray") {
-                                let _ = tray.set_tooltip(Some(tooltip));
+                            {
+                                let mut cfg = state.config.lock();
+                                cfg.mode = cfg_mode.to_string();
+                                cfg.bypass = bypass;
+                                let _ = cfg.save();
                             }
-                            let _ = restart_audio_stream(&state, &cfg);
-                        }
-                        "mode_light" => {
-                            let state = app.state::<AppState>();
-                            let mut cfg = state.config.lock();
-                            cfg.mode = "Light".to_string();
-                            let _ = cfg.save();
-                            let tooltip = format!("180hz nc - {}, Light", if cfg.bypass { "Bypassed" } else { "Active" });
                             if let Some(tray) = app.tray_by_id("main-tray") {
-                                let _ = tray.set_tooltip(Some(tooltip));
+                                let _ = tray.set_tooltip(Some(format!("180hz nc - {}", label)));
                             }
-                            let _ = restart_audio_stream(&state, &cfg);
-                        }
-                        "mode_standard" => {
-                            let state = app.state::<AppState>();
-                            let mut cfg = state.config.lock();
-                            cfg.mode = "Standard".to_string();
-                            let _ = cfg.save();
-                            let tooltip = format!("180hz nc - {}, Standard", if cfg.bypass { "Bypassed" } else { "Active" });
-                            if let Some(tray) = app.tray_by_id("main-tray") {
-                                let _ = tray.set_tooltip(Some(tooltip));
+                            let applied = {
+                                let guard = state.stream_controller.lock();
+                                if let Some(ref ctrl) = *guard {
+                                    ctrl.set_bypass(bypass);
+                                    ctrl.set_mode(eng_mode);
+                                    true
+                                } else {
+                                    false
+                                }
+                            };
+                            if !applied {
+                                let cfg = state.config.lock().clone();
+                                let _ = restart_audio_stream(&state, &cfg);
                             }
-                            let _ = restart_audio_stream(&state, &cfg);
-                        }
-                        "mode_max" => {
-                            let state = app.state::<AppState>();
-                            let mut cfg = state.config.lock();
-                            cfg.mode = "Krisp".to_string();
-                            let _ = cfg.save();
-                            let tooltip = format!("180hz nc - {}, Max Quality", if cfg.bypass { "Bypassed" } else { "Active" });
-                            if let Some(tray) = app.tray_by_id("main-tray") {
-                                let _ = tray.set_tooltip(Some(tooltip));
-                            }
-                            let _ = restart_audio_stream(&state, &cfg);
                         }
                         id if id.starts_with("mic_select_") => {
                             if let Ok(idx) = id.trim_start_matches("mic_select_").parse::<usize>() {

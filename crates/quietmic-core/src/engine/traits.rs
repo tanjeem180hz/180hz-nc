@@ -14,4 +14,9 @@ pub trait DenoiseEngine: Send {
     /// * `in_frame` - 480 input samples in [-1.0, 1.0].
     /// * `out_frame` - 480 preallocated output samples.
     fn process_frame(&mut self, in_frame: &[f32], out_frame: &mut [f32]) -> Result<(), String>;
+
+    /// Returns the engine's current speech activity confidence in [0.0, 1.0].
+    fn speech_confidence(&self) -> f32 {
+        1.0
+    }
 }

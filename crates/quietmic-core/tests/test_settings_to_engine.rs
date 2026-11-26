@@ -23,7 +23,7 @@ fn test_settings_to_engine_parameter_synchronization() {
     pipeline.set_mode(EngineMode::Standard);
     let params = pipeline.get_runtime_parameters();
     assert_eq!(params.mode, "Standard (DeepFilterNet3 48kHz)");
-    assert_eq!(params.attenuation_limit_db, 40.0);
+    assert_eq!(params.attenuation_limit_db, 50.0);
     assert!(params.post_filter_enabled);
 
     // 3. Change Strength

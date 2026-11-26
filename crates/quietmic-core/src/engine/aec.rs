@@ -52,6 +52,7 @@ pub struct EchoCanceller {
     near_end_envelope: f32,
     ref_envelope: f32,
     double_talk_hangover: usize,
+    ref_scratch: Vec<f32>,
 }
 
 impl EchoCanceller {
@@ -107,6 +108,7 @@ impl EchoCanceller {
             near_end_envelope: 0.0,
             ref_envelope: 0.0,
             double_talk_hangover: 0,
+            ref_scratch: Vec::with_capacity(960),
         }
     }
 
@@ -521,7 +523,10 @@ impl EchoCanceller {
         self.mic_frames_processed += 1;
 
         let frame_len = mic_frame.len();
-        let mut ref_frame_consumed = Vec::with_capacity(frame_len);
+        self.ref_scratch.clear();
+        if self.ref_scratch.capacity() < frame_len {
+            self.ref_scratch.reserve(frame_len - self.ref_scratch.capacity());
+        }
 
         for _ in 0..frame_len {
             let ref_sample = if self.ref_fifo_read < self.ref_fifo.len() {
@@ -532,11 +537,11 @@ impl EchoCanceller {
             } else {
                 0.0 // Continuous silence when no reference is playing
             };
-            ref_frame_consumed.push(ref_sample);
+            self.ref_scratch.push(ref_sample);
         }
 
         // Downsample factor of 6 for real-time 8 kHz correlation tracking
-        for chunk in ref_frame_consumed.chunks(Self::DOWNSAMPLE_FACTOR) {
+        for chunk in self.ref_scratch.chunks(Self::DOWNSAMPLE_FACTOR) {
             let avg: f32 = chunk.iter().sum::<f32>() / chunk.len() as f32;
             self.ref_history_8k.push(avg);
         }
@@ -567,7 +572,7 @@ impl EchoCanceller {
             self.update_continuous_delay_estimate();
         }
 
-        let ref_peak = ref_frame_consumed.iter().fold(0.0f32, |m, &s| m.max(s.abs()));
+        let ref_peak = self.ref_scratch.iter().fold(0.0f32, |m, &s| m.max(s.abs()));
         let ref_is_silent = ref_peak < 0.002; // -54 dBFS: cleanly above soundcard loopback dither floor (typically -75 dBFS)
 
         if ref_is_silent {
@@ -586,8 +591,9 @@ impl EchoCanceller {
         let should_process = self.delay_locked && (self.active_dwell_counter > 0 || !ref_is_silent);
         let target_crossfade = if should_process { 1.0f32 } else { 0.0f32 };
 
-        for (sample, &ref_sample) in mic_frame.iter_mut().zip(&ref_frame_consumed) {
-            let in_val = *sample;
+        for i in 0..frame_len {
+            let in_val = mic_frame[i];
+            let ref_sample = self.ref_scratch[i];
             // Smooth spline crossfade avoids all abrupt boundary discontinuities
             self.active_crossfade_gain += (target_crossfade - self.active_crossfade_gain) * 0.02;
             let out_val = if self.active_crossfade_gain <= 0.001 {
@@ -600,7 +606,7 @@ impl EchoCanceller {
                 let p_val = self.process_sample(in_val, ref_sample);
                 in_val * (1.0 - self.active_crossfade_gain) + p_val * self.active_crossfade_gain
             };
-            *sample = out_val;
+            mic_frame[i] = out_val;
 
             in_mic_energy += in_val * in_val;
             out_err_energy += out_val * out_val;

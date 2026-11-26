@@ -131,23 +131,19 @@ impl AppConfig {
             Ok(content) => match serde_json::from_str::<AppConfig>(&content) {
                 Ok(mut cfg) => {
                     let mut modified = false;
-                    // Ensure comfort noise remains disabled by default to prevent background hiss
-                    if cfg.comfort_noise {
-                        cfg.comfort_noise = false;
-                        modified = true;
-                    }
-                    // Auto-heal microphone volume: ensure healthy 1.0 (100%) gain so mic is never muted/crippled
-                    if cfg.mic_volume < 0.6 || cfg.mic_volume > 1.5 {
+                    // Only heal genuinely corrupted/out-of-bounds values without clobbering user preferences
+                    if !cfg.mic_volume.is_finite() || cfg.mic_volume < 0.0 || cfg.mic_volume > 2.0 {
                         cfg.mic_volume = 1.0;
                         modified = true;
                     }
-                    // Auto-heal sensitivity threshold: ensure healthy -50 dBFS so conversational speech is never chopped
-                    if cfg.sensitivity_threshold > -30.0 || cfg.sensitivity_threshold < -70.0 {
+                    if !cfg.sensitivity_threshold.is_finite()
+                        || cfg.sensitivity_threshold > 0.0
+                        || cfg.sensitivity_threshold < -80.0
+                    {
                         cfg.sensitivity_threshold = -50.0;
                         modified = true;
                     }
-                    // Ensure full strength (1.0)
-                    if cfg.strength < 0.99 && !cfg.bypass {
+                    if !cfg.strength.is_finite() || cfg.strength < 0.0 || cfg.strength > 1.0 {
                         cfg.strength = 1.0;
                         modified = true;
                     }

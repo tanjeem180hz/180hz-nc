@@ -8,6 +8,7 @@ pub struct AudioResampler {
     in_rate: u32,
     out_rate: u32,
     input_buffer: Vec<Vec<f32>>,
+    pending: Vec<f32>,
 }
 
 impl AudioResampler {
@@ -20,6 +21,7 @@ impl AudioResampler {
                 in_rate,
                 out_rate,
                 input_buffer: Vec::new(),
+                pending: Vec::new(),
             });
         }
 
@@ -41,16 +43,18 @@ impl AudioResampler {
         ).map_err(|e| format!("Failed to initialize rubato resampler: {}", e))?;
 
         let input_buffer = vec![vec![0.0f32; chunk_size]];
+        let pending = Vec::with_capacity(chunk_size * 4);
 
         Ok(Self {
             resampler: Some(resampler),
             in_rate,
             out_rate,
             input_buffer,
+            pending,
         })
     }
 
-    /// Resamples a mono input slice into the destination vector.
+    /// Resamples a mono input slice into the destination vector without zero-padding discontinuities.
     pub fn process(&mut self, input: &[f32], output: &mut Vec<f32>) -> Result<(), String> {
         output.clear();
 
@@ -63,13 +67,24 @@ impl AudioResampler {
         let resampler = self.resampler.as_mut().unwrap();
         let chunk_size = self.input_buffer[0].len();
 
-        let mut offset = 0;
-        while offset < input.len() {
-            let available = (input.len() - offset).min(chunk_size);
-            self.input_buffer[0][..available].copy_from_slice(&input[offset..offset + available]);
-            if available < chunk_size {
-                self.input_buffer[0][available..].fill(0.0);
+        // Append input into pre-allocated FIFO so 479/481-sample drift frames never pad with zeros
+        if self.pending.len() + input.len() > self.pending.capacity() {
+            let keep = chunk_size.min(self.pending.len());
+            let drop_n = self.pending.len() - keep;
+            if drop_n > 0 {
+                self.pending.copy_within(drop_n.., 0);
+                self.pending.truncate(keep);
             }
+        }
+        self.pending.extend_from_slice(input);
+
+        while self.pending.len() >= chunk_size {
+            self.input_buffer[0].copy_from_slice(&self.pending[..chunk_size]);
+            let rem = self.pending.len() - chunk_size;
+            if rem > 0 {
+                self.pending.copy_within(chunk_size.., 0);
+            }
+            self.pending.truncate(rem);
 
             let resampled = resampler.process(&self.input_buffer, None)
                 .map_err(|e| format!("Resampling error: {}", e))?;
@@ -77,8 +92,6 @@ impl AudioResampler {
             if let Some(ch) = resampled.first() {
                 output.extend_from_slice(ch);
             }
-
-            offset += chunk_size;
         }
 
         Ok(())

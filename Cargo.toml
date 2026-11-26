@@ -13,7 +13,8 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
-strip = true
+# strip = true with MinGW GNU ld + fat LTO corrupts .init_array (0xC0000005 before main)
+strip = "none"
 
 [profile.bench]
 opt-level = 3

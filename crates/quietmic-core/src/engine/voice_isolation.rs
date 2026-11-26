@@ -191,16 +191,21 @@ impl DenoiseEngine for VoiceIsolationEngine {
         self.smoother.set_target(1.0);
     }
 
+    fn speech_confidence(&self) -> f32 {
+        self.base_engine.speech_confidence()
+    }
+
     fn process_frame(&mut self, in_frame: &[f32], out_frame: &mut [f32]) -> Result<(), String> {
         // First run base noise suppressor
         self.base_engine.process_frame(in_frame, out_frame)?;
 
-        if let Some(ref enrolled) = self.enrolled_embedding.clone() {
+        if self.enrolled_embedding.is_some() {
             let sum_sq: f32 = in_frame.iter().map(|&x| x * x).sum();
             let frame_rms = (sum_sq / self.frame_size as f32).sqrt();
 
             if frame_rms > 0.003 {
                 let current_feat = self.extract_timbre_features(in_frame);
+                let enrolled = self.enrolled_embedding.as_deref().unwrap();
                 let similarity = Self::cosine_similarity(enrolled, &current_feat);
                 self.current_similarity = similarity;
 

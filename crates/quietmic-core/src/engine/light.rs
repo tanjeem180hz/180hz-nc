@@ -66,6 +66,11 @@ impl DenoiseEngine for LightEngine {
     }
 
     #[inline]
+    fn speech_confidence(&self) -> f32 {
+        self.vad_probability
+    }
+
+    #[inline]
     fn process_frame(&mut self, in_frame: &[f32], out_frame: &mut [f32]) -> Result<(), String> {
         if in_frame.len() < Self::FRAME_SIZE || out_frame.len() < Self::FRAME_SIZE {
             return Err(format!(
@@ -91,9 +96,6 @@ impl DenoiseEngine for LightEngine {
         );
 
         // Krisp-grade Voice Activity Gating with Hangover:
-        // - Speech onset trigger: RNNoise probability >= 0.38
-        //   (High-passed fan noise max: ~0.26, transient clicks max: ~0.12, quiet sine onset: ~0.45, human voice: 0.85-0.99)
-        // - Hangover duration: 15 frames (150 ms) to guarantee word starts and endings are never cut
         const VAD_ONSET: f32 = 0.38;
         const HANGOVER_FRAMES: usize = 15;
 
@@ -108,21 +110,24 @@ impl DenoiseEngine for LightEngine {
         };
 
         // When speech is present: preserve 100% full natural speech harmonics (unity gain)
-        // When speech is absent: smooth background floor attenuation scaled by suppression (down to -80 dB at 1.0)
-        let min_floor = (1.0 - self.suppression * 0.999).clamp(0.0001, 0.05) * 0.01;
-        let target_gate = if is_speech {
+        // When speech is absent: decay smoothly down to true digital silence (0.0 at 100% suppression)
+        let target_gate = if is_speech || self.suppression <= 0.01 {
             1.0f32
+        } else if self.suppression >= 0.99 {
+            0.0f32
         } else {
-            let base = (self.vad_probability / VAD_ONSET).clamp(0.0001, 0.05) * 0.02;
-            (base * (1.0 - self.suppression * 0.95)).max(min_floor)
+            let base = (self.vad_probability / VAD_ONSET).clamp(0.0, 0.05) * 0.02;
+            base * (1.0 - self.suppression)
         };
 
-        // Smooth gain transition with continuous sample-rate slew (fast ~4ms attack, smooth ~35ms release)
-        // Eliminates sudden step jumps, pops, and chopping
+        // Smooth gain transition with continuous sample-rate slew (fast ~4ms attack, smooth release)
         for (i, &s) in self.scratch_out.iter().enumerate() {
             let diff = target_gate - self.smoothed_vad_gain;
-            let slew = if diff > 0.0 { 0.005f32 } else { 0.0006f32 };
+            let slew = if diff > 0.0 { 0.005f32 } else { 0.0008f32 };
             self.smoothed_vad_gain += diff * slew;
+            if target_gate == 0.0 && self.smoothed_vad_gain < 1e-5 {
+                self.smoothed_vad_gain = 0.0;
+            }
             out_frame[i] = (s * SCALE_FROM_16BIT) * self.smoothed_vad_gain;
         }
 
