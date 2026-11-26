@@ -128,3 +128,5 @@ To add a new theme:
 | **Preferences Tab** | [tab_preferences_dark.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/tab_preferences_dark.png) |
 | **Echo Doctor Diagnostic Modal** | [modal_echo_doctor_dark.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/modal_echo_doctor_dark.png) |
 | **DSP Self-Test Modal** | [modal_selftest_dark.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/modal_selftest_dark.png) |
+
+That's All
