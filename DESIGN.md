@@ -112,25 +112,4 @@ To add a new theme:
 
 ---
 
-## 7. Screenshots & DPI Verification
 
-| Screen State | Preview Link |
-| :--- | :--- |
-| **Soft Glass Dark (100% DPI)** | [theme_soft_glass_dark_100.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_soft_glass_dark_100.png) |
-| **Soft Glass Light (100% DPI)** | [theme_soft_glass_light_100.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_soft_glass_light_100.png) |
-| **Soft Glass Dark (150% DPI)** | [theme_soft_glass_dark_150.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_soft_glass_dark_150.png) |
-| **Soft Glass Light (150% DPI)** | [theme_soft_glass_light_150.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_soft_glass_light_150.png) |
-| **Soft Glass Dark (200% DPI)** | [theme_soft_glass_dark_200.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_soft_glass_dark_200.png) |
-| **Soft Glass Light (200% DPI)** | [theme_soft_glass_light_200.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_soft_glass_light_200.png) |
-| **Reduce Effects Mode (Dark)** | [theme_reduce_effects_dark.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_reduce_effects_dark.png) |
-| **Reduce Effects Mode (Light)** | [theme_reduce_effects_light.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/theme_reduce_effects_light.png) |
-| **Diagnostics Tab** | [tab_diagnostics_dark.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/tab_diagnostics_dark.png) |
-| **Preferences Tab** | [tab_preferences_dark.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/tab_preferences_dark.png) |
-| **Echo Doctor Diagnostic Modal** | [modal_echo_doctor_dark.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/modal_echo_doctor_dark.png) |
-| **DSP Self-Test Modal** | [modal_selftest_dark.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/modal_selftest_dark.png) |
-<<<<<<< Updated upstream
-| **DSP Self-Test Modal2** | [modal_selftest_dark.png](file:///e:/GitHubProject/NoiseCancelator/docs/screenshots/modal_selftest_dark.png) |
-=======
-
-That's All....
->>>>>>> Stashed changes
