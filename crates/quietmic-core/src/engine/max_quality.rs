@@ -160,17 +160,19 @@ impl DenoiseEngine for MaxQualityEngine {
             .process_frame(&mut *self.rnnoise_scratch_out, &*self.rnnoise_scratch_in);
 
         // Dual-neural Krisp-grade speech gate: rejects fan/traffic/clicks cleanly
+        // while keeping loud unvoiced speech/plosives (out_rms > 0.04) open so loud voice never chops
         let is_speech = (self.last_lsnr > -1.0 && out_rms > 0.0012)
             || (self.last_lsnr > -6.0 && self.rnnoise_vad >= 0.25 && out_rms > 0.0025)
-            || (self.last_lsnr > -10.0 && out_rms > 0.015);
+            || (self.last_lsnr > -10.0 && out_rms > 0.015)
+            || out_rms > 0.04;
 
         if is_speech && self.suppression_factor > 0.01 {
             self.speech_hangover = 15; // 150 ms hangover preserves natural word cadence
             self.in_speech_env = self.in_speech_env * 0.90 + in_rms * 0.10;
             self.out_speech_env = self.out_speech_env * 0.90 + out_rms * 0.10;
             let ratio = (self.in_speech_env / self.out_speech_env.max(1e-4)).clamp(1.0, 2.75);
-            self.target_gain = if frame_peak * ratio > 0.88 {
-                (0.88 / frame_peak).min(ratio)
+            self.target_gain = if frame_peak * ratio > 0.86 {
+                (0.86 / frame_peak).min(ratio)
             } else {
                 ratio
             };
@@ -199,8 +201,10 @@ impl DenoiseEngine for MaxQualityEngine {
         for i in 0..Self::FRAME_SIZE {
             let t = i as f32 / Self::FRAME_SIZE as f32;
             let g = start_gain + (end_gain - start_gain) * t;
-            out_frame[i] = self.limiter.limit_sample(self.scratch_out[i] * g);
+            out_frame[i] = self.scratch_out[i] * g;
         }
+        // Smooth gain-riding peak limiting (eliminates waveshaper cracking on loud voice)
+        self.limiter.process_slice(&mut out_frame[..Self::FRAME_SIZE]);
         self.prev_gain = end_gain;
 
         Ok(())

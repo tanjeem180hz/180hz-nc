@@ -373,7 +373,7 @@ mod tests {
 
         let mut hpf = HighPassFilter::default_48k();
         let mut smoother = GainSmoother::default_48k();
-        let limiter = SoftLimiter::default_preset();
+        let mut limiter = SoftLimiter::default_preset();
         let mut noise = ComfortNoiseGenerator::default_preset();
         let mut aec = EchoCanceller::default_preset();
         aec.set_enabled(true);

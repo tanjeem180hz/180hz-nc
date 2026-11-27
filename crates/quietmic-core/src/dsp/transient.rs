@@ -91,8 +91,10 @@ impl TransientSuppressor {
             }
         }
 
-        // Harmonic pitch periodicity or strong low-frequency vowel formant dominance
-        max_norm_corr > 0.40 || (low_e > high_e * 2.5 && max_norm_corr > 0.25)
+        // Harmonic pitch periodicity, strong vowel dominance, or energetic loud voice (> 0.16 RMS)
+        max_norm_corr > 0.40
+            || (low_e > high_e * 2.5 && max_norm_corr > 0.25)
+            || (frame_rms > 0.16 && low_e > high_e * 0.5)
     }
 
     /// Processes an in-place frame (e.g. 480 samples).

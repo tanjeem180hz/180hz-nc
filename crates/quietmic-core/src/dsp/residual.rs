@@ -106,12 +106,15 @@ impl ResidualSuppressor {
             }
         }
 
-        // Voiced speech (vocal fold vibration) or genuine HF fricatives well above noise floor
-        // (white hiss has high_e ~= low_e, so requiring > 1.35x avoids mistaking room hiss for speech)
+        // Voiced speech (including energetic loud speech > 0.14 RMS) or genuine HF fricatives
         let is_unvoiced_speech = high_e > low_e * 1.35
             && frame_rms > (self.running_noise_floor * 2.5).max(0.008)
             && crest_factor < 4.5;
-        let is_voiced_speech = (max_norm_corr > 0.38 || (frame_rms > 0.03 && low_e > high_e * 2.0)) && crest_factor < 5.0 && frame_rms > 0.003;
+        let is_voiced_speech = ((max_norm_corr > 0.38 || (frame_rms > 0.03 && low_e > high_e * 2.0))
+            && crest_factor < 5.0
+            && frame_rms > 0.003)
+            || (max_norm_corr > 0.55 && crest_factor < 8.5 && frame_rms > 0.02)
+            || frame_rms > 0.14;
         let is_speech = is_voiced_speech || is_unvoiced_speech;
 
         // Update running noise floor and speech level trackers:
@@ -158,9 +161,14 @@ impl ResidualSuppressor {
 
             self.suppression_gain += release_rate * (target_gain - self.suppression_gain);
 
-            // Fast soft attenuation on sharp mechanical click impulses ONLY during quiet intervals / non-speech.
-            // Never clamp active voiced speech waveforms to prevent cracking or clipping loud voice!
-            let is_click_impulse = !is_voiced_speech && crest_factor > 6.0 && (deriv > click_deriv_thresh) && (abs_val > click_abs_thresh);
+            // Fast soft attenuation on sharp mechanical click impulses ONLY over quiet background.
+            // Never clamp active or loud speech waveforms to prevent cracking or chopping loud voice!
+            let is_click_impulse = !is_speech
+                && frame_rms < 0.07
+                && high_e > low_e * 0.8
+                && crest_factor > 6.5
+                && (deriv > click_deriv_thresh)
+                && (abs_val > click_abs_thresh);
             if is_click_impulse {
                 let sign = in_val.signum();
                 let excess = abs_val - click_clamp;

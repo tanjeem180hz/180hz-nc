@@ -477,3 +477,84 @@ fn test_loud_voice_at_high_dbfs_no_cracking() {
         }
     }
 }
+
+#[test]
+fn test_loud_dynamic_speech_no_cracking_or_chopping() {
+    println!("\n==========================================================================");
+    println!(">>> LOUD DYNAMIC SPEECH AUTO-LEVEL: ZERO CRACKING & ZERO CHOPPING <<<");
+    println!("==========================================================================");
+
+    for &mode in &[EngineMode::Light, EngineMode::Standard, EngineMode::MaxQuality] {
+        let mut pipeline = AudioPipeline::new(48000, 48000).unwrap();
+        pipeline.set_mode(mode);
+        pipeline.set_strength(1.0);
+        pipeline.set_auto_sensitivity(true);
+
+        let mut scratch = Vec::with_capacity(490);
+        let mut loud_dropouts = 0usize;
+        let mut clipped = 0usize;
+        let mut max_out_peak = 0.0f32;
+
+        // Warm up with 20 frames of quiet room noise (~ -42 dBFS)
+        let mut rng = SimpleRng(0xCAFE_1234);
+        for _ in 0..20 {
+            let quiet: Vec<f32> = (0..480).map(|_| rng.next_bipolar() * 0.008).collect();
+            pipeline.process_frame_internal(&quiet, &mut scratch, 960).unwrap();
+        }
+
+        // Sudden loud dynamic speech with harmonics + syllable amplitude modulation (peak up to 1.35)
+        let mut phi = 0.0f32;
+        for f in 0..60 {
+            let mut frame = Vec::with_capacity(480);
+            for i in 0..480 {
+                let t = (f * 480 + i) as f32 / 48000.0;
+                let f0 = 140.0 + 15.0 * (2.0 * PI * 2.0 * t).sin();
+                phi += 2.0 * PI * f0 / 48000.0;
+                // Dynamic high-crest harmonic speech wave + initial plosive burst
+                let harm = 0.45 * phi.sin()
+                    + 0.30 * (phi * 2.0).sin()
+                    + 0.20 * (phi * 3.0).sin()
+                    + 0.15 * (phi * 5.0).sin();
+                let amp = if f < 2 { 1.10 } else { 1.25 };
+                frame.push(harm * amp);
+            }
+            pipeline.process_frame_internal(&frame, &mut scratch, 960).unwrap();
+
+            let out_rms = (scratch.iter().map(|&x| x * x).sum::<f32>() / 480.0).sqrt();
+            let frame_peak = scratch.iter().fold(0.0f32, |m, &s| m.max(s.abs()));
+            max_out_peak = max_out_peak.max(frame_peak);
+            for &s in &scratch {
+                assert!(s.is_finite());
+                if s.abs() >= 1.0 {
+                    clipped += 1;
+                }
+            }
+            // After 40 ms neural warmup, no loud speech frame may chop out (< 0.04 RMS)
+            if f >= 5 && out_rms < 0.04 {
+                loud_dropouts += 1;
+            }
+        }
+
+        let auto_gain = pipeline.auto_sensitivity().current_gain();
+        println!(
+            "  [{:?}] AutoGain={:.2}x, MaxPeak={:.3}, LoudDropouts={}, Clipped={}",
+            mode, auto_gain, max_out_peak, loud_dropouts, clipped
+        );
+        assert!(
+            auto_gain < 0.85,
+            "AutoSensitivity failed to attenuate loud speech in {:?}: gain={:.2}",
+            mode,
+            auto_gain
+        );
+        assert_eq!(
+            loud_dropouts, 0,
+            "Loud dynamic speech chopped ({} dropouts) in {:?}",
+            loud_dropouts, mode
+        );
+        assert_eq!(
+            clipped, 0,
+            "Loud dynamic speech clipped ({} samples) in {:?}",
+            clipped, mode
+        );
+    }
+}

@@ -168,7 +168,7 @@ impl LiveMonitorController {
         // 3. Setup DSP helpers
         let mut crossfade = CrossfadeSwitch::new(Self::SAMPLE_RATE_48K as f32, 15.0);
         let mut howling_detector = HowlingDetector::default_48k();
-        let limiter = SoftLimiter::default_preset();
+        let mut limiter = SoftLimiter::default_preset();
 
         // Resampler if headphones operate at non-48kHz (e.g. 44.1 kHz, 96 kHz)
         let mut resampler = if target_sample_rate != Self::SAMPLE_RATE_48K {

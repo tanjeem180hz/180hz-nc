@@ -1,22 +1,25 @@
-/// Soft-knee Peak Limiter with transparent saturation curve.
-/// Prevents output audio from clipping (exceeding [-1.0, 1.0]) while preserving speech dynamics
-/// without harsh square-wave distortion.
+/// Smooth Gain-Riding Peak Limiter with transparent safety ceiling.
+/// Attenuates loud peaks smoothly via envelope gain riding so speech remains
+/// distortion-free without harsh waveshaper harmonic cracking, while strictly
+/// preventing output samples from exceeding [-1.0, 1.0].
 #[derive(Debug, Clone)]
 pub struct SoftLimiter {
     threshold: f32,
     knee_width: f32,
+    env_gain: f32,
 }
 
 impl SoftLimiter {
     /// Creates a SoftLimiter with the specified ceiling threshold.
     ///
     /// # Arguments
-    /// * `threshold` - Linear threshold above which soft saturation begins (typically 0.85 = -1.4 dBFS).
+    /// * `threshold` - Linear threshold above which smooth limiting engages (typically 0.89 = -1.0 dBFS).
     pub fn new(threshold: f32) -> Self {
         let threshold = threshold.clamp(0.5, 0.98);
         Self {
             threshold,
             knee_width: 1.0 - threshold,
+            env_gain: 1.0,
         }
     }
 
@@ -25,7 +28,7 @@ impl SoftLimiter {
         Self::new(0.89)
     }
 
-    /// Processes a single sample through the soft saturation curve.
+    /// Processes a single sample through the soft saturation safety curve.
     /// Zero allocations, SIMD branch friendly.
     #[inline(always)]
     pub fn limit_sample(&self, x: f32) -> f32 {
@@ -43,11 +46,19 @@ impl SoftLimiter {
         }
     }
 
-    /// Limits an audio slice in-place.
+    /// Limits an audio slice in-place using smooth gain-riding compression
+    /// plus a safety ceiling so loud voice never cracks or clips.
     #[inline]
-    pub fn process_slice(&self, buffer: &mut [f32]) {
+    pub fn process_slice(&mut self, buffer: &mut [f32]) {
         for sample in buffer.iter_mut() {
-            *sample = self.limit_sample(*sample);
+            let abs_s = sample.abs();
+            if abs_s * self.env_gain > self.threshold {
+                let desired = (self.threshold / abs_s.max(1e-6)).clamp(0.05, 1.0);
+                self.env_gain += 0.35 * (desired - self.env_gain);
+            } else {
+                self.env_gain += 0.002 * (1.0 - self.env_gain);
+            }
+            *sample = self.limit_sample(*sample * self.env_gain);
         }
     }
 }

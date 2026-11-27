@@ -68,6 +68,8 @@ pub struct AudioPipeline {
     ptt_active: bool,
     strength: f32, // 0.0 to 1.0
     post_gate_gain: f32,
+    prev_in_auto_gain: f32,
+    prev_out_restore_gain: f32,
     frame_size: usize,
     dry_buffer: Vec<f32>,
     wet_buffer: Vec<f32>,
@@ -116,6 +118,8 @@ impl AudioPipeline {
             ptt_active: false,
             strength: 1.0,
             post_gate_gain: 1.0,
+            prev_in_auto_gain: 1.0,
+            prev_out_restore_gain: 1.0,
             frame_size: Self::FRAME_SAMPLES,
             dry_buffer: vec![0.0f32; Self::FRAME_SAMPLES],
             wet_buffer: vec![0.0f32; Self::FRAME_SAMPLES],
@@ -471,18 +475,24 @@ impl AudioPipeline {
             diag.push_stage(3, &self.wet_buffer);
         }
 
-        // Engine input normalization: normalize engine input to healthy ~ -20 dBFS target.
-        // For MaxQuality (DeepFilterNet3), skip AGC normalization to preserve pure neural dynamics
-        // and eliminate any 30 ms algorithmic delay phase mismatch.
-        let should_normalize = match self.active_engine {
-            ActiveEngine::MaxQuality(_) => false,
-            _ => (auto_in_gain - 1.0).abs() > 0.01,
+        // Automatic loudness & headroom adjustment across ALL modes:
+        // - In Light/Standard/VoiceIsolation, normalize quiet and loud speech smoothly.
+        // - In MaxQuality (DFNet3), leave quiet/normal speech at 1.0x and smoothly attenuate loud
+        //   input (> -12 dBFS / hot peaks) before neural inference so loud speech never clips or distorts.
+        let target_in_gain = match self.active_engine {
+            ActiveEngine::MaxQuality(_) => auto_in_gain.min(1.0),
+            _ => auto_in_gain,
         };
-        if should_normalize {
-            for s in self.wet_buffer.iter_mut() {
-                *s *= auto_in_gain;
+        let has_in_auto_gain = (target_in_gain - 1.0).abs() > 0.005 || (self.prev_in_auto_gain - 1.0).abs() > 0.005;
+        if has_in_auto_gain {
+            let n = self.wet_buffer.len().max(1) as f32;
+            let start_g = self.prev_in_auto_gain;
+            for (i, s) in self.wet_buffer.iter_mut().enumerate() {
+                let t = (i + 1) as f32 / n;
+                *s *= start_g + (target_in_gain - start_g) * t;
             }
         }
+        self.prev_in_auto_gain = target_in_gain;
 
         // Step 5: Process through Denoise Engine
         // Neural & subband engines continuously process frames to maintain adapted recurrent state
@@ -523,13 +533,21 @@ impl AudioPipeline {
             self.wet_buffer.copy_from_slice(&self.dry_buffer);
         }
 
-        // Restore natural dynamic speech level after engine:
-        if should_normalize {
-            let inv_gain = 1.0 / auto_in_gain;
-            for s in self.wet_buffer.iter_mut() {
-                *s *= inv_gain;
+        // Restore natural dynamic speech level while strictly protecting output headroom (0.85 peak)
+        // so shouting / loud speech never drives the output stage into cracking or clipping.
+        let wet_peak = self.wet_buffer.iter().fold(0.0f32, |m, &s| m.max(s.abs()));
+        let inv_gain = 1.0 / target_in_gain.max(0.15);
+        let max_safe_gain = if wet_peak > 1e-4 { 0.85 / wet_peak } else { inv_gain };
+        let target_out_gain = inv_gain.min(max_safe_gain);
+        if (target_out_gain - 1.0).abs() > 0.005 || (self.prev_out_restore_gain - 1.0).abs() > 0.005 {
+            let n = self.wet_buffer.len().max(1) as f32;
+            let start_g = self.prev_out_restore_gain;
+            for (i, s) in self.wet_buffer.iter_mut().enumerate() {
+                let t = (i + 1) as f32 / n;
+                *s *= start_g + (target_out_gain - start_g) * t;
             }
         }
+        self.prev_out_restore_gain = target_out_gain;
 
         // Step 5b: Post-Denoise Neural + Sensitivity Gating
         // Combine cleaned signal energy with active engine speech confidence so loud pre-denoise
@@ -542,6 +560,7 @@ impl AudioPipeline {
         let is_active = if self.strength >= 0.90 {
             (post_energy_active && (engine_speech_conf >= 0.34 || (post_rms >= 0.045 && engine_speech_conf >= 0.10)))
                 || engine_speech_conf >= 0.50
+                || post_rms >= 0.08
         } else {
             post_energy_active || engine_speech_conf >= 0.45
         };

@@ -43,7 +43,7 @@ pub struct AutoSensitivityAdapter {
 
 impl AutoSensitivityAdapter {
     pub const DEFAULT_TARGET_RMS: f32 = 0.10; // -20 dBFS
-    pub const MIN_GAIN: f32 = 0.35;           // -9 dB (clean attenuation for loud shouting)
+    pub const MIN_GAIN: f32 = 0.20;           // -14 dB headroom protection for loud shouting
     pub const MAX_GAIN: f32 = 1.50;           // +3.5 dB (bounded ceiling: never amplifies ambient noise floor)
     pub const HANGOVER_FRAMES: usize = 12;    // 120 ms hangover
 
@@ -144,18 +144,18 @@ impl AutoSensitivityAdapter {
         // 2. Speech activity detection
         let snr = frame_rms / self.noise_floor_rms;
         let crest_factor = peak / frame_rms;
-        // True speech requires:
-        // - SNR >= 2.8 relative to running minimum noise floor
-        // - RMS >= 0.003 (-50 dBFS)
-        // - Crest factor < 5.0 (rejects sharp isolated clicks like mechanical keys and mouse taps)
-        let is_speech_instant = snr > 2.8 && frame_rms > 0.003 && crest_factor < 5.0;
+        // True speech includes normal conversational voice (crest < 5.0) and loud shouting/plosives (> 0.20 RMS)
+        let is_speech_instant = (snr > 2.8 && frame_rms > 0.003 && crest_factor < 5.0)
+            || (snr > 4.0 && frame_rms > 0.20 && crest_factor < 10.0);
 
         if is_speech_instant {
             self.hangover_counter = Self::HANGOVER_FRAMES;
             self.speech_active = true;
-            // Update speech level tracker (slow time constant ~ 1.5s)
-            self.speech_level_rms += 0.03 * (frame_rms - self.speech_level_rms);
-            self.speech_level_rms = self.speech_level_rms.clamp(0.005, 1.0);
+            // Track average speech loudness smoothly; adapt rapidly only on truly loud bursts (> 0.22 RMS)
+            let is_loud = frame_rms > 0.22 || peak > 0.55;
+            let env_rate = if is_loud && frame_rms > self.speech_level_rms { 0.22 } else { 0.03 };
+            self.speech_level_rms += env_rate * (frame_rms - self.speech_level_rms);
+            self.speech_level_rms = self.speech_level_rms.clamp(0.005, 1.5);
         } else if self.hangover_counter > 0 {
             self.hangover_counter -= 1;
             self.speech_active = true;
@@ -163,20 +163,36 @@ impl AutoSensitivityAdapter {
             self.speech_active = false;
         }
 
-        // 3. Engine Input Normalization AGC
+        // 3. Engine Input Normalization AGC with fast loud-peak headroom protection
         if self.enabled {
             if self.speech_active {
-                let desired_gain = (self.target_speech_rms / self.speech_level_rms)
-                    .clamp(Self::MIN_GAIN, Self::MAX_GAIN);
+                let is_whisper = frame_rms < 0.04;
+                let effective_speech_rms = if is_whisper {
+                    self.speech_level_rms.min(self.target_speech_rms)
+                } else {
+                    self.speech_level_rms
+                };
+                let rms_gain = self.target_speech_rms / effective_speech_rms;
+                let peak_gain = if peak > 0.55 { 0.55 / peak } else { Self::MAX_GAIN };
+                let desired_gain = rms_gain.min(peak_gain).clamp(Self::MIN_GAIN, Self::MAX_GAIN);
                 self.target_input_gain = desired_gain;
-                // Fast smooth adaptation toward speech gain target
-                self.current_input_gain += 0.04 * (self.target_input_gain - self.current_input_gain);
+                // Fast downward attack on loud peaks (> 0.55 or > 0.22 RMS) prevents clipping/cracking;
+                // fast recovery out of attenuation during whispers prevents gating soft words.
+                let is_loud_overload = peak > 0.55 || frame_rms > 0.22;
+                let rate = if self.target_input_gain < self.current_input_gain && is_loud_overload {
+                    0.40
+                } else if is_whisper && self.current_input_gain < 0.98 {
+                    0.35
+                } else {
+                    0.04
+                };
+                self.current_input_gain += rate * (self.target_input_gain - self.current_input_gain);
             } else {
                 // When speech stops: Target gain immediately resets to 1.0 (unity)
-                // and decays smoothly back to 1.0 within 300 ms (rate = 0.08 per 10 ms frame).
+                // and decays smoothly back to 1.0 within 300 ms (rate = 0.10 per 10 ms frame).
                 // Guaranteed: Auto-sensitivity NEVER raises the noise floor during silence or noise!
                 self.target_input_gain = 1.0;
-                self.current_input_gain += 0.08 * (1.0 - self.current_input_gain);
+                self.current_input_gain += 0.10 * (1.0 - self.current_input_gain);
             }
         } else {
             self.target_input_gain = 1.0;
