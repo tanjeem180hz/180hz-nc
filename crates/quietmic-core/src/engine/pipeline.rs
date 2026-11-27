@@ -421,6 +421,8 @@ impl AudioPipeline {
 
         // If muted or PTT active-muted, output complete digital silence
         if self.muted || (self.push_to_talk && !self.ptt_active) {
+            self.dry_buffer.fill(0.0);
+            self.blended_buffer.fill(0.0);
             output_mono.clear();
             output_mono.resize(self.frame_size, 0.0);
             return Ok(());
@@ -432,6 +434,8 @@ impl AudioPipeline {
                 let scaled = s * self.mic_gain;
                 self.dry_buffer[i] = if scaled.is_finite() { scaled.clamp(-1.0, 1.0) } else { 0.0 };
             }
+            // Keep blended_buffer synced to dry_buffer so Live Voice Listen hears raw voice when deactivated
+            self.blended_buffer.copy_from_slice(&self.dry_buffer);
             self.drift_compensator.adjust_frame(&self.dry_buffer, &mut self.drift_buffer, buffer_fill_samples);
             self.output_resampler.process(&self.drift_buffer, output_mono)?;
             return Ok(());
@@ -704,9 +708,31 @@ mod tests {
         let res = pipeline.process_frame_internal(&input_chunk, &mut output_chunk, 960);
         assert!(res.is_ok());
         assert_eq!(output_chunk.len(), input_chunk.len());
-        // Verify signal matches closely
+        // Verify both output_chunk and live-monitor blended_buffer carry exact raw voice when deactivated
         for (i, (&in_s, &out_s)) in input_chunk.iter().zip(&output_chunk).enumerate() {
             assert!((in_s - out_s).abs() < 1e-3, "Mismatch at sample {}: in={}, out={}", i, in_s, out_s);
+            assert!(
+                (pipeline.blended_buffer()[i] - pipeline.dry_buffer()[i]).abs() < 1e-6,
+                "Live monitor blended_buffer must match raw dry_buffer when deactivated at sample {}",
+                i
+            );
+            assert!(
+                (pipeline.blended_buffer()[i] - in_s).abs() < 1e-6,
+                "Live monitor blended_buffer must equal raw input when deactivated at sample {}",
+                i
+            );
+        }
+
+        // Verify EngineMode::None also forwards raw voice into live-monitor blended_buffer
+        let mut none_pipeline = AudioPipeline::new(48000, 48000).expect("Pipeline init failed");
+        none_pipeline.set_mode(EngineMode::None);
+        none_pipeline.process_frame_internal(&input_chunk, &mut output_chunk, 960).unwrap();
+        for i in 0..AudioPipeline::FRAME_SAMPLES {
+            assert!(
+                (none_pipeline.blended_buffer()[i] - input_chunk[i]).abs() < 1e-6,
+                "EngineMode::None must feed raw voice to live monitor at sample {}",
+                i
+            );
         }
     }
 
