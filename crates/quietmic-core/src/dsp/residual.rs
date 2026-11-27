@@ -106,8 +106,11 @@ impl ResidualSuppressor {
             }
         }
 
-        // Voiced speech (vocal fold vibration) or unvoiced speech (whispers, fricatives /s/, /sh/)
-        let is_unvoiced_speech = high_e > low_e * 0.8 && frame_rms > 0.004 && crest_factor < 5.0;
+        // Voiced speech (vocal fold vibration) or genuine HF fricatives well above noise floor
+        // (white hiss has high_e ~= low_e, so requiring > 1.35x avoids mistaking room hiss for speech)
+        let is_unvoiced_speech = high_e > low_e * 1.35
+            && frame_rms > (self.running_noise_floor * 2.5).max(0.008)
+            && crest_factor < 4.5;
         let is_voiced_speech = (max_norm_corr > 0.38 || (frame_rms > 0.03 && low_e > high_e * 2.0)) && crest_factor < 5.0 && frame_rms > 0.003;
         let is_speech = is_voiced_speech || is_unvoiced_speech;
 
@@ -125,7 +128,7 @@ impl ResidualSuppressor {
 
         // Smooth post-filter gain: crush non-speech valleys while leaving speech untouched
         let quiet_gain = if self.strength >= 0.95 {
-            0.0005 // -66 dB valley floor for zero noise leakage
+            0.0 // Digital silence in non-speech valleys at extreme suppression
         } else {
             0.015 * (1.0 - self.strength * 0.90)
         };

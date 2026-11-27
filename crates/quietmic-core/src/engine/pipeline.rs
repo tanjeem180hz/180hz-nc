@@ -540,16 +540,16 @@ impl AudioPipeline {
             (sum_sq / self.wet_buffer.len().max(1) as f32).sqrt()
         };
         let is_active = if self.strength >= 0.90 {
-            (post_energy_active && (engine_speech_conf >= 0.36 || post_rms >= 0.045))
+            (post_energy_active && (engine_speech_conf >= 0.34 || (post_rms >= 0.045 && engine_speech_conf >= 0.10)))
                 || engine_speech_conf >= 0.50
         } else {
             post_energy_active || engine_speech_conf >= 0.45
         };
 
         if !is_active && self.strength >= 0.85 {
-            // Smooth 5 ms fade-to-zero eliminates all residual background noise & clicks in pauses
+            // Smooth ~7.5 ms fade-to-zero eliminates all residual background noise & clicks in pauses
             for s in self.wet_buffer.iter_mut() {
-                self.post_gate_gain *= 0.985;
+                self.post_gate_gain *= 0.975;
                 if self.post_gate_gain < 1e-4 {
                     self.post_gate_gain = 0.0;
                 }
