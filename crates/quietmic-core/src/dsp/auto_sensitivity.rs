@@ -21,6 +21,7 @@ pub struct AutoSensitivityAdapter {
     window_min_rms: f32,
     window_counter: usize,
     window_length_frames: usize, // 150 frames = 1.5 seconds at 10 ms/frame
+    warmup_calibrated: bool,
 
     // Speech level tracker
     speech_level_rms: f32,
@@ -54,6 +55,7 @@ impl AutoSensitivityAdapter {
             window_min_rms: 1.0,
             window_counter: 0,
             window_length_frames: 150,
+            warmup_calibrated: false,
             speech_level_rms: 0.10, // -20 dBFS initial speech level
             speech_active: false,
             hangover_counter: 0,
@@ -95,6 +97,7 @@ impl AutoSensitivityAdapter {
         self.noise_floor_rms = 0.001;
         self.window_min_rms = 1.0;
         self.window_counter = 0;
+        self.warmup_calibrated = false;
         self.speech_level_rms = 0.10;
         self.speech_active = false;
         self.hangover_counter = 0;
@@ -125,6 +128,13 @@ impl AutoSensitivityAdapter {
         // 1. Minimum-statistics noise floor tracking
         self.window_min_rms = self.window_min_rms.min(frame_rms);
         self.window_counter += 1;
+        if !self.warmup_calibrated && self.window_counter >= 25 {
+            // Fast 250 ms initial room noise calibration so ambient room hum is never mistaken for speech
+            self.noise_floor_rms = self.window_min_rms.clamp(0.00005, 0.08);
+            self.warmup_calibrated = true;
+            self.speech_active = false;
+            self.hangover_counter = 0;
+        }
         if self.window_counter >= self.window_length_frames {
             // Smoothly update noise floor toward sliding minimum
             self.noise_floor_rms = self.noise_floor_rms * 0.70 + self.window_min_rms * 0.30;
@@ -144,8 +154,8 @@ impl AutoSensitivityAdapter {
         // 2. Speech activity detection
         let snr = frame_rms / self.noise_floor_rms;
         let crest_factor = peak / frame_rms;
-        // True speech includes normal conversational voice (crest < 5.0) and loud shouting/plosives (> 0.20 RMS)
-        let is_speech_instant = (snr > 2.8 && frame_rms > 0.003 && crest_factor < 5.0)
+        // True speech includes normal conversational voice (crest < 4.8) and loud shouting/plosives (> 0.20 RMS)
+        let is_speech_instant = (snr > 2.8 && frame_rms > 0.004 && crest_factor < 4.8)
             || (snr > 4.0 && frame_rms > 0.20 && crest_factor < 10.0);
 
         if is_speech_instant {
@@ -203,10 +213,9 @@ impl AutoSensitivityAdapter {
 
         // 4. Adaptive threshold in dBFS
         let threshold_dbfs = if self.enabled {
-            // Dynamic threshold: 3 dB above minimum-statistics noise floor
-            // Whisper protection: minimum threshold down to -58 dBFS
-            // Conversational speech protection: ceiling at -44 dBFS so soft speech is never cut off
-            (self.last_noise_floor_db + 3.0).clamp(-58.0, -44.0)
+            // Dynamic threshold: 6 dB above minimum-statistics room noise floor so single isolated
+            // background noises never pass, while whispers (-35 dBFS) remain protected down to -54 dBFS
+            (self.last_noise_floor_db + 6.0).clamp(-54.0, -34.0)
         } else {
             self.manual_threshold_dbfs
         };

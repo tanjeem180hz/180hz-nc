@@ -19,7 +19,7 @@ fn test_backend_controls_e2e_all_parameters() {
     assert_eq!(config.mode, "Krisp");
     assert_eq!(config.strength, 1.0);
     assert!(!config.bypass);
-    assert!(!config.aec_enabled);
+    assert!(config.aec_enabled);
     assert!(config.auto_sensitivity);
     assert!(config.close_to_tray);
 

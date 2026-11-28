@@ -500,6 +500,7 @@ fn get_metrics(state: State<AppState>) -> MetricsDto {
     let lock = state.stream_controller.lock();
     let cfg = state.config.lock();
     let suppression_active = !cfg.bypass && !cfg.muted;
+    let cfg_aec_enabled = cfg.aec_enabled;
     drop(cfg);
 
     if let Some(ref ctrl) = *lock {
@@ -546,7 +547,7 @@ fn get_metrics(state: State<AppState>) -> MetricsDto {
             fallback_active: false,
             noise_reduction_db: 0.0,
             suppression_active: false,
-            aec_enabled: false,
+            aec_enabled: cfg_aec_enabled,
             aec_ref_device: "None".to_string(),
             aec_ref_sample_rate: 0,
             aec_ref_peak_db: -100.0,
@@ -772,6 +773,17 @@ fn main() {
     tracing::info!("Starting 180hz nc application");
 
     let mut config = AppConfig::load();
+    // Automatically enable all core protection features whenever the app opens
+    config.bypass = false;
+    config.muted = false;
+    config.aec_enabled = true;
+    config.auto_sensitivity = true;
+    if config.mode == "None" || config.mode == "Bypass" {
+        config.mode = "MaxQuality".to_string();
+    }
+    if config.strength < 0.99 {
+        config.strength = 1.0;
+    }
     let device_manager = DeviceManager::new();
 
     // Automatically detect and select default physical microphone

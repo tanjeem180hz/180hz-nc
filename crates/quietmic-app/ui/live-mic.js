@@ -74,6 +74,29 @@
     .live-mic-toggle-btn.active .live-mic-wave-pulse {
       animation: liveMicPulseAnim 2.2s infinite ease-out;
     }
+    .aec-toggle-btn {
+      top: 72px;
+      right: 18px;
+    }
+    .aec-toggle-btn.active {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(6, 182, 212, 0.22));
+      border-color: rgba(16, 185, 129, 0.9);
+      box-shadow: 0 0 18px rgba(16, 185, 129, 0.55), inset 0 0 10px rgba(16, 185, 129, 0.30);
+    }
+    .aec-toggle-btn.active .live-mic-svg {
+      color: #34d399;
+      filter: drop-shadow(0 0 6px rgba(52, 211, 153, 0.85));
+    }
+    .aec-toggle-btn .live-mic-wave-pulse {
+      border-color: rgba(16, 185, 129, 0.5);
+    }
+    .aec-off-slash {
+      opacity: 0.92;
+      transition: opacity 0.2s ease;
+    }
+    .aec-toggle-btn.active .aec-off-slash {
+      opacity: 0;
+    }
     @keyframes liveMicPulseAnim {
       0% { transform: scale(0.95); opacity: 0.8; }
       50% { transform: scale(1.24); opacity: 0.18; }
@@ -99,8 +122,30 @@
 
   document.body.appendChild(liveMicBtn);
 
+  // 2b. Inject Echo Cancellation Toggle button directly below Live Mic button
+  const aecToggleBtn = document.createElement('button');
+  aecToggleBtn.type = 'button';
+  aecToggleBtn.id = 'aecToggleBtn';
+  aecToggleBtn.className = 'live-mic-toggle-btn aec-toggle-btn active';
+  aecToggleBtn.setAttribute('aria-label', 'Toggle Echo Cancellation');
+  aecToggleBtn.title = 'Echo Cancellation';
+
+  aecToggleBtn.innerHTML = `
+    <div class="live-mic-wave-pulse"></div>
+    <svg class="live-mic-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+      <line class="aec-off-slash" x1="22" y1="2" x2="2" y2="22"></line>
+    </svg>
+  `;
+
+  document.body.appendChild(aecToggleBtn);
+
   // 3. State & Toggle Logic
   let isLiveMicActive = false;
+  let isAecActive = true;
+  let aecSyncIgnoreUntil = 0;
 
   async function toggleLiveMic() {
     const invoker = getInvoke();
@@ -128,7 +173,40 @@
     }
   }
 
+  function updateAecButtonState(active) {
+    isAecActive = !!active;
+    if (isAecActive) {
+      aecToggleBtn.classList.add('active');
+    } else {
+      aecToggleBtn.classList.remove('active');
+    }
+  }
+
+  async function toggleAec() {
+    const nextState = !isAecActive;
+    aecSyncIgnoreUntil = Date.now() + 450;
+    updateAecButtonState(nextState);
+    const invoker = getInvoke();
+    if (!invoker) {
+      return;
+    }
+    try {
+      await invoker('set_aec', { enabled: nextState });
+    } catch (err) {
+      aecSyncIgnoreUntil = 0;
+      updateAecButtonState(!nextState);
+      console.error('Failed to toggle echo cancellation:', err);
+    }
+  }
+
   liveMicBtn.addEventListener('click', toggleLiveMic);
+  aecToggleBtn.addEventListener('click', toggleAec);
+  window.addEventListener('180hz:aec-sync', (ev) => {
+    if (Date.now() < aecSyncIgnoreUntil) return;
+    if (typeof ev.detail === 'boolean' && ev.detail !== isAecActive) {
+      updateAecButtonState(ev.detail);
+    }
+  });
 
   // 4. Initial status sync
   async function initStatus() {
@@ -139,6 +217,12 @@
         if (status && status.is_active) {
           isLiveMicActive = true;
           updateButtonState(true);
+        }
+      } catch (_) {}
+      try {
+        const cfg = await invoker('get_config');
+        if (cfg && typeof cfg.aec_enabled === 'boolean') {
+          updateAecButtonState(cfg.aec_enabled);
         }
       } catch (_) {}
     }

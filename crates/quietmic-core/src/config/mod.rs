@@ -19,8 +19,8 @@ pub struct AppConfig {
     pub strength: f32,             // 0.0 to 1.0 (default 1.0 = 100%)
     #[serde(default)]
     pub bypass: bool,              // Master bypass toggle (default false)
-    #[serde(default)]
-    pub aec_enabled: bool,         // Acoustic Echo Cancellation (default false)
+    #[serde(default = "default_true")]
+    pub aec_enabled: bool,         // Acoustic Echo Cancellation (default true)
     #[serde(default)]
     pub speaker_denoise: bool,     // Speaker denoise pipeline (default false)
     #[serde(default)]
@@ -67,7 +67,7 @@ impl Default for AppConfig {
             mode: "Krisp".to_string(),
             strength: 1.0,
             bypass: false,
-            aec_enabled: false,
+            aec_enabled: true,
             speaker_denoise: false,
             comfort_noise: false,
             selected_mic: None,

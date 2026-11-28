@@ -558,3 +558,52 @@ fn test_loud_dynamic_speech_no_cracking_or_chopping() {
         );
     }
 }
+
+#[test]
+fn test_auto_sensitivity_blocks_extra_single_noise_spike() {
+    println!("\n==========================================================================");
+    println!(">>> AUTO-SENSITIVITY AUDIT: EXTRA SINGLE NOISE SPIKE REJECTION <<<");
+    println!("==========================================================================");
+
+    let mut pipeline = AudioPipeline::new(48000, 48000).unwrap();
+    pipeline.set_mode(EngineMode::MaxQuality);
+    pipeline.set_strength(1.0);
+    pipeline.set_auto_sensitivity(true);
+    assert!(pipeline.is_aec_enabled(), "AEC should be activated by default on new AudioPipeline");
+
+    let mut scratch = Vec::with_capacity(490);
+    let mut rng = SimpleRng(0xBAD_5EED);
+
+    // 1. Settle on ambient room noise (-42 dBFS)
+    for _ in 0..40 {
+        let ambient: Vec<f32> = (0..480).map(|_| rng.next_bipolar() * 0.012).collect();
+        pipeline.process_frame_internal(&ambient, &mut scratch, 960).unwrap();
+    }
+
+    // 2. Inject single extra impulse/knock/click burst (isolated 1-frame noise event)
+    let mut spike_max = 0.0f32;
+    for f in 0..6 {
+        let mut burst = vec![0.0f32; 480];
+        if f == 0 {
+            for i in 0..160 {
+                let env = (-(i as f32) / 25.0).exp();
+                burst[i] = 0.55 * env * (2.0 * PI * 2600.0 * (i as f32 / 48000.0)).sin();
+            }
+        } else {
+            for s in burst.iter_mut() {
+                *s = rng.next_bipolar() * 0.012;
+            }
+        }
+        pipeline.process_frame_internal(&burst, &mut scratch, 960).unwrap();
+        let frame_rms = (scratch.iter().map(|&x| x * x).sum::<f32>() / 480.0).sqrt();
+        spike_max = spike_max.max(frame_rms);
+    }
+
+    let spike_db = if spike_max > 1e-9 { 20.0 * spike_max.log10() } else { -180.0 };
+    println!("  Extra single noise spike settled max RMS: {:.1} dBFS", spike_db);
+    assert!(
+        spike_db < -50.0,
+        "Extra single noise spike leaked into mic: {:.1} dBFS (expected < -50.0 dBFS)",
+        spike_db
+    );
+}

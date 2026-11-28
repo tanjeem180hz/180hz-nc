@@ -159,12 +159,12 @@ impl DenoiseEngine for MaxQualityEngine {
             .rnnoise
             .process_frame(&mut *self.rnnoise_scratch_out, &*self.rnnoise_scratch_in);
 
-        // Dual-neural Krisp-grade speech gate: rejects fan/traffic/clicks cleanly
-        // while keeping loud unvoiced speech/plosives (out_rms > 0.04) open so loud voice never chops
+        // Dual-neural Krisp-grade speech gate: rejects extra single noise bursts from silence
+        // while keeping ongoing loud speech/plosives (speech_hangover > 0) open without chopping
         let is_speech = (self.last_lsnr > -1.0 && out_rms > 0.0012)
             || (self.last_lsnr > -6.0 && self.rnnoise_vad >= 0.25 && out_rms > 0.0025)
             || (self.last_lsnr > -10.0 && out_rms > 0.015)
-            || out_rms > 0.04;
+            || (out_rms > 0.045 && (self.speech_hangover > 0 || self.rnnoise_vad >= 0.22));
 
         if is_speech && self.suppression_factor > 0.01 {
             self.speech_hangover = 15; // 150 ms hangover preserves natural word cadence

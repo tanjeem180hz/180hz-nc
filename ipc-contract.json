@@ -257,7 +257,7 @@
     },
     "aec_enabled": {
       "type": "bool",
-      "default": false
+      "default": true
     },
     "speaker_denoise": {
       "type": "bool",

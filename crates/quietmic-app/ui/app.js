@@ -27,6 +27,7 @@ function mockInvoke(cmd, args) {
         mode: 'MaxQuality',
         strength: 1.0,
         bypass: false,
+        aec_enabled: true,
         auto_sensitivity: true,
       });
     case 'get_metrics': {
@@ -38,6 +39,7 @@ function mockInvoke(cmd, args) {
         raw_waveform: wave,
         clean_waveform: wave,
         suppression_active: true,
+        aec_enabled: true,
       });
     }
     case 'toggle_live_test':
@@ -45,6 +47,7 @@ function mockInvoke(cmd, args) {
     case 'set_mode':
     case 'set_strength':
     case 'set_bypass':
+    case 'set_aec':
     case 'set_auto_sensitivity':
       return Promise.resolve();
     default:
@@ -199,6 +202,9 @@ function startMetricsPolling() {
       if (metrics) {
         if (typeof metrics.suppression_active === 'boolean' && metrics.suppression_active !== isActive) {
           setSuppressionState(metrics.suppression_active, false);
+        }
+        if (typeof metrics.aec_enabled === 'boolean') {
+          window.dispatchEvent(new CustomEvent('180hz:aec-sync', { detail: metrics.aec_enabled }));
         }
         const wave = (isActive ? metrics.clean_waveform : metrics.raw_waveform) || [];
         if (wave.length > 0) {

@@ -68,6 +68,7 @@ pub struct AudioPipeline {
     ptt_active: bool,
     strength: f32, // 0.0 to 1.0
     post_gate_gain: f32,
+    speech_onset_frames: u8,
     prev_in_auto_gain: f32,
     prev_out_restore_gain: f32,
     frame_size: usize,
@@ -95,12 +96,15 @@ impl AudioPipeline {
         let mut vad = SilenceDetector::new(-58.0, 16, Self::FRAME_SAMPLES);
         vad.set_auto_sensitivity(false);
 
+        let mut aec = EchoCanceller::default_preset();
+        aec.set_enabled(true);
+
         Ok(Self {
             mode: EngineMode::MaxQuality,
             active_engine: ActiveEngine::MaxQuality(Box::new(max_quality)),
             enrolled_voiceprint: None,
             hpf: HighPassFilter::default_48k(),
-            aec: EchoCanceller::default_preset(),
+            aec,
             vad,
             auto_sensitivity: AutoSensitivityAdapter::default_preset(),
             transient: TransientSuppressor::new(TransientSuppressor::LOOKAHEAD_5MS),
@@ -118,6 +122,7 @@ impl AudioPipeline {
             ptt_active: false,
             strength: 1.0,
             post_gate_gain: 1.0,
+            speech_onset_frames: 0,
             prev_in_auto_gain: 1.0,
             prev_out_restore_gain: 1.0,
             frame_size: Self::FRAME_SAMPLES,
@@ -561,10 +566,20 @@ impl AudioPipeline {
             let sum_sq: f32 = self.wet_buffer.iter().map(|&x| x * x).sum();
             (sum_sq / self.wet_buffer.len().max(1) as f32).sqrt()
         };
+        if engine_speech_conf >= 0.55 {
+            self.speech_onset_frames = self.speech_onset_frames.saturating_add(1);
+        } else {
+            self.speech_onset_frames = 0;
+        }
         let is_active = if self.strength >= 0.90 {
-            (post_energy_active && (engine_speech_conf >= 0.34 || (post_rms >= 0.045 && engine_speech_conf >= 0.10)))
-                || engine_speech_conf >= 0.50
-                || post_rms >= 0.08
+            if self.auto_sensitivity.is_enabled() && !self.auto_sensitivity.is_speech_active() {
+                // Reject isolated 1-frame single noise spikes unless sustained (>= 2 frames) neural speech is confirmed
+                self.speech_onset_frames >= 2 && engine_speech_conf >= 0.55
+            } else {
+                (post_energy_active && (engine_speech_conf >= 0.34 || (post_rms >= 0.045 && engine_speech_conf >= 0.10)))
+                    || engine_speech_conf >= 0.50
+                    || (post_rms >= 0.08 && engine_speech_conf >= 0.15)
+            }
         } else {
             post_energy_active || engine_speech_conf >= 0.45
         };
